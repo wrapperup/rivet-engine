@@ -49,6 +49,7 @@ Asset_Name :: enum {
     sm_cube,
     sm_figure,
     sm_irradiance_volume_test,
+    sm_map_door,
     sm_map_test,
     sm_materialball2,
     sm_monkey,
@@ -122,6 +123,7 @@ load_generated_assets :: proc() -> bool {
     asset_map[.sm_cube] = load_asset("assets/meshes/static/sm_cube.glb") or_return
     asset_map[.sm_figure] = load_asset("assets/meshes/static/sm_figure.glb") or_return
     asset_map[.sm_irradiance_volume_test] = load_asset("assets/meshes/static/sm_irradiance_volume_test.glb") or_return
+    asset_map[.sm_map_door] = load_asset("assets/meshes/static/sm_map_door.glb") or_return
     asset_map[.sm_map_test] = load_asset("assets/meshes/static/sm_map_test.glb") or_return
     asset_map[.sm_materialball2] = load_asset("assets/meshes/static/sm_materialball2.glb") or_return
     asset_map[.sm_monkey] = load_asset("assets/meshes/static/sm_monkey.glb") or_return

@@ -29,19 +29,19 @@ ui_pass_init :: proc(this: rawptr) {
 }
 
 ui_pass_run :: proc(this: rawptr, cmd: vk.CommandBuffer) {
-	ui_pass := cast(^UIPass)this
-
-	gfx.cmd_bind_pipeline(cmd, ui_pass.ui_pipeline^)
-
-	gfx.cmd_push_constants(
-		cmd,
-		GPUPostProcessingPushConstants{resolved_image = game.render_state.temp_resources.resolved_image_id},
-	)
-
-	vk.CmdDispatch(
-		cmd,
-		u32(math.ceil(f32(gfx.r_ctx.draw_extent.width) / 16.0)),
-		u32(math.ceil(f32(gfx.r_ctx.draw_extent.height) / 16.0)),
-		1,
-	)
+	// ui_pass := cast(^UIPass)this
+	//
+	// gfx.cmd_bind_pipeline(cmd, ui_pass.ui_pipeline^)
+	//
+	// gfx.cmd_push_constants(
+	// 	cmd,
+	// 	GPUPostProcessingPushConstants{resolved_image = game.render_state.temp_resources.resolved_image_id},
+	// )
+	//
+	// vk.CmdDispatch(
+	// 	cmd,
+	// 	u32(math.ceil(f32(gfx.r_ctx.draw_extent.width) / 16.0)),
+	// 	u32(math.ceil(f32(gfx.r_ctx.draw_extent.height) / 16.0)),
+	// 	1,
+	// )
 }

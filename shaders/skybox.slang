@@ -1,6 +1,5 @@
 import bindless;
 import common;
-import ibl;
 import standard_brdf;
 import types;
 

@@ -25,6 +25,7 @@ GPUMeshBuffers :: struct {
 	index_count:   u32,
 	vertex_buffer: gfx.GPUBuffer(Vertex),
 	vertex_count:  u32,
+	blas:          gfx.Raytracing_Accel,
 }
 
 GPUSkelMeshBuffers :: struct {

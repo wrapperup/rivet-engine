@@ -14,6 +14,8 @@ REQUIRED_FEATURES := vk.PhysicalDeviceFeatures2 {
 		shaderInt64 = true,
 		shaderInt16 = true,
 		shaderFloat64 = true,
+		fragmentStoresAndAtomics = true,
+		vertexPipelineStoresAndAtomics = true,
 	},
 	pNext = &REQUIRED_VK_11_FEATURES,
 }
@@ -29,12 +31,15 @@ REQUIRED_VK_11_FEATURES := vk.PhysicalDeviceVulkan11Features {
 REQUIRED_VK_12_FEATURES := vk.PhysicalDeviceVulkan12Features {
 	sType                  = .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
 	pNext                  = &REQUIRED_VK_13_FEATURES,
-	bufferDeviceAddress    = true,
-	descriptorIndexing     = true,
-	storagePushConstant8   = true,
-	shaderInt8             = true,
-	runtimeDescriptorArray = true,
-	scalarBlockLayout      = true,
+	bufferDeviceAddress         = true,
+	descriptorIndexing          = true,
+	storagePushConstant8        = true,
+	shaderInt8                  = true,
+	runtimeDescriptorArray      = true,
+	scalarBlockLayout           = true,
+	vulkanMemoryModel           = true,
+	vulkanMemoryModelDeviceScope = true,
+	timelineSemaphore           = true,
 }
 
 REQUIRED_VK_13_FEATURES := vk.PhysicalDeviceVulkan13Features {
@@ -68,8 +73,7 @@ DEVICE_EXTENSIONS := []cstring {
 // Set validation layers to enable.
 VALIDATION_LAYERS := []cstring{"VK_LAYER_KHRONOS_validation"}
 
-// Set validation features to enable.
-VALIDATION_FEATURES := []vk.ValidationFeatureEnableEXT{.DEBUG_PRINTF}
+VALIDATION_FEATURES := []vk.ValidationFeatureEnableEXT{}
 
 // Number of frames to provide in flight.
 FRAME_OVERLAP :: 2

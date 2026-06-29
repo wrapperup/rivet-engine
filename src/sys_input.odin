@@ -14,6 +14,7 @@ Action :: enum {
 	Fullscreen,
 	ExitGame,
     ShowDebug,
+	ToggleDoor,
 }
 
 Axis :: enum {

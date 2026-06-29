@@ -42,7 +42,16 @@ add_compute_shader :: proc(
 }
 
 check_shader_hotreload :: proc() -> (needs_reload: bool) {
-	// TODO: SPEED: Maybe iter this across frames?
+	// Polling every file's mtime every frame is hundreds of filesystem syscalls
+	// (each shader + all its transitive imports). Throttle to a few times a second
+	// so it doesn't dominate the frame; 250ms reload latency is imperceptible.
+	@(static) last_check: time.Time
+	now := time.now()
+	if time.duration_seconds(time.diff(last_check, now)) < 0.25 {
+		return false
+	}
+	last_check = now
+
 	for &shader in game.render_state.shader_manager.graphics_shaders {
 		max_last_write_time: i64
 		last_write_time, _ := os.last_write_time_by_name(string(shader.path))
@@ -201,11 +210,18 @@ reload_shader_pipeline :: proc(shader: ^Shader($T)) -> bool {
 		if shader.pipeline.pipeline != 0 {
 			vk.DestroyPipeline(gfx.r_ctx.device, shader.pipeline.pipeline, nil)
 		}
-		free(shader.pipeline)
+		// Destroy the old layout too, or each hotreload leaks one (which validation
+		// then has to report at shutdown -> slow close after many reloads).
+		if shader.pipeline.layout != 0 {
+			vk.DestroyPipelineLayout(gfx.r_ctx.device, shader.pipeline.layout, nil)
+		}
+		// Update in place: pointers handed out by add_*_shader (e.g. the
+		// render_state.*_pipeline fields) alias this allocation, so it must NOT move.
+		shader.pipeline^ = pipeline
+	} else {
+		shader.pipeline = new(T)
+		shader.pipeline^ = pipeline
 	}
-
-	shader.pipeline = new(T)
-	shader.pipeline^ = pipeline
 
 	gfx.destroy_shader_module(shader_module)
 
@@ -258,7 +274,7 @@ slang_check :: #force_inline proc(#any_int result: int, loc := #caller_location)
 diagnostics_check :: #force_inline proc(diagnostics: ^sp.IBlob, loc := #caller_location) {
 	if diagnostics != nil {
 		buffer := slice.bytes_from_ptr(diagnostics->getBufferPointer(), int(diagnostics->getBufferSize()))
-		fmt.eprintln(false, string(buffer), loc)
+		fmt.eprintln(string(buffer), loc)
 	}
 }
 
@@ -273,7 +289,7 @@ init_slang_session :: proc() -> ^sp.ISession {
 		structureSize               = size_of(sp.TargetDesc),
 		format                      = .SPIRV,
 		flags                       = {.GENERATE_SPIRV_DIRECTLY},
-		profile                     = game.render_state.global_session->findProfile("sm_6_0"),
+		profile                     = game.render_state.global_session->findProfile("sm_6_5"),
 		forceGLSLScalarBufferLayout = true,
 		compilerOptionEntries       = &options[0],
 		compilerOptionEntryCount    = u32(len(options)),

@@ -23,6 +23,8 @@ ViewState :: enum {
 	SceneColor,
 	SceneDepth,
 	ShadowDepth,
+	Raytracing,
+	DDGIAtlas,
 }
 
 SkeletalMeshInstance :: struct {
@@ -115,6 +117,8 @@ end_scope_stat_time :: proc(stat_type: FrameTimeStats) {
 GameState :: struct {
 	environment: Environment,
 	player_id:   TypedEntityId(Player),
+	door_id:     TypedEntityId(StaticMesh),
+    update_ddgi: bool,
 }
 
 Environment :: struct {

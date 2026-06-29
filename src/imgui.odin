@@ -328,8 +328,18 @@ update_imgui :: proc() {
 			im.InputFloat3("vel", &player.velocity)
 			im.InputFloat3("pitch yaw", &player.camera_rot)
 			im.InputFloat("fov", &player.camera_fov_deg)
-			items := [len(ViewState)]cstring{"SceneColor", "SceneDepth", "ShadowDepth"}
+			items := [len(ViewState)]cstring{"SceneColor", "SceneDepth", "ShadowDepth", "Raytracing", "DDGIAtlas"}
 			im.ComboChar("view", cast(^i32)(&game.view_state), raw_data(&items), len(items))
+			im.Checkbox("DDGI update", &game.state.update_ddgi)
+			im.Checkbox("DDGI probes", &game.render_state.draw_ddgi_probes)
+			im.SliderFloat("DDGI intensity", &game.render_state.ddgi_volume.gpu.intensity, 0.0, 4.0)
+			im.SliderFloat("DDGI feedback", &game.render_state.ddgi_volume.gpu.feedback, 0.0, 50.0)
+			im.SliderFloat("DDGI depth bias", &game.render_state.ddgi_volume.gpu.depth_bias, -2.0, 4.0)
+			im.SliderFloat("DDGI reloc max", &game.render_state.ddgi_volume.gpu.relocation_max, 0.0, 1.5)
+			im.SliderFloat("DDGI hysteresis", &game.render_state.ddgi_volume.gpu.hysteresis, 0.9, 0.999)
+			im.SliderFloat("DDGI cheb sharpness", &game.render_state.ddgi_volume.gpu.cheb_sharpness, 1.0, 16.0)
+			im.SliderFloat("DDGI ray max", &game.render_state.ddgi_volume.gpu.ray_max, 10.0, 500.0)
+			im.SliderFloat("DDGI max radiance", &game.render_state.ddgi_volume.gpu.max_radiance, 0.0, 50.0)
 		}
 		im.End()
 	}

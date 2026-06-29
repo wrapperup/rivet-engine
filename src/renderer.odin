@@ -66,6 +66,15 @@ GPUSkyboxPushConstants :: struct #max_field_align(16) {
 }
 
 @(shader_shared)
+GPUDebugRTPushConstants :: struct #max_field_align(16) {
+	global:     GPUPtr(GPUGlobalData),
+	geometries: GPUPtr(GPUGeometry),
+	materials:  GPUPtr(GPUMaterial),
+	tlas:       vk.DeviceAddress `AccelerationStructure`,
+	out_image:  ImageId `RWImage2D`,
+}
+
+@(shader_shared)
 GPUPostProcessingPushConstants :: struct #max_field_align(16) {
 	resolved_image:  ImageId `RWImage2D`,
 	tony_mc_mapface: ImageId `Image3D<Vec3>`,
@@ -103,11 +112,13 @@ GPUGlobalData :: struct #max_field_align(16) {
 	cascade_configs:          GPUPtr(GPUCascadeConfig),
 	view_to_clip:             Mat4x4,
 	world_to_view:            Mat4x4,
+	clip_to_world:            Mat4x4, // inverse(view_to_clip * world_to_view), for ray reconstruction
 	sun_color:                Vec3,
 	sky_color:                Vec3,
 	camera_pos:               Vec3,
 	sun_direction:            Vec3,
 	default_sampler:          SamplerId `Sampler`,
+	ddgi:                     GPUPtr(GPUDDGIVolume),
 }
 
 RenderState :: struct {
@@ -150,6 +161,13 @@ RenderState :: struct {
 
 	// Tonemapper pipelines
 	tonemapper_pipeline:             ^gfx.ComputePipeline,
+	debug_rt_pipeline:               ^gfx.ComputePipeline,
+	ddgi_trace_pipeline:             ^gfx.ComputePipeline,
+	ddgi_update_pipeline:            ^gfx.ComputePipeline,
+	ddgi_border_pipeline:            ^gfx.ComputePipeline,
+	ddgi_relocate_pipeline:          ^gfx.ComputePipeline,
+	ddgi_debug_pipeline:             ^gfx.ComputePipeline,
+	ddgi_probe_pipeline:             ^gfx.GraphicsPipeline,
 
 	// Skybox pipelines
 	skybox_pipeline:                 ^gfx.GraphicsPipeline,
@@ -162,6 +180,13 @@ RenderState :: struct {
 
 	// Imgui
 	imgui_ctx:                       ^im.Context,
+
+	// DDGI (single test volume for now)
+	ddgi_volume:                     DDGI_Volume,
+	ddgi_probe_vbuf:                 gfx.GPUBuffer(Vertex),
+	ddgi_probe_ibuf:                 gfx.GPUBuffer(u32),
+	ddgi_probe_index_count:          u32,
+	draw_ddgi_probes:                bool,
 }
 
 GameFrameData :: struct {
@@ -171,6 +196,9 @@ GameFrameData :: struct {
 	cascade_configs_buffer:  gfx.GPUBuffer(GPUCascadeConfig),
 	mesh_draws:              [dynamic]MeshDraw,
 	skel_instances:          [dynamic]^SkeletalMeshInstance,
+	tlas_instances_buffer:   gfx.GPUBuffer(vk.AccelerationStructureInstanceKHR),
+	geometries_buffer:       gfx.GPUBuffer(GPUGeometry),
+	tlas:                    gfx.Raytracing_Accel,
 }
 
 GPU_Font_Instance :: struct {
@@ -270,6 +298,9 @@ init_test_resources :: proc() {
 
 		tr.resolved_image_id = gfx.add_image(gfx.r_ctx.resolve_image)
 	}
+
+	// DDGI test volume: ~40x20x40 covered by a 16x8x16 probe grid.
+	ddgi_volume_init(&game.render_state.ddgi_volume, {-20, -2, -30}, {3.5, 3.5, 3.5}, {32, 16, 32})
 }
 
 init_test_materials :: proc() {
@@ -298,6 +329,68 @@ init_pipelines :: proc() {
 	init_skybox_pipelines()
 	init_tonemapper_pipelines()
 	init_ui_pipelines()
+	init_debug_rt_pipelines()
+	init_ddgi_pipelines()
+}
+
+init_ddgi_pipelines :: proc() {
+	game.render_state.ddgi_trace_pipeline = add_compute_shader(
+		"shaders/ddgi_trace.slang",
+		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+			return gfx.create_compute_pipeline("DDGI_Trace", module, GPUDDGITracePush)
+		},
+	)
+	game.render_state.ddgi_update_pipeline = add_compute_shader(
+		"shaders/ddgi_update.slang",
+		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+			return gfx.create_compute_pipeline("DDGI_Update", module, GPUDDGIUpdatePush)
+		},
+	)
+	game.render_state.ddgi_border_pipeline = add_compute_shader(
+		"shaders/ddgi_border.slang",
+		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+			return gfx.create_compute_pipeline("DDGI_Border", module, GPUDDGIUpdatePush)
+		},
+	)
+	game.render_state.ddgi_relocate_pipeline = add_compute_shader(
+		"shaders/ddgi_relocate.slang",
+		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+			return gfx.create_compute_pipeline("DDGI_Relocate", module, GPUDDGIRelocatePush)
+		},
+	)
+	game.render_state.ddgi_debug_pipeline = add_compute_shader(
+		"shaders/ddgi_debug_atlas.slang",
+		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+			return gfx.create_compute_pipeline("DDGI_Debug_Atlas", module, GPUDDGIDebugAtlasPush)
+		},
+	)
+	game.render_state.ddgi_probe_pipeline = add_graphics_shader(
+		"shaders/ddgi_debug_probes.slang",
+		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
+			return gfx.create_graphics_pipeline(
+				name = "DDGI_Debug_Probes",
+				shader = module,
+				input_topology = .TRIANGLE_LIST,
+				polygon_mode = .FILL,
+				cull_mode = {},
+				front_face = .COUNTER_CLOCKWISE,
+				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
+				color_format = gfx.r_ctx.draw_image.format,
+				multisampling_samples = gfx.msaa_samples(),
+				push_constants = GPUDDGIProbePush,
+			)
+		},
+	)
+	ddgi_init_debug_sphere()
+}
+
+init_debug_rt_pipelines :: proc() {
+	game.render_state.debug_rt_pipeline = add_compute_shader(
+		"shaders/debug_rt.slang",
+		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+			return gfx.create_compute_pipeline("Debug_RT_Pipeline", module, GPUDebugRTPushConstants)
+		},
+	)
 }
 
 init_mesh_pipelines :: proc() {
@@ -442,6 +535,14 @@ init_buffers :: proc() {
 		frame.model_matrices_buffer = gfx.create_buffer(Mat4x4, 16_384, .DynUniform)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.model_matrices_buffer)
 
+		// TLAS instances (rebuilt per frame from mesh_draws)
+		frame.tlas_instances_buffer = gfx.create_buffer(vk.AccelerationStructureInstanceKHR, 16_384, .AccelInstances)
+		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.tlas_instances_buffer)
+
+		// RT geometry table (parallel to the TLAS instances)
+		frame.geometries_buffer = gfx.create_buffer(GPUGeometry, 16_384, .DynUniform)
+		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.geometries_buffer)
+
 		frame.cascade_matrices_buffer = gfx.create_buffer(Mat4x4, NUM_CASCADES, .DynUniform)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.cascade_matrices_buffer)
 
@@ -500,6 +601,9 @@ draw :: proc() {
 	}
 
 	for static_mesh in get_entities(StaticMesh) {
+		if static_mesh.hidden {
+			continue
+		}
 		draw_mesh(static_mesh.mesh, static_mesh.material, static_mesh.translation, static_mesh.rotation, 1)
 	}
 
@@ -546,6 +650,13 @@ draw :: proc() {
 
 	update_buffers()
 
+	build_scene_tlas(cmd)
+
+	// DDGI: trace + update the probe atlases (needs the scene TLAS).
+	if current_frame_game().tlas.address != 0 && game.state.update_ddgi {
+		ddgi_update_volume(cmd, &game.render_state.ddgi_volume)
+	}
+
 	// Begin Skinning pass
 	for instance in current_frame_game().skel_instances {
 		gfx.transition_buffer(
@@ -581,6 +692,9 @@ draw :: proc() {
 		skybox_pass(cmd)
 	}
 	geometry_pass(cmd)
+	if game.render_state.draw_ddgi_probes {
+		ddgi_debug_probes_pass(cmd, &game.render_state.ddgi_volume)
+	}
 	// End mesh pass
 
 	// {
@@ -634,6 +748,16 @@ draw :: proc() {
 	case .ShadowDepth:
 		gfx.transition_image(cmd, &game.render_state.shadow_depth_image, .TRANSFER_SRC_OPTIMAL)
 		final_image = game.render_state.shadow_depth_image.image
+	case .Raytracing:
+		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
+		debug_rt_pass(cmd)
+		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = gfx.r_ctx.resolve_image.image
+	case .DDGIAtlas:
+		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
+		ddgi_debug_atlas_pass(cmd, &game.render_state.ddgi_volume)
+		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = gfx.r_ctx.resolve_image.image
 	case .SceneColor:
 		if gfx.msaa_enabled() {
 			// Resolve MSAA
@@ -730,11 +854,24 @@ skinning_pass :: proc(cmd: vk.CommandBuffer, instance: ^SkeletalMeshInstance) {
 
 // TODO: Encode this as indirect draw args instead.
 MeshDraw :: struct {
+	vertex_buffer:    GPUPtr(Vertex),
+	index_buffer:     vk.Buffer,
+	index_buffer_ptr: GPUPtr(u32), // device address, for the RT geometry table
+	index_count:      u32,
+	model_index:      u32,
+	material_index:   MaterialId,
+	blas_address:     vk.DeviceAddress, // 0 if the mesh has no BLAS (e.g. skeletal)
+}
+
+// Per-instance indirection for ray-hit shading: a ray hit gives instance/primitive
+// indices but no vertex data, so this table (indexed by instanceCustomIndex) points
+// back at the mesh's buffers + material. Plain BDA buffer, not a bindless descriptor.
+@(shader_shared)
+GPUGeometry :: struct #max_field_align(16) {
 	vertex_buffer:  GPUPtr(Vertex),
-	index_buffer:   vk.Buffer,
-	index_count:    u32,
-	model_index:    u32,
+	index_buffer:   GPUPtr(u32),
 	material_index: MaterialId,
+	_pad:           [3]u32,
 }
 
 draw_mesh :: proc(mesh: GPUMeshBuffers, material: MaterialId, translation: Vec3, rotation: quaternion128, scale: [3]f32) {
@@ -745,9 +882,11 @@ draw_mesh :: proc(mesh: GPUMeshBuffers, material: MaterialId, translation: Vec3,
 		MeshDraw {
 			vertex_buffer = mesh.vertex_buffer.ptr,
 			index_buffer = mesh.index_buffer.buffer,
+			index_buffer_ptr = mesh.index_buffer.ptr,
 			index_count = mesh.index_count,
 			model_index = u32(model_index),
 			material_index = material,
+			blas_address = mesh.blas.address,
 		},
 	)
 
@@ -776,6 +915,70 @@ draw_skeletal_mesh :: proc(
 	)
 
 	append(&game.render_state.model_matrices, linalg.matrix4_from_trs_f32(translation, rotation, scale))
+}
+
+// Row-major 3x4 expected by VkAccelerationStructureInstanceKHR. m[r, c] is the
+// mathematical element regardless of Odin's column-major storage.
+mat4_to_vk_transform :: proc(m: Mat4x4) -> vk.TransformMatrixKHR {
+	t: vk.TransformMatrixKHR
+	for r in 0 ..< 3 {
+		for c in 0 ..< 4 {
+			t.mat[r][c] = m[r, c]
+		}
+	}
+	return t
+}
+
+// Rebuilds a scene-wide TLAS each frame from the static (BLAS-backed) mesh draws,
+// recording the build into `cmd`. Scratch + the previous TLAS for this frame slot
+// are deferred on the frame arena (freed once this slot's fence signals).
+build_scene_tlas :: proc(cmd: vk.CommandBuffer) {
+	frame := current_frame_game()
+
+	gfx.defer_destroy_accel(&gfx.current_frame().arena, frame.tlas)
+	frame.tlas = {}
+
+	instances := make(
+		[dynamic]vk.AccelerationStructureInstanceKHR,
+		0,
+		len(frame.mesh_draws),
+		context.temp_allocator,
+	)
+	geometries := make([dynamic]GPUGeometry, 0, len(frame.mesh_draws), context.temp_allocator)
+	for mesh_draw in frame.mesh_draws {
+		if mesh_draw.blas_address == 0 do continue // no BLAS (e.g. skeletal)
+
+		inst: vk.AccelerationStructureInstanceKHR
+		inst.transform = mat4_to_vk_transform(game.render_state.model_matrices[mesh_draw.model_index])
+		inst.mask = 0xFF
+		inst.instanceCustomIndex = u32(len(instances)) // -> geometry-table slot
+		inst.accelerationStructureReference = u64(mesh_draw.blas_address)
+		append(&instances, inst)
+
+		append(&geometries, GPUGeometry {
+			vertex_buffer = mesh_draw.vertex_buffer,
+			index_buffer = mesh_draw.index_buffer_ptr,
+			material_index = mesh_draw.material_index,
+		})
+	}
+
+	if len(instances) == 0 do return
+
+	gfx.write_buffer_slice(&frame.tlas_instances_buffer, instances[:])
+	gfx.write_buffer_slice(&frame.geometries_buffer, geometries[:])
+
+	scratch: gfx.GPUBuffer(u8)
+	frame.tlas, scratch = gfx.build_tlas(cmd, frame.tlas_instances_buffer, u32(len(instances)))
+	gfx.defer_destroy(&gfx.current_frame().arena, scratch)
+
+	// AS build write -> ray query read.
+	gfx.transition_buffer(
+		cmd,
+		frame.tlas.buffer,
+		{.ACCELERATION_STRUCTURE_WRITE_KHR},
+		{.ACCELERATION_STRUCTURE_READ_KHR},
+		gfx.r_ctx.graphics_queue_family,
+	)
 }
 
 shadow_map_pass :: proc(cmd: vk.CommandBuffer, cascade: u32) {
@@ -877,6 +1080,29 @@ skybox_pass :: proc(cmd: vk.CommandBuffer) {
 
 	gfx.cmd_draw_indexed(cmd, game.render_state.skybox_mesh.index_count)
 	gfx.cmd_end_rendering(cmd)
+}
+
+// Debug visualization: one ray per pixel against the per-frame scene TLAS, written
+// into resolve_image. Proves the whole RT chain before DDGI is built on top.
+debug_rt_pass :: proc(cmd: vk.CommandBuffer) {
+	gfx.cmd_bind_pipeline(cmd, game.render_state.debug_rt_pipeline)
+	gfx.cmd_push_constants(
+		cmd,
+		GPUDebugRTPushConstants {
+			global = current_frame_game().global_buffer.ptr,
+			geometries = current_frame_game().geometries_buffer.ptr,
+			materials = game.render_state.scene_resources.materials_buffer.ptr,
+			tlas = current_frame_game().tlas.address,
+			out_image = game.render_state.temp_resources.resolved_image_id,
+		},
+	)
+
+	vk.CmdDispatch(
+		cmd,
+		u32(math.ceil(f32(gfx.r_ctx.draw_extent.width) / 16.0)),
+		u32(math.ceil(f32(gfx.r_ctx.draw_extent.height) / 16.0)),
+		1,
+	)
 }
 
 post_processing_pass :: proc(cmd: vk.CommandBuffer) {
@@ -1020,6 +1246,7 @@ update_buffers :: proc() {
 
 	global_data.view_to_clip = get_current_projection_matrix()
 	global_data.world_to_view = get_current_view_matrix()
+	global_data.clip_to_world = linalg.inverse(global_data.view_to_clip * global_data.world_to_view)
 
 	global_data.sun_color = game.state.environment.sun_color
 	global_data.sky_color = game.state.environment.sky_color
@@ -1032,6 +1259,7 @@ update_buffers :: proc() {
 	global_data.cascade_world_to_shadows = current_frame_game().cascade_matrices_buffer.ptr
 	global_data.cascade_configs = current_frame_game().cascade_configs_buffer.ptr
 	global_data.default_sampler = game.render_state.temp_resources.default_sampler_id
+	global_data.ddgi = game.render_state.ddgi_volume.config_buffer.ptr
 
 	gfx.write_buffer_slice(&current_frame_game().cascade_matrices_buffer, game.render_state.cascade_world_to_shadows[:])
 	gfx.write_buffer_slice(&current_frame_game().cascade_configs_buffer, game.render_state.cascade_configs[:])
@@ -1060,6 +1288,8 @@ update_buffers :: proc() {
 }
 
 renderer_shutdown :: proc() {
-	// destroy_shaders()
+	// Wait for the GPU to finish before tearing down resources still in use (e.g. the
+	// imgui buffers referenced by the last in-flight command buffer).
+	gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
 	im_gfx.gfx_imgui_destroy()
 }

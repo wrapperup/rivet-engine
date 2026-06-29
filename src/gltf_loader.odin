@@ -237,6 +237,7 @@ load_gpu_mesh_from_file :: proc(path: string, loc := #caller_location) -> (gpu_m
 defer_destroy_gpu_mesh :: proc(arena: ^gfx.ResourceArena, gpu_mesh: GPUMeshBuffers) {
 	gfx.defer_destroy_buffer(arena, gpu_mesh.vertex_buffer)
 	gfx.defer_destroy_buffer(arena, gpu_mesh.index_buffer)
+	gfx.defer_destroy_accel(arena, gpu_mesh.blas)
 }
 
 upload_mesh_to_gpu :: proc(mesh: Mesh, loc := #caller_location) -> GPUMeshBuffers {
@@ -246,6 +247,15 @@ upload_mesh_to_gpu :: proc(mesh: Mesh, loc := #caller_location) -> GPUMeshBuffer
 	buffers := create_mesh_buffers(mesh, loc = loc)
 	staging_write_mesh_buffers(&buffers, mesh)
 	buffers.index_count = u32(len(mesh.indices))
+
+	// Build the mesh's BLAS once, now that vertices/indices are on the GPU.
+	buffers.blas = gfx.build_blas(
+		buffers.vertex_buffer.ptr.address,
+		buffers.vertex_count,
+		size_of(Vertex),
+		buffers.index_buffer.ptr.address,
+		buffers.index_count,
+	)
 
 	return buffers
 }

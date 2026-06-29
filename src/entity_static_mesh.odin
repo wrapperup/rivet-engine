@@ -11,6 +11,7 @@ StaticMesh :: struct {
 	mesh:         GPUMeshBuffers,
 	material:     MaterialId,
 	body:         ^px.RigidStatic,
+	hidden:       bool,
 }
 
 init_static_mesh :: proc(static_mesh: ^StaticMesh, asset_name: Asset_Name, material: MaterialId) {

@@ -9,40 +9,39 @@
 - [x] Generate shared types
 
 ## Entity System
-- [ ] Use metaprogram?
-- [ ] Deleting untyped/raw entity and it's subtype via reflection (for ed/debug)
+- [x] Deleting untyped/raw entity and it's subtype via reflection (for ed/debug)
 
 ## General
 - [ ] Fixed ticks for everything
 - [ ] Asset system
-- - [ ] File-based
+- - [ ] Move away from asset enum
 - - [ ] File-based
 
 ## Scene management
-- [ ] Switch to Odin-native gltf2 library? (to make custom ext's cleaner)
+- [x] Switch to Odin-native gltf2 library? (to make custom ext's cleaner)
 - [ ] Load entire scene from gltf
 - - [ ] Static Meshes
 - - [ ] Punctual lights
 - - [ ] Irradiance Volumes
 - - [ ] Map and load assets
+- - [ ] Hot reload
 
 ## Graphics
 - [x] Make shadow map follow camera
 - [x] Shadow Cascades
-- [ ] Irradiance Volumes
-- - [ ] Bake from Blender
-- - [ ] Implement with IBL/Mesh shading
-- - [ ] Trilinear Interpolation
+- [x] DDGI
+- - [x] Realtime Viz
+- - [ ] Offline Baking
 - [ ] Render Pass Abstraction
 - [ ] Render Graph
 
-## Blender Editor (IPC) Plugin
-- [ ] Spawn Entities by type (?)
+## Blender/gltf scenes
+- [ ] Entities
+- [ ] Hotreload assets / scenes
 
 ## Cleanup
 - [ ] Destroy old swapchains
-- [ ] Cleanup renderer
+- [x] Cleanup renderer
 - - [x] Window should just be handled by the renderer? messy...
-- - [ ] Combine init functions (it's fragmented to like 100 functions bruh)
-- - [ ] Bindless system should be part of core GFX
-- - [ ] Combine GFX with main program?
+- - [x] Combine init functions (it's fragmented to like 100 functions bruh)
+- - [x] Bindless system should be part of core GFX

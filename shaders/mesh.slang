@@ -1,7 +1,7 @@
 import bindless;
 import brdf;
 import common;
-import ibl;
+import ddgi_common;
 import lights;
 import shadows;
 import standard_brdf;
@@ -104,6 +104,7 @@ FragmentOutput fragment_main(FragmentInput in) {
   let ao_roughness_metallic_srgb = linear_to_srgb(ao_roughness_metallic);
 
   let ao = ao_roughness_metallic.r;
+  // let ao = 1.f;
   let proughness = ao_roughness_metallic_srgb.g;
   let metallic = ao_roughness_metallic_srgb.b;
 
@@ -172,15 +173,9 @@ FragmentOutput fragment_main(FragmentInput in) {
     }
   }
 
-  PBR_Params params;
-  params.dfg = pc.global_data_buffer.environment.dfg;
-  params.env_map = pc.global_data_buffer.environment.env_map;
-  params.env_sampler = pc.global_data_buffer.environment.env_sampler;
-  params.default_sampler = pc.global_data_buffer.default_sampler;
-
-  frag_color += pc.global_data_buffer.sky_color * ao *
-                evaluate_ibl(params, n, v, diffuse, f0, proughness,
-                             pc.global_data_buffer.environment.sh_coeffs);
+  // DDGI diffuse indirect (replaces the static SH/IBL ambient).
+  let dv = pc.global_data_buffer.ddgi;
+  frag_color += diffuse * ao * dv.intensity * ddgi_sample(dv, pos_ws, n);
 
   // DEBUG
   // frag_color = base_color;

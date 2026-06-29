@@ -330,7 +330,7 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 		validation_features := vk.ValidationFeaturesEXT {
 			sType                         = .VALIDATION_FEATURES_EXT,
 			pEnabledValidationFeatures    = raw_data(VALIDATION_FEATURES),
-			enabledValidationFeatureCount = u32(len(VALIDATION_LAYERS)),
+			enabledValidationFeatureCount = u32(len(VALIDATION_FEATURES)),
 		}
 
 		if config.enable_validation_layers {

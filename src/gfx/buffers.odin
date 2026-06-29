@@ -20,6 +20,7 @@ BufferKind :: enum {
     Index,
     Staging, // For CPU -> GPU writes onto device-local buffers.
     AccelStorage, // Raytracing accel structures.
+    AccelInstances, // Host-mapped TLAS instance buffer (AS build input).
     Uniform, // Includes ptr. However, prefer uniform access for speed.
     DynUniform, // Mapped uniform buffer // TODO: HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT
 	Readback, // For GPU -> CPU reads from device-local buffers.
@@ -41,7 +42,9 @@ vk_buffer_flags :: proc(kind: BufferKind) -> (vk.BufferUsageFlags, vma.Allocatio
 	case .Staging:
 		return {.TRANSFER_SRC}, {.MAPPED, .HOST_ACCESS_SEQUENTIAL_WRITE}
 	case .AccelStorage:
-		return {.ACCELERATION_STRUCTURE_STORAGE_KHR}, {}
+		return {.ACCELERATION_STRUCTURE_STORAGE_KHR, .SHADER_DEVICE_ADDRESS}, {}
+	case .AccelInstances:
+		return {.ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR, .SHADER_DEVICE_ADDRESS}, {.MAPPED, .HOST_ACCESS_SEQUENTIAL_WRITE}
     // LEGACY
 	case .Uniform:
 		return {.TRANSFER_DST, .UNIFORM_BUFFER, .SHADER_DEVICE_ADDRESS}, {}
@@ -199,7 +202,7 @@ transition_buffer :: proc(
 		dstStageMask        = {.ALL_COMMANDS},
 		dstAccessMask       = dst_flags,
 		buffer              = buffer.buffer,
-		size                = buffer.info.size,
+		size                = vk.DeviceSize(vk.WHOLE_SIZE),
 		srcQueueFamilyIndex = queue_family_index,
 		dstQueueFamilyIndex = queue_family_index,
 	}

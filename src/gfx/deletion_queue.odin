@@ -38,6 +38,7 @@ ResourceType :: enum {
 	Pipeline,
 	PipelineLayout,
 	Sampler,
+	AccelerationStructure,
 }
 
 destroy_resource :: proc(
@@ -73,6 +74,8 @@ destroy_resource :: proc(
 		vk.DestroyPipelineLayout(r_ctx.device, cast(vk.PipelineLayout)resource.handle, nil)
 	case .Sampler:
 		vk.DestroySampler(r_ctx.device, cast(vk.Sampler)resource.handle, nil)
+	case .AccelerationStructure:
+		vk.DestroyAccelerationStructureKHR(r_ctx.device, cast(vk.AccelerationStructureKHR)resource.handle, nil)
 	}
 }
 
@@ -106,6 +109,8 @@ vk_destroy_resource_by_handle :: proc(resource: ResourceHandle) {
 		vk.DestroyPipelineLayout(r_ctx.device, cast(vk.PipelineLayout)resource.handle, nil)
 	case .Sampler:
 		vk.DestroySampler(r_ctx.device, cast(vk.Sampler)resource.handle, nil)
+	case .AccelerationStructure:
+		vk.DestroyAccelerationStructureKHR(r_ctx.device, cast(vk.AccelerationStructureKHR)resource.handle, nil)
 	}
 }
 
@@ -122,6 +127,7 @@ resource_type_of_handle :: proc($T: typeid) -> ResourceType {
 		.Pipeline when T == vk.Pipeline else
 		.PipelineLayout when T == vk.PipelineLayout else
 		.Sampler when T == vk.Sampler else
+		.AccelerationStructure when T == vk.AccelerationStructureKHR else
 		#panic("Handle type is not a valid resource")
 	//odinfmt: enable
 }
