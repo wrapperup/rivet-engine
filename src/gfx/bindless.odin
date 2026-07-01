@@ -20,6 +20,9 @@ BindlessSystem :: struct {
 	// Storage
 	images:            [dynamic]GPUImage,
 	samplers:          [dynamic]vk.Sampler,
+
+	free_images:       [dynamic]ImageId,
+	free_samplers:     [dynamic]SamplerId,
 }
 
 init_bindless_descriptors :: proc() {
@@ -46,10 +49,17 @@ init_bindless_descriptors :: proc() {
 add_gpu_image :: proc(image: GPUImage) -> ImageId {
 	bindless_system := &r_ctx.bindless_system
 
-	image_id := ImageId(u32(len(bindless_system.images)))
-	append(&bindless_system.images, image)
-
 	assert(.STORAGE in image.usage || .SAMPLED in image.usage)
+
+	image_id: ImageId
+	if len(bindless_system.free_images) > 0 {
+		image_id = pop(&bindless_system.free_images) // recycle a freed slot
+		bindless_system.images[image_id] = image
+	} else {
+		image_id = ImageId(u32(len(bindless_system.images)))
+		append(&bindless_system.images, image)
+	}
+	assert(u32(image_id) < MAX_BINDLESS_IMAGES, "bindless image slots exhausted")
 
 	if .STORAGE in image.usage {
         write_descriptor_set(
@@ -98,8 +108,15 @@ add_image :: proc {
 add_sampler :: proc(sampler: vk.Sampler) -> SamplerId {
 	bindless_system := &r_ctx.bindless_system
 
-	sampler_id := SamplerId(u32(len(bindless_system.samplers)))
-	append(&bindless_system.samplers, sampler)
+	sampler_id: SamplerId
+	if len(bindless_system.free_samplers) > 0 {
+		sampler_id = pop(&bindless_system.free_samplers) // recycle a freed slot
+		bindless_system.samplers[sampler_id] = sampler
+	} else {
+		sampler_id = SamplerId(u32(len(bindless_system.samplers)))
+		append(&bindless_system.samplers, sampler)
+	}
+	assert(u32(sampler_id) < MAX_BINDLESS_SAMPLERS, "bindless sampler slots exhausted")
 
 	write_descriptor_set(
 		bindless_system.descriptor_set,
@@ -107,6 +124,16 @@ add_sampler :: proc(sampler: vk.Sampler) -> SamplerId {
 	)
 
 	return sampler_id
+}
+
+// Free a bindless slot for reuse. Does NOT destroy the underlying image/sampler — the caller owns
+// that (e.g. via a ResourceArena flush). The slot is recycled by the next add_image/add_sampler.
+remove_image :: proc(id: ImageId) {
+	append(&r_ctx.bindless_system.free_images, id)
+}
+
+remove_sampler :: proc(id: SamplerId) {
+	append(&r_ctx.bindless_system.free_samplers, id)
 }
 
 // // Writes a image to the bindless ID and updates the descriptor.
