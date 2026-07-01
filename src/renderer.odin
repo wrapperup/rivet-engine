@@ -696,7 +696,7 @@ draw :: proc() {
 		for &probe in get_entities(ReflectionProbe) {
 			auto := !probe.captured && converged
 			if probe.wants_recapture || auto {
-				// reflection_probe_capture(cmd, &probe)
+				reflection_probe_capture(cmd, &probe)
 				probe.wants_recapture = false
 			}
 		}
