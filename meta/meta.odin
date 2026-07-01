@@ -483,6 +483,17 @@ append_layout_asserts :: proc(b: ^strings.Builder, files: []^ast.File) {
 	}
 }
 
+// Keep in sync with `asset_type_from_base` in src/assets.odin — only extensions the engine can
+// actually load should become Asset_Name entries. Everything else (.blend, .exr, .aup3, ...) is
+// skipped so source files sitting in assets/ don't pollute the generated enum.
+is_supported_asset :: proc(path: string) -> bool {
+	switch strings.to_lower(filepath.ext(path), context.temp_allocator) {
+	case ".glb", ".ktx2", ".wav", ".txt", ".ttf":
+		return true
+	}
+	return false
+}
+
 generate_assets :: proc(files: []^ast.File) {
 	b: strings.Builder
 
@@ -500,6 +511,7 @@ generate_assets :: proc(files: []^ast.File) {
 
 	for info in os.walker_walk(&walker) {
 		if info.type == .Directory do continue
+		if !is_supported_asset(info.fullpath) do continue // skip source files (.blend, .exr, .aup3, ...)
 
 		cloned, clone_err := os.file_info_clone(info, context.allocator)
 		assert(clone_err == nil)
