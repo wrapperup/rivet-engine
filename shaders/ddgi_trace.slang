@@ -17,7 +17,7 @@ import ddgi_common;
 DDGITracePush pc;
 
 // DDGIVolume_generateRays.glc
-[numthreads(192, 1, 1)]
+[numthreads(384, 1, 1)]
 [shader("compute")]
 void compute_main(uint3 group_id: SV_GroupID, uint3 thread_id: SV_GroupThreadID) {
   DDGIVolume ddgi_volume = pc.volume[0];
@@ -82,7 +82,9 @@ void compute_main(uint3 group_id: SV_GroupID, uint3 thread_id: SV_GroupThreadID)
     let bc = q.CommittedTriangleBarycentrics();
     let bary = Vec3(1.0 - bc.x - bc.y, bc.x, bc.y);
     let n_interp = v0.normal * bary.x + v1.normal * bary.y + v2.normal * bary.z;
-    let N = normalize(mul((float3x3)q.CommittedObjectToWorld3x4(), -n_interp));
+    // Front-face hit: the interpolated normal already points out toward the ray origin; do
+    // NOT negate (the old -n_interp pointed into the surface, killing sun + indirect bounce).
+    let N = normalize(mul((float3x3)q.CommittedObjectToWorld3x4(), n_interp));
 
     var uv = Vec2(v0.uv_x, v0.uv_y) * bary.x + Vec2(v1.uv_x, v1.uv_y) * bary.y + Vec2(v2.uv_x, v2.uv_y) * bary.z;
     if (geo.material_index == 0) {
@@ -100,8 +102,10 @@ void compute_main(uint3 group_id: SV_GroupID, uint3 thread_id: SV_GroupThreadID)
     float shadow = 1.0;
     if (ndotl > 0.0) {
       RayDesc sr;
-      sr.Origin = hit_pos + N * 0.02;
-      sr.TMin = 0.0;
+      // Offset off the surface to avoid self-shadowing; scale with hit distance since
+      // ray-hit precision degrades with distance, plus a TMin floor.
+      sr.Origin = hit_pos + N * (0.05 + hit_t * 0.005);
+      sr.TMin = 0.01;
       sr.Direction = l;
       sr.TMax = 1e4;
       RayQuery<RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> sq;
@@ -119,9 +123,9 @@ void compute_main(uint3 group_id: SV_GroupID, uint3 thread_id: SV_GroupThreadID)
   } else {
     // Misses record an infinite distance, so they never count as frontfaces in DDGIVolume_computeProbeOffsets.glc.
     hit_t = asfloat(0x7F800000u);
-    // Hemisphere sky: only the upper hemisphere contributes sky; at/below the horizon
-    // is dark (void below map). Sharper than a gradient so down-facing probes go black.
-    radiance = pc.global.sky_color * saturate(direction.y);
+    // sky miss
+    let env = pc.global.environment;
+    radiance = pc.global.sky_color * env.env_map.sample_level(env.env_sampler, direction, 0).rgb;
   }
 
   // firefly clamp

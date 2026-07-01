@@ -90,7 +90,6 @@ GPUMaterial :: struct #max_field_align(16) {
 
 @(shader_shared)
 GPUEnvironment :: struct #max_field_align(16) {
-	sh_coeffs:        GPUPtr(Sh_Coefficients),
 	point_lights:     GPUPtr(GPUPointLight),
 	num_point_lights: u32,
 	env_map:          ImageId `ImageCube`,
@@ -107,18 +106,24 @@ GPUCascadeConfig :: struct #max_field_align(16) {
 
 @(shader_shared)
 GPUGlobalData :: struct #max_field_align(16) {
-	environment:              GPUEnvironment,
-	cascade_world_to_shadows: GPUPtr(Mat4x4),
-	cascade_configs:          GPUPtr(GPUCascadeConfig),
+	// Matrices MUST stay first. Odin aligns matrix[4,4]f32 to 32 (capped to 16 here), but the
+	// shaders use scalar layout where matrices align to 4 — the two only agree when each matrix
+	// sits on a 16-byte offset. Keeping them at the top pins them to offsets 0/64/128. The
+	// generated #assert guards in src/generated.odin fail the build if this is ever violated.
 	view_to_clip:             Mat4x4,
 	world_to_view:            Mat4x4,
 	clip_to_world:            Mat4x4, // inverse(view_to_clip * world_to_view), for ray reconstruction
+	environment:              GPUEnvironment,
+	cascade_world_to_shadows: GPUPtr(Mat4x4),
+	cascade_configs:          GPUPtr(GPUCascadeConfig),
 	sun_color:                Vec3,
 	sky_color:                Vec3,
 	camera_pos:               Vec3,
 	sun_direction:            Vec3,
 	default_sampler:          SamplerId `Sampler`,
 	ddgi:                     GPUPtr(GPUDDGIVolume),
+	reflection_probes:        GPUPtr(GPUReflectionProbe), // packed array (num_reflection_probes entries)
+	num_reflection_probes:    u32,
 }
 
 RenderState :: struct {
@@ -168,6 +173,10 @@ RenderState :: struct {
 	ddgi_relocate_pipeline:          ^gfx.ComputePipeline,
 	ddgi_debug_pipeline:             ^gfx.ComputePipeline,
 	ddgi_probe_pipeline:             ^gfx.GraphicsPipeline,
+	reflection_capture_pipeline:     ^gfx.ComputePipeline,
+	reflection_prefilter_pipeline:   ^gfx.ComputePipeline,
+	reflection_probe_debug_pipeline: ^gfx.GraphicsPipeline,
+	reflection_probes_buffer:        gfx.GPUBuffer(GPUReflectionProbe), // packed per-frame array
 
 	// Skybox pipelines
 	skybox_pipeline:                 ^gfx.GraphicsPipeline,
@@ -187,6 +196,7 @@ RenderState :: struct {
 	ddgi_probe_ibuf:                 gfx.GPUBuffer(u32),
 	ddgi_probe_index_count:          u32,
 	draw_ddgi_probes:                bool,
+	draw_reflection_probes:          bool,
 }
 
 GameFrameData :: struct {
@@ -300,7 +310,7 @@ init_test_resources :: proc() {
 	}
 
 	// DDGI test volume: ~40x20x40 covered by a 16x8x16 probe grid.
-	ddgi_volume_init(&game.render_state.ddgi_volume, {-20, -2, -30}, {3.5, 3.5, 3.5}, {32, 16, 32})
+	ddgi_volume_init(&game.render_state.ddgi_volume, {-20, -2, -30}, {2.5, 2.5, 2.5}, {32, 8, 32})
 }
 
 init_test_materials :: proc() {
@@ -378,6 +388,37 @@ init_ddgi_pipelines :: proc() {
 				color_format = gfx.r_ctx.draw_image.format,
 				multisampling_samples = gfx.msaa_samples(),
 				push_constants = GPUDDGIProbePush,
+			)
+		},
+	)
+	game.render_state.reflection_capture_pipeline = add_compute_shader(
+		"shaders/reflection_capture.slang",
+		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+			return gfx.create_compute_pipeline("Reflection_Capture", module, GPUReflectionCapturePush)
+		},
+	)
+	game.render_state.reflection_prefilter_pipeline = add_compute_shader(
+		"shaders/reflection_prefilter.slang",
+		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+			return gfx.create_compute_pipeline("Reflection_Prefilter", module, GPUReflectionPrefilterPush)
+		},
+	)
+	game.render_state.reflection_probes_buffer = gfx.create_buffer(GPUReflectionProbe, MAX_REFLECTION_PROBES, .DynUniform)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.reflection_probes_buffer)
+	game.render_state.reflection_probe_debug_pipeline = add_graphics_shader(
+		"shaders/reflection_probe_debug.slang",
+		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
+			return gfx.create_graphics_pipeline(
+				name = "Reflection_Probe_Debug",
+				shader = module,
+				input_topology = .TRIANGLE_LIST,
+				polygon_mode = .FILL,
+				cull_mode = {},
+				front_face = .COUNTER_CLOCKWISE,
+				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
+				color_format = gfx.r_ctx.draw_image.format,
+				multisampling_samples = gfx.msaa_samples(),
+				push_constants = GPUReflectionProbeDebugPush,
 			)
 		},
 	)
@@ -550,17 +591,7 @@ init_buffers :: proc() {
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.cascade_configs_buffer)
 	}
 
-	sh_coeffs := process_sh_coefficients_from_cubemap_file(asset_path(.t_test_cubemap_ld))
-	// comp_coeffs := process_sh_coefficients_from_equirectangular_file("assets/gen/test_equirectangular.ktx2")
-
-	sh_coeffs_buffer := gfx.create_buffer(Sh_Coefficients)
-	gfx.staging_write_buffer(&sh_coeffs_buffer, &sh_coeffs)
-
 	environment := &game.render_state.global_data.environment
-
-	// TODO: TEMP: Remove this at some point. Just testing volumes!
-	// ir_volume := new_entity(Irradiance_Volume)
-	// init_irradiance_volume(ir_volume)
 
 	game.render_state.scene_resources.point_light_buffer = gfx.create_buffer(
 		GPUPointLight,
@@ -569,7 +600,6 @@ init_buffers :: proc() {
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.scene_resources.point_light_buffer)
 
 	environment^ = {
-		sh_coeffs        = sh_coeffs_buffer.ptr,
 		point_lights     = game.render_state.scene_resources.point_light_buffer.ptr,
 		num_point_lights = u32(len(game.render_state.scene_resources.point_lights)),
 		env_sampler      = game.render_state.temp_resources.env_sampler_id,
@@ -657,6 +687,21 @@ draw :: proc() {
 		ddgi_update_volume(cmd, &game.render_state.ddgi_volume)
 	}
 
+	// Reflection probes: RT-capture their cubemap once the TLAS is ready AND the DDGI atlas
+	// has had time to converge (else the captured indirect bounce is near-black). Recapture
+	// (imgui) re-triggers anytime. Capture after DDGI so it reflects the current probe field.
+	REFLECTION_AUTO_CAPTURE_FRAME :: 200
+	if current_frame_game().tlas.address != 0 {
+		converged := game.render_state.ddgi_volume.gpu.frame_index > REFLECTION_AUTO_CAPTURE_FRAME
+		for &probe in get_entities(ReflectionProbe) {
+			auto := !probe.captured && converged
+			if probe.wants_recapture || auto {
+				// reflection_probe_capture(cmd, &probe)
+				probe.wants_recapture = false
+			}
+		}
+	}
+
 	// Begin Skinning pass
 	for instance in current_frame_game().skel_instances {
 		gfx.transition_buffer(
@@ -694,6 +739,9 @@ draw :: proc() {
 	geometry_pass(cmd)
 	if game.render_state.draw_ddgi_probes {
 		ddgi_debug_probes_pass(cmd, &game.render_state.ddgi_volume)
+	}
+	if game.render_state.draw_reflection_probes {
+		reflection_probe_debug_spheres_pass(cmd)
 	}
 	// End mesh pass
 
@@ -1251,7 +1299,7 @@ update_buffers :: proc() {
 	global_data.sun_color = game.state.environment.sun_color
 	global_data.sky_color = game.state.environment.sky_color
 
-	global_data.camera_pos = player != nil ? player.translation : {0, 0, 0}
+	global_data.camera_pos = player != nil ? player.eye_pos : {0, 0, 0} // must match the render view (eye, not feet)
 	global_data.sun_direction = game.state.environment.sun_direction
 
 	global_data.environment.num_point_lights = auto_cast len_entities(PointLight)
@@ -1260,6 +1308,24 @@ update_buffers :: proc() {
 	global_data.cascade_configs = current_frame_game().cascade_configs_buffer.ptr
 	global_data.default_sampler = game.render_state.temp_resources.default_sampler_id
 	global_data.ddgi = game.render_state.ddgi_volume.config_buffer.ptr
+
+	// Reflection probes: write each probe's own config (debug passes) and pack them all into
+	// the array buffer the lighting pass loops over.
+	{
+		packed: [MAX_REFLECTION_PROBES]GPUReflectionProbe
+		count: u32 = 0
+		for &probe in get_entities(ReflectionProbe) {
+			if int(count) >= MAX_REFLECTION_PROBES do break
+			reflection_probe_write_config(&probe) // push live imgui edits
+			packed[count] = reflection_probe_to_gpu(&probe)
+			count += 1
+		}
+		if count > 0 {
+			gfx.write_buffer_slice(&game.render_state.reflection_probes_buffer, packed[:count])
+		}
+		global_data.reflection_probes = game.render_state.reflection_probes_buffer.ptr
+		global_data.num_reflection_probes = count
+	}
 
 	gfx.write_buffer_slice(&current_frame_game().cascade_matrices_buffer, game.render_state.cascade_world_to_shadows[:])
 	gfx.write_buffer_slice(&current_frame_game().cascade_configs_buffer, game.render_state.cascade_configs[:])

@@ -198,6 +198,13 @@ game_init :: proc() {
 		sound_source := new_entity(SoundSource)
 		init_sound_source(sound_source, .a_outdoors_birds, true, 0.1, false, 0.5)
 
+		reflection_probe := new_entity(ReflectionProbe)
+		reflection_probe_init(reflection_probe, position = {17, 3, -11}, half_extents = {4, 4, 17})
+		reflection_probe2 := new_entity(ReflectionProbe)
+		reflection_probe_init(reflection_probe2, position = {4, 8, -2.5}, half_extents = {9, 8.5, 16})
+		reflection_probe3 := new_entity(ReflectionProbe)
+		reflection_probe_init(reflection_probe3, position = {11, 7.5, -22}, half_extents = {11, 4, 5})
+
 		// point_light := new_entity(PointLight)
 		// init_point_light(point_light, {0, 4, 2}, {1, 0, 0}, 20, 100)
 
@@ -205,6 +212,7 @@ game_init :: proc() {
 			player_id = entity_id_of(player),
 			door_id = entity_id_of(door_mesh),
 			environment = Environment{sun_direction = linalg.normalize(Vec3{12, 15, 10}), sun_color = 2.0, sky_color = 1.0},
+			update_ddgi = true, // DDGI must run for reflection capture (and GI) to populate
 		}
 	}
 

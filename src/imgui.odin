@@ -337,11 +337,38 @@ update_imgui :: proc() {
 			im.SliderFloat("DDGI depth bias", &game.render_state.ddgi_volume.gpu.depth_bias, -2.0, 4.0)
 			im.SliderFloat("DDGI reloc max", &game.render_state.ddgi_volume.gpu.relocation_max, 0.0, 1.5)
 			im.SliderFloat("DDGI hysteresis", &game.render_state.ddgi_volume.gpu.hysteresis, 0.9, 0.999)
+			im.SliderFloat("DDGI normal bias", &game.render_state.ddgi_volume.gpu.normal_bias, 0.0, 2.0)
 			im.SliderFloat("DDGI cheb sharpness", &game.render_state.ddgi_volume.gpu.cheb_sharpness, 1.0, 16.0)
 			im.SliderFloat("DDGI ray max", &game.render_state.ddgi_volume.gpu.ray_max, 10.0, 500.0)
 			im.SliderFloat("DDGI max radiance", &game.render_state.ddgi_volume.gpu.max_radiance, 0.0, 50.0)
 		}
 		im.End()
+	}
+
+	if im.Begin("Reflection Probes") {
+		im.Checkbox("Draw volumes", &game.render_state.draw_reflection_probes)
+		// PushID per probe so widgets don't collide on shared labels when there are multiple.
+		for &probe, i in get_entities(ReflectionProbe) {
+			im.PushIDInt(i32(i))
+			im.SeparatorText(fmt.ctprintf("Probe %d", i))
+			if im.Button("Recapture") {
+				probe.wants_recapture = true // captures next frame, bypassing the auto gate
+			}
+			im.SliderFloat("Intensity", &probe.intensity, 0.0, 16.0)
+			im.SliderFloat("Blend distance", &probe.blend_distance, 0.01, 8.0)
+			im.SliderFloat("Debug ball radius", &probe.debug_radius, 0.05, 3.0)
+			im.InputFloat3("Position", &probe.translation)
+			im.InputFloat3("Half extents", &probe.half_extents)
+			im.PopID()
+		}
+		im.End()
+	}
+
+	// Box volume overlay (drawn unconditionally on the flag, regardless of panel state).
+	if game.render_state.draw_reflection_probes {
+		for &probe in get_entities(ReflectionProbe) {
+			reflection_probe_debug_draw_box(&probe)
+		}
 	}
 
 	if im.Begin("Environment") {
@@ -370,8 +397,6 @@ update_imgui :: proc() {
 			game.frame_times_smooth = game.frame_times
 		} else {
 			game.frame_times_smooth = math.lerp(game.frame_times, game.frame_times_smooth, smooth_alpha)
-
-			game.frame_times_smooth *= smooth_alpha
 		}
 
 		fields := reflect.enum_field_names(FrameTimeStats)

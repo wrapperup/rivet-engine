@@ -16,7 +16,7 @@ SamplerId :: gfx.SamplerId
 
 DDGI_PROBE_IRR_TEXELS :: 6 // interior; +1px border each side -> 8x8 tile
 DDGI_PROBE_DEPTH_TEXELS :: 14 // +border -> 16x16 tile
-DDGI_RAYS_PER_PROBE :: 192
+DDGI_RAYS_PER_PROBE :: 384
 
 DDGI_IRR_TILE :: DDGI_PROBE_IRR_TEXELS + 2 // 8
 DDGI_DEPTH_TILE :: DDGI_PROBE_DEPTH_TEXELS + 2 // 16
@@ -29,9 +29,7 @@ GPUDDGIVolume :: struct #max_field_align(16) {
 	grid_origin:    Vec3, // world-space corner (probe 0)
 	rays_per_probe: u32,
 	probe_spacing:  Vec3, // world units between probes
-	_pad0:          u32,
 	grid_counts:    [3]u32, // e.g. {16, 8, 16}
-	_pad1:          u32,
 	irradiance:     gfx.ImageId `Image2D`, // RGBA16F
 	depth:          gfx.ImageId `Image2D`, // RG16F (mean, mean^2)
 	offset:         gfx.ImageId `Image2D`, // RGBA16F (relocation; zero for now)
@@ -110,13 +108,13 @@ ddgi_volume_init :: proc(volume: ^DDGI_Volume, origin: Vec3, spacing: Vec3, coun
 		sampler        = gfx.add_sampler(sampler),
 		hysteresis     = 0.99,
 		max_distance   = 1.5 * linalg.length(spacing),
-		normal_bias    = 0.25 * min(spacing.x, spacing.y, spacing.z),
+		normal_bias    = 0.0,
 		frame_index    = 0,
-		intensity      = 1.3,
-		feedback       = 3.5,
+		intensity      = 1.0,
+		feedback       = 0.8,
 		depth_bias     = 0.0,
 		relocation_max = 0.45,
-		cheb_sharpness = 1.0,
+		cheb_sharpness = 3.0,
 		ray_max        = 200.0,
 		max_radiance   = 8.0,
 	}

@@ -128,6 +128,7 @@ public __generic<T:ITexelElement = Vec4> typealias ImageCubeArray = _Image<T, __
 public __generic<T:ITexelElement = Vec4> typealias RWImage1D = _Image<T, __Shape1D, 0, 0, 0, 1, 0>;
 public __generic<T:ITexelElement = Vec4> typealias RWImage2D = _Image<T, __Shape2D, 0, 0, 0, 1, 0>;
 public __generic<T:ITexelElement = Vec4> typealias RWImage3D = _Image<T, __Shape3D, 0, 0, 0, 1, 0>;
+public __generic<T:ITexelElement = Vec4> typealias RWImage2DArray = _Image<T, __Shape2D, 1, 0, 0, 1, 0>;
 
 // // Reserve a slot in your bindless SSBO array for debug (e.g., last slot).
 // struct DebugOnce { uint once; };

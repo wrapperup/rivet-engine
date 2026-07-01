@@ -2,6 +2,7 @@ import bindless;
 import brdf;
 import common;
 import ddgi_common;
+import ibl;
 import lights;
 import shadows;
 import standard_brdf;
@@ -176,6 +177,66 @@ FragmentOutput fragment_main(FragmentInput in) {
   // DDGI diffuse indirect (replaces the static SH/IBL ambient).
   let dv = pc.global_data_buffer.ddgi;
   frag_color += diffuse * ao * dv.intensity * ddgi_sample(dv, pos_ws, n);
+
+  // Specular reflections. The split-sum BRDF (DFG) weighting is shared; the reflected
+  // *radiance* comes from the reflection probe (box-parallax + edge blend) where one
+  // influences this pixel, else the global environment map. Diffuse comes from DDGI above.
+  let env = pc.global_data_buffer.environment;
+  PBR_Params ibl_params;
+  ibl_params.env_map = env.env_map;
+  ibl_params.dfg = env.dfg;
+  ibl_params.env_sampler = env.env_sampler;
+  ibl_params.default_sampler = pc.global_data_buffer.default_sampler;
+
+  let NoV = max(dot(n, v), 0.0);
+  let r = reflect(-v, n);
+  let f90 = saturate(dot(f0, Vec3(50.0 * 0.33)));
+  let dfg = sample_dfg(ibl_params, NoV, proughness).rg;
+  let spec_brdf = f0 * dfg.r + f90 * dfg.g;
+
+  // Blend every reflection probe that influences this pixel. Perf: the box/edge weight is a
+  // cheap reject computed BEFORE any cube fetch, so cost scales with probe *overlap* at this
+  // pixel, not the total probe count. Loop bound is uniform (coherent across the warp).
+  Vec3 probe_sum = Vec3(0.0);
+  float probe_wsum = 0.0;
+  let probe_count = pc.global_data_buffer.num_reflection_probes;
+  for (uint pi = 0; pi < probe_count; pi++) {
+    let probe = pc.global_data_buffer.reflection_probes[pi];
+
+    // Cheap influence test (no texture access): 1 inside, fading over blend_distance at bounds.
+    let d = abs(pos_ws - probe.center) - probe.half_extents;
+    let outside = max(max(d.x, d.y), d.z);
+    let w = saturate(-outside / max(probe.blend_distance, 1e-4));
+    if (w <= 0.0) {
+      continue; // pixel not inside this probe's volume -> skip the expensive sample
+    }
+
+    // Box parallax (only for influencing probes), with the close-to-wall guard.
+    let t1 = (probe.center - probe.half_extents - pos_ws) / r;
+    let t2 = (probe.center + probe.half_extents - pos_ws) / r;
+    let tfar = min(min(max(t1.x, t2.x), max(t1.y, t2.y)), max(t1.z, t2.z));
+    let pdir = tfar > 1e-3 ? normalize(pos_ws + r * tfar - probe.center) : r;
+    let lod = proughness * float(probe.mip_count - 1);
+
+    probe_sum += probe.cube.sample_level(probe.sampler, pdir, lod).rgb * probe.intensity * w;
+    probe_wsum += w;
+
+    if (probe_wsum >= 1.0) {
+      break; // fully covered -> no need to keep sampling more probes
+    }
+  }
+
+  // Only fetch the distant env map where probe coverage is incomplete (saves a cube fetch on
+  // fully-covered pixels). Probes are weighted-averaged; env fills the remainder.
+  Vec3 refl;
+  if (probe_wsum >= 1.0) {
+    refl = probe_sum / probe_wsum;
+  } else {
+    Vec3 env_refl = pc.global_data_buffer.sky_color * evaluate_specular_ibl(ibl_params, r, proughness);
+    refl = probe_wsum > 0.0 ? lerp(env_refl, probe_sum / probe_wsum, probe_wsum) : env_refl;
+  }
+
+  frag_color += spec_brdf * refl * ao;
 
   // DEBUG
   // frag_color = base_color;

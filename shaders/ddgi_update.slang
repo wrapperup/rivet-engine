@@ -15,7 +15,7 @@ import ddgi_common;
 [vk_push_constant]
 DDGIUpdatePush pc;
 
-static const int RAYS_PER_PROBE = 192;
+static const int RAYS_PER_PROBE = 384;
 static const int BLOCK_SIZE = 64;
 
 static const int IRRADIANCE_BLOCKS = (square_i(DDGI_IRRADIANCE_PROBE_SIDE_LENGTH) + BLOCK_SIZE - 1) / BLOCK_SIZE;

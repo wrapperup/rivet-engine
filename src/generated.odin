@@ -6,6 +6,16 @@ package game
 
 // Assets
 Asset_Name :: enum {
+    f_fa_regular_400,
+    f_roboto_regular,
+    f_segoeui,
+    t_dfg,
+    t_test_cubemap_ld,
+    t_test_basecolor,
+    t_test_basecolor2,
+    t_test_normalmap,
+    t_test_normalmap2,
+    t_test_rma,
     a_outdoors_birds,
     a_footsteps_tile,
     a_scuff1,
@@ -32,11 +42,6 @@ Asset_Name :: enum {
     a_step7,
     a_step8,
     a_step9,
-    f_fa_regular_400,
-    f_roboto_regular,
-    f_segoeui,
-    t_dfg,
-    t_test_cubemap_ld,
     sk_cube,
     sk_cubeskel,
     sk_materialball,
@@ -68,11 +73,6 @@ Asset_Name :: enum {
     t_basecolor,
     t_normalmap,
     t_rma,
-    t_test_basecolor,
-    t_test_basecolor2,
-    t_test_normalmap,
-    t_test_normalmap2,
-    t_test_rma,
     t_tony_mc_mapface,
     t_tony_mc_mapface_unrolled,
 }
@@ -80,6 +80,16 @@ Asset_Name :: enum {
 asset_map: [Asset_Name]Asset
 
 load_generated_assets :: proc() -> bool {
+    asset_map[.f_fa_regular_400] = load_asset("assets/fonts/f_fa_regular_400.ttf") or_return
+    asset_map[.f_roboto_regular] = load_asset("assets/fonts/f_roboto_regular.ttf") or_return
+    asset_map[.f_segoeui] = load_asset("assets/fonts/f_segoeui.ttf") or_return
+    asset_map[.t_dfg] = load_asset("assets/gen/t_dfg.ktx2") or_return
+    asset_map[.t_test_cubemap_ld] = load_asset("assets/gen/t_test_cubemap_ld.ktx2") or_return
+    asset_map[.t_test_basecolor] = load_asset("assets/textures/t_test_basecolor.ktx2") or_return
+    asset_map[.t_test_basecolor2] = load_asset("assets/textures/t_test_basecolor2.ktx2") or_return
+    asset_map[.t_test_normalmap] = load_asset("assets/textures/t_test_normalmap.ktx2") or_return
+    asset_map[.t_test_normalmap2] = load_asset("assets/textures/t_test_normalmap2.ktx2") or_return
+    asset_map[.t_test_rma] = load_asset("assets/textures/t_test_rma.ktx2") or_return
     asset_map[.a_outdoors_birds] = load_asset("assets/audio/ambient/a_outdoors_birds.wav") or_return
     asset_map[.a_footsteps_tile] = load_asset("assets/audio/footsteps/a_footsteps_tile.aup3") or_return
     asset_map[.a_scuff1] = load_asset("assets/audio/footsteps/a_scuff1.wav") or_return
@@ -106,11 +116,6 @@ load_generated_assets :: proc() -> bool {
     asset_map[.a_step7] = load_asset("assets/audio/footsteps/a_step7.wav") or_return
     asset_map[.a_step8] = load_asset("assets/audio/footsteps/a_step8.wav") or_return
     asset_map[.a_step9] = load_asset("assets/audio/footsteps/a_step9.wav") or_return
-    asset_map[.f_fa_regular_400] = load_asset("assets/fonts/f_fa_regular_400.ttf") or_return
-    asset_map[.f_roboto_regular] = load_asset("assets/fonts/f_roboto_regular.ttf") or_return
-    asset_map[.f_segoeui] = load_asset("assets/fonts/f_segoeui.ttf") or_return
-    asset_map[.t_dfg] = load_asset("assets/gen/t_dfg.ktx2") or_return
-    asset_map[.t_test_cubemap_ld] = load_asset("assets/gen/t_test_cubemap_ld.ktx2") or_return
     asset_map[.sk_cube] = load_asset("assets/meshes/skel/sk_cube.glb") or_return
     asset_map[.sk_cubeskel] = load_asset("assets/meshes/skel/sk_cubeskel.glb") or_return
     asset_map[.sk_materialball] = load_asset("assets/meshes/skel/sk_materialball.glb") or_return
@@ -142,12 +147,18 @@ load_generated_assets :: proc() -> bool {
     asset_map[.t_basecolor] = load_asset("assets/textures/materialball2/t_basecolor.ktx2") or_return
     asset_map[.t_normalmap] = load_asset("assets/textures/materialball2/t_normalmap.ktx2") or_return
     asset_map[.t_rma] = load_asset("assets/textures/materialball2/t_rma.ktx2") or_return
-    asset_map[.t_test_basecolor] = load_asset("assets/textures/t_test_basecolor.ktx2") or_return
-    asset_map[.t_test_basecolor2] = load_asset("assets/textures/t_test_basecolor2.ktx2") or_return
-    asset_map[.t_test_normalmap] = load_asset("assets/textures/t_test_normalmap.ktx2") or_return
-    asset_map[.t_test_normalmap2] = load_asset("assets/textures/t_test_normalmap2.ktx2") or_return
-    asset_map[.t_test_rma] = load_asset("assets/textures/t_test_rma.ktx2") or_return
     asset_map[.t_tony_mc_mapface] = load_asset("assets/textures/tonemapping/t_tony_mc_mapface.ktx2") or_return
     asset_map[.t_tony_mc_mapface_unrolled] = load_asset("assets/textures/tonemapping/t_tony_mc_mapface_unrolled.exr") or_return
     return true
 }
+
+// ---------------------------------------------------------------------------
+// Layout guards: @(shader_shared) matrices must sit at the same offset the
+// scalar-layout shaders read them from. A failure here means a matrix was
+// knocked off a 16-byte boundary (CPU/GPU disagree) -> keep matrices first.
+// ---------------------------------------------------------------------------
+
+// GPUGlobalData
+#assert(offset_of(GPUGlobalData, view_to_clip) == 0)
+#assert(offset_of(GPUGlobalData, world_to_view) == (offset_of(GPUGlobalData, view_to_clip) + size_of(type_of(GPUGlobalData{}.view_to_clip)) + 3) / 4 * 4)
+#assert(offset_of(GPUGlobalData, clip_to_world) == (offset_of(GPUGlobalData, world_to_view) + size_of(type_of(GPUGlobalData{}.world_to_view)) + 3) / 4 * 4)

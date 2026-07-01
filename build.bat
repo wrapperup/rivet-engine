@@ -54,6 +54,9 @@ if "%~1"=="1" (
     call .\hotreload.bat
 )
 
-odin build %FLAGS% || exit /b %ERRORLEVEL%
+odin build %FLAGS%
 
-exit /b 0
+:: Propagate odin's exit code. NOTE: do NOT write `odin build ... || exit /b %ERRORLEVEL%` on
+:: one line — %ERRORLEVEL% expands at parse time (before odin runs), so it always exits 0 and
+:: callers like `build.bat && main.exe` run the stale exe after a failed build.
+exit /b %ERRORLEVEL%

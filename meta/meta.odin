@@ -123,8 +123,8 @@ strip_gpu_name :: proc(s: string) -> string {
 collect_files :: proc(path: string, allocator: runtime.Allocator) -> (ast_files: [dynamic]^ast.File, success: bool) {
 	NO_POS :: tokenizer.Pos{}
 
-	pkg_path, pkg_path_ok := filepath.abs(path, allocator)
-	assert(pkg_path_ok != nil)
+	pkg_path, pkg_path_err := filepath.abs(path, allocator)
+	assert(pkg_path_err == nil)
 
 	files: [dynamic]string
 	fullpaths: [dynamic]string
@@ -135,13 +135,14 @@ collect_files :: proc(path: string, allocator: runtime.Allocator) -> (ast_files:
 	// TODO: This probably needs cleanup, I just made it work with os2->os breaking changes.
 
 	for info in os.walker_walk(&walker) {
-		if filepath.ext(info.fullpath) != ".odin" do return
+		if filepath.ext(info.fullpath) != ".odin" do continue
 
 		fullpath := strings.clone(info.fullpath)
 
 		base := filepath.base(fullpath)
 		if base == "generated.odin" {
-			return
+			delete(fullpath)
+			continue
 		}
 
 		src, err := os.read_entire_file(fullpath, allocator)
@@ -154,12 +155,11 @@ collect_files :: proc(path: string, allocator: runtime.Allocator) -> (ast_files:
 		if strings.trim_space(string(src)) == "" {
 			delete(fullpath)
 			delete(src)
-			return
+			continue
 		}
 
 		append(&fullpaths, string(fullpath))
 		append(&files, string(src))
-		return
 	}
 
 	resize(&ast_files, len(files))
@@ -368,14 +368,14 @@ ShaderDecl :: struct {
 	src_file: ^ast.File,
 }
 
-main_meta :: proc() {
+main :: proc() {
 	start_time := time.now()
 
 	files, ok := collect_files("./src", context.allocator)
 	assert(ok)
 
 	generate_shader_bindings(files[:])
-	generate_assets()
+	generate_assets(files[:])
 
 	if !error_reported {
 		fmt.println("Parsed and generated code in", time.since(start_time))
@@ -384,7 +384,106 @@ main_meta :: proc() {
 	}
 }
 
-generate_assets :: proc() {
+has_shader_shared_attr :: proc(value: ^ast.Value_Decl) -> bool {
+	for attr in value.attributes {
+		for elem in attr.elems {
+			if i, ok := elem.derived.(^ast.Ident); ok && i.name == "shader_shared" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+collect_matrix_aliases :: proc(files: []^ast.File) -> map[string]bool {
+	set := make(map[string]bool)
+	for file in files {
+		for decl in file.decls {
+			value, ok := decl.derived_stmt.(^ast.Value_Decl)
+			if !ok do continue
+			if len(value.names) != 1 || len(value.values) != 1 do continue
+			ident, iok := value.names[0].derived.(^ast.Ident)
+			if !iok do continue
+			if _, mok := value.values[0].derived_expr.(^ast.Matrix_Type); mok {
+				set[ident.name] = true
+			}
+		}
+	}
+	return set
+}
+
+// Matrices are the ONLY type whose Odin layout diverges from scalar layout
+type_is_matrix :: proc(expr: ^ast.Expr, matrix_aliases: map[string]bool) -> bool {
+	#partial switch t in expr.derived_expr {
+	case ^ast.Matrix_Type:
+		return true
+	case ^ast.Ident:
+		return matrix_aliases[t.name]
+	case ^ast.Selector_Expr:
+		return matrix_aliases[t.field.name]
+	case ^ast.Array_Type:
+		return type_is_matrix(t.elem, matrix_aliases)
+	}
+	return false
+}
+
+append_layout_asserts :: proc(b: ^strings.Builder, files: []^ast.File) {
+	matrix_aliases := collect_matrix_aliases(files)
+
+	for file in files {
+		for decl in file.decls {
+			value, ok := decl.derived_stmt.(^ast.Value_Decl)
+			if !ok || !has_shader_shared_attr(value) do continue
+			if len(value.values) != 1 || len(value.names) != 1 do continue
+			ident, nok := value.names[0].derived.(^ast.Ident)
+			if !nok do continue
+			st, sok := value.values[0].derived_expr.(^ast.Struct_Type)
+			if !sok do continue
+
+			name := ident.name
+
+			// Only matrices need asserts. Other types are scalar so will emit correctly in scalar block.
+			prev_name := ""
+			struct_header_written := false
+
+			for field in st.fields.list {
+				is_mat := type_is_matrix(field.type, matrix_aliases)
+
+				for nm in field.names {
+					id, iok := nm.derived_expr.(^ast.Ident)
+					if !iok do continue
+					fname := id.name
+
+					if is_mat {
+						if !struct_header_written {
+							fmt.sbprintf(b, "\n// %s\n", name)
+							struct_header_written = true
+						}
+						if prev_name == "" {
+							fmt.sbprintf(b, "#assert(offset_of(%s, %s) == 0)\n", name, fname)
+						} else {
+							// Scalar offset = the previous field's end, rounded up to a matrix's
+							// scalar alignment (4 for an f32 matrix). `size_of(type_of(S{}.field))`
+							// sizes the previous field WITHOUT naming its type, so file-private
+							// aliases (GPUPtr, ImageId, ...) that aren't in scope in this generated
+							// file don't matter — only struct/field names are referenced. The `{}`
+							// is written literally (fmt treats it as a format verb otherwise).
+							fmt.sbprintf(b, "#assert(offset_of(%s, %s) == (offset_of(%s, %s) + size_of(type_of(", name, fname, name, prev_name)
+							strings.write_string(b, name)
+							strings.write_string(b, "{}.")
+							strings.write_string(b, prev_name)
+							strings.write_string(b, ")) + 3) / 4 * 4)\n")
+						}
+					}
+
+					prev_name = fname
+				}
+			}
+		}
+	}
+}
+
+generate_assets :: proc(files: []^ast.File) {
 	b: strings.Builder
 
 	bpln :: fmt.sbprintln
@@ -400,7 +499,11 @@ generate_assets :: proc() {
 	defer os.walker_destroy(&walker)
 
 	for info in os.walker_walk(&walker) {
-		append(&asset_files, info)
+		if info.type == .Directory do continue
+
+		cloned, clone_err := os.file_info_clone(info, context.allocator)
+		assert(clone_err == nil)
+		append(&asset_files, cloned)
 	}
 
 	working_directory, err_wd := os.get_working_directory(context.temp_allocator)
@@ -422,14 +525,14 @@ generate_assets :: proc() {
 	for file in asset_files {
 		base := filepath.stem(file.name)
 		rel_path, k := filepath.rel(working_directory, file.fullpath)
-		fixed_path, ok := strings.replace_all(rel_path, "\\", "/")
-		assert(ok)
-
 		assert(k == nil, "Couldn't get relative path")
+		fixed_path, ok := strings.replace_all(rel_path, "\\", "/")
 		bpln(&b, "    asset_map[.", base, "] = load_asset(\"", fixed_path, "\") or_return", sep = "")
 	}
 	bpln(&b, "    return true")
 	bpln(&b, "}")
+
+	append_layout_asserts(&b, files)
 
 	if !error_reported {
 		err_wef := os.write_entire_file("src/generated.odin", transmute([]u8)strings.to_string(b))

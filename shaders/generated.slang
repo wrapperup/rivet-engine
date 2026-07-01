@@ -9,9 +9,7 @@ struct DDGIVolume {
   Vec3 grid_origin;
   u32 rays_per_probe;
   Vec3 probe_spacing;
-  u32 _pad0;
   u32 grid_counts[3];
-  u32 _pad1;
   Image2D irradiance;
   Image2D depth;
   Image2D offset;
@@ -76,6 +74,51 @@ struct PointLight {
   f32 radius;
   Vec3 world_pos;
   f32 lumens;
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\entity_reflection_probe.odin
+//
+struct ReflectionProbe {
+  Vec3 center;
+  f32 blend_distance;
+  Vec3 half_extents;
+  f32 intensity;
+  ImageCube cube;
+  Sampler sampler;
+  u32 mip_count;
+};
+
+struct ReflectionCapturePush {
+  GlobalData* global;
+  Geometry* geometries;
+  Material* materials;
+  DDGIVolume* ddgi;
+  AccelerationStructure tlas;
+  RWImage2DArray out_cube;
+  Vec3 center;
+  u32 face_size;
+  f32 ray_max;
+  f32 feedback;
+};
+
+struct ReflectionProbeDebugPush {
+  GlobalData* global;
+  ReflectionProbe* probe;
+  Vertex* vertex_buffer;
+  Vec3 center;
+  f32 radius;
+};
+
+struct ReflectionPrefilterPush {
+  ImageCube src_cube;
+  Sampler sampler;
+  RWImage2DArray out_mip;
+  u32 face_size;
+  f32 roughness;
+  u32 sample_count;
 };
 
 
@@ -156,7 +199,6 @@ struct Material {
 };
 
 struct Environment {
-  Sh_Coefficients* sh_coeffs;
   PointLight* point_lights;
   u32 num_point_lights;
   ImageCube env_map;
@@ -171,18 +213,20 @@ struct CascadeConfig {
 };
 
 struct GlobalData {
-  Environment environment;
-  Mat4x4* cascade_world_to_shadows;
-  CascadeConfig* cascade_configs;
   Mat4x4 view_to_clip;
   Mat4x4 world_to_view;
   Mat4x4 clip_to_world;
+  Environment environment;
+  Mat4x4* cascade_world_to_shadows;
+  CascadeConfig* cascade_configs;
   Vec3 sun_color;
   Vec3 sky_color;
   Vec3 camera_pos;
   Vec3 sun_direction;
   Sampler default_sampler;
   DDGIVolume* ddgi;
+  ReflectionProbe* reflection_probes;
+  u32 num_reflection_probes;
 };
 
 struct Geometry {
@@ -190,13 +234,4 @@ struct Geometry {
   u32* index_buffer;
   MaterialId material_index;
   u32 _pad[3];
-};
-
-
-
-//
-// Generated from C:\Repos\odin\vulkan-playground\src\spherical_harmonics.odin
-//
-struct Sh_Coefficients {
-  Vec4 coeffs[9];
 };

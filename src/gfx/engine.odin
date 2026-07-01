@@ -757,7 +757,8 @@ init :: proc(config := InitConfig{}) -> ^Renderer {
 }
 
 choose_swap_present_mode :: proc(available_present_modes: []vk.PresentModeKHR) -> vk.PresentModeKHR {
-	return .IMMEDIATE
+	// FIFO is vsync (no tearing) and is guaranteed available by the Vulkan spec.
+	return .FIFO
 }
 
 choose_swap_extent :: proc(window: glfw.WindowHandle, capabilities: ^vk.SurfaceCapabilitiesKHR) -> vk.Extent2D {
