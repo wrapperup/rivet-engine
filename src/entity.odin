@@ -39,7 +39,7 @@ remove_elem_sparse_set :: proc(set: ^SparseSet($T), id: EntityId) -> (ok: bool) 
 	old_index := len(set.dense)
 
 	// Fix affected mapping that was moved
-	for &k, &v in set.sparse {
+	for k, &v in set.sparse {
 		if old_index == v {
 			set.sparse[k] = deleted_index
 		}

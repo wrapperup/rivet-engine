@@ -43,13 +43,9 @@ init_skeletal_mesh_instance :: proc(skel: ^Skeleton, anim: ^SkeletalAnimation) -
 		instance.joint_matrices_buffers[i] = gfx.create_buffer(
 			Mat4x4,
 			instance.skel.joint_count,
-            .DynUniform, // TODO: This doesn't make any sense. We use this buffer through BDA...
+			.DynUniform, // TODO: This doesn't make any sense. We use this buffer through BDA...
 		)
-		instance.preskinned_vertex_buffers[i] = gfx.create_buffer(
-			Vertex,
-			instance.skel.buffers.vertex_count,
-            .DynUniform,
-		)
+		instance.preskinned_vertex_buffers[i] = gfx.create_buffer(Vertex, instance.skel.buffers.vertex_count, .DynUniform)
 
 		gfx.defer_destroy_buffer(&gfx.r_ctx.global_arena, instance.joint_matrices_buffers[i])
 		gfx.defer_destroy_buffer(&gfx.r_ctx.global_arena, instance.preskinned_vertex_buffers[i])
@@ -89,7 +85,7 @@ Game :: struct {
 	delta_time:         f64,
 	live_time:          f64,
 
-    // Debug
+	// Debug
 	show_imgui:         bool,
 }
 
@@ -115,10 +111,11 @@ end_scope_stat_time :: proc(stat_type: FrameTimeStats) {
 }
 
 GameState :: struct {
-	environment: Environment,
-	player_id:   TypedEntityId(Player),
-	door_id:     TypedEntityId(StaticMesh),
-    update_ddgi: bool,
+	current_scene: Scene,
+	environment:   Environment,
+	player_id:     TypedEntityId(Player),
+	door_id:       TypedEntityId(StaticMesh),
+	update_ddgi:   bool,
 }
 
 Environment :: struct {

@@ -15,6 +15,7 @@ Action :: enum {
 	ExitGame,
     ShowDebug,
 	ToggleDoor,
+    ReloadScene,
 }
 
 Axis :: enum {

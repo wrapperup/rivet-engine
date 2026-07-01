@@ -140,6 +140,7 @@ game_init :: proc() {
 		add_action_key_mapping(.Fullscreen, glfw.KEY_F10)
 		add_action_key_mapping(.ExitGame, glfw.KEY_ESCAPE)
 		add_action_key_mapping(.ToggleDoor, glfw.KEY_E)
+		add_action_key_mapping(.ReloadScene, glfw.KEY_R)
 
 		add_action_mouse_mapping(.Fire, glfw.MOUSE_BUTTON_LEFT)
 		add_action_mouse_mapping(.AltFire, glfw.MOUSE_BUTTON_RIGHT)
@@ -198,12 +199,12 @@ game_init :: proc() {
 		sound_source := new_entity(SoundSource)
 		init_sound_source(sound_source, .a_outdoors_birds, true, 0.1, false, 0.5)
 
-		reflection_probe := new_entity(ReflectionProbe)
-		reflection_probe_init(reflection_probe, position = {17, 3, -11}, half_extents = {4, 4, 17})
-		reflection_probe2 := new_entity(ReflectionProbe)
-		reflection_probe_init(reflection_probe2, position = {4, 8, -2.5}, half_extents = {9, 8.5, 16})
-		reflection_probe3 := new_entity(ReflectionProbe)
-		reflection_probe_init(reflection_probe3, position = {11, 7.5, -22}, half_extents = {11, 4, 5})
+		// reflection_probe := new_entity(ReflectionProbe)
+		// reflection_probe_init(reflection_probe, position = {17, 3, -11}, half_extents = {4, 4, 17})
+		// reflection_probe2 := new_entity(ReflectionProbe)
+		// reflection_probe_init(reflection_probe2, position = {4, 8, -2.5}, half_extents = {9, 8.5, 16})
+		// reflection_probe3 := new_entity(ReflectionProbe)
+		// reflection_probe_init(reflection_probe3, position = {11, 7.5, -22}, half_extents = {11, 4, 5})
 
 		// point_light := new_entity(PointLight)
 		// init_point_light(point_light, {0, 4, 2}, {1, 0, 0}, 20, 100)
@@ -214,6 +215,10 @@ game_init :: proc() {
 			environment = Environment{sun_direction = linalg.normalize(Vec3{12, 15, 10}), sun_color = 2.0, sky_color = 1.0},
 			update_ddgi = true, // DDGI must run for reflection capture (and GI) to populate
 		}
+
+		// Load AFTER `game.state = GameState{...}` — that assignment replaces the whole struct,
+		// so setting current_scene before it just gets wiped (source -> "", arenas -> zero).
+		load_scene_from_file(&game.state.current_scene, asset_path(.scene_reflection_probes))
 	}
 
 	game.frame_time_start = time.tick_now()
@@ -285,6 +290,14 @@ game_update :: proc() -> bool {
 		if door := get_entity(game.state.door_id); door != nil {
 			door.hidden = !door.hidden
 		}
+	}
+
+	if action_just_pressed(.ReloadScene) {
+        reload_scene(&game.state.current_scene)
+	}
+
+	when ODIN_DEBUG {
+		check_scene_hotreload(&game.state.current_scene)
 	}
 
 	// Update Game State

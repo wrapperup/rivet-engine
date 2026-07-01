@@ -17,11 +17,9 @@ Asset_Name :: enum {
     t_test_normalmap2,
     t_test_rma,
     a_outdoors_birds,
-    a_footsteps_tile,
     a_scuff1,
     a_scuff2,
     a_scuff3,
-    a_scuffs,
     a_step1,
     a_step10,
     a_step11,
@@ -47,6 +45,7 @@ Asset_Name :: enum {
     sk_materialball,
     sk_materialball_oldy,
     sk_skeltest2,
+    scene_reflection_probes,
     sm_basicmesh,
     sm_bunny,
     sm_bunny_max,
@@ -74,7 +73,6 @@ Asset_Name :: enum {
     t_normalmap,
     t_rma,
     t_tony_mc_mapface,
-    t_tony_mc_mapface_unrolled,
 }
 
 asset_map: [Asset_Name]Asset
@@ -91,11 +89,9 @@ load_generated_assets :: proc() -> bool {
     asset_map[.t_test_normalmap2] = load_asset("assets/textures/t_test_normalmap2.ktx2") or_return
     asset_map[.t_test_rma] = load_asset("assets/textures/t_test_rma.ktx2") or_return
     asset_map[.a_outdoors_birds] = load_asset("assets/audio/ambient/a_outdoors_birds.wav") or_return
-    asset_map[.a_footsteps_tile] = load_asset("assets/audio/footsteps/a_footsteps_tile.aup3") or_return
     asset_map[.a_scuff1] = load_asset("assets/audio/footsteps/a_scuff1.wav") or_return
     asset_map[.a_scuff2] = load_asset("assets/audio/footsteps/a_scuff2.wav") or_return
     asset_map[.a_scuff3] = load_asset("assets/audio/footsteps/a_scuff3.wav") or_return
-    asset_map[.a_scuffs] = load_asset("assets/audio/footsteps/a_scuffs.aup3") or_return
     asset_map[.a_step1] = load_asset("assets/audio/footsteps/a_step1.wav") or_return
     asset_map[.a_step10] = load_asset("assets/audio/footsteps/a_step10.wav") or_return
     asset_map[.a_step11] = load_asset("assets/audio/footsteps/a_step11.wav") or_return
@@ -121,6 +117,7 @@ load_generated_assets :: proc() -> bool {
     asset_map[.sk_materialball] = load_asset("assets/meshes/skel/sk_materialball.glb") or_return
     asset_map[.sk_materialball_oldy] = load_asset("assets/meshes/skel/sk_materialball_oldy.glb") or_return
     asset_map[.sk_skeltest2] = load_asset("assets/meshes/skel/sk_skeltest2.glb") or_return
+    asset_map[.scene_reflection_probes] = load_asset("assets/meshes/static/scene_reflection_probes.glb") or_return
     asset_map[.sm_basicmesh] = load_asset("assets/meshes/static/sm_basicmesh.glb") or_return
     asset_map[.sm_bunny] = load_asset("assets/meshes/static/sm_bunny.glb") or_return
     asset_map[.sm_bunny_max] = load_asset("assets/meshes/static/sm_bunny_max.glb") or_return
@@ -148,15 +145,8 @@ load_generated_assets :: proc() -> bool {
     asset_map[.t_normalmap] = load_asset("assets/textures/materialball2/t_normalmap.ktx2") or_return
     asset_map[.t_rma] = load_asset("assets/textures/materialball2/t_rma.ktx2") or_return
     asset_map[.t_tony_mc_mapface] = load_asset("assets/textures/tonemapping/t_tony_mc_mapface.ktx2") or_return
-    asset_map[.t_tony_mc_mapface_unrolled] = load_asset("assets/textures/tonemapping/t_tony_mc_mapface_unrolled.exr") or_return
     return true
 }
-
-// ---------------------------------------------------------------------------
-// Layout guards: @(shader_shared) matrices must sit at the same offset the
-// scalar-layout shaders read them from. A failure here means a matrix was
-// knocked off a 16-byte boundary (CPU/GPU disagree) -> keep matrices first.
-// ---------------------------------------------------------------------------
 
 // GPUGlobalData
 #assert(offset_of(GPUGlobalData, view_to_clip) == 0)
