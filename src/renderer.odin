@@ -6,6 +6,7 @@ import "core:log"
 import "core:math"
 import "core:math/linalg"
 import "core:os"
+import "core:slice"
 import "core:time"
 
 import sp "deps:odin-slang/slang"
@@ -1320,6 +1321,12 @@ update_buffers :: proc() {
 			packed[count] = reflection_probe_to_gpu(&probe)
 			count += 1
 		}
+		// Higher priority first. The shader fills coverage in array order (budget fill), so
+		// leading probes win in overlaps — deterministic, unlike get_entities order which
+		// reshuffles on removal/reload.
+		slice.sort_by(packed[:count], proc(a, b: GPUReflectionProbe) -> bool {
+			return a.priority > b.priority
+		})
 		if count > 0 {
 			gfx.write_buffer_slice(&game.render_state.reflection_probes_buffer, packed[:count])
 		}
