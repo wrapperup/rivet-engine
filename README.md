@@ -1,5 +1,6 @@
 # cool engine
-![image](https://github.com/user-attachments/assets/0e3af819-ab20-4298-9110-d058bb5e4003)
+<img width="1920" height="1080" alt="main_Y3MUECBmx6" src="https://github.com/user-attachments/assets/824cd11a-6dfe-4620-b618-3aa16cbf3194" />
+
 
 Toy engine + Vulkan renderer I built for fun to learn Odin language (and some graphics techniques).
 
@@ -16,6 +17,8 @@ Toy engine + Vulkan renderer I built for fun to learn Odin language (and some gr
 - Physics (with Physx 5.1)
 
 ### Renderer Features
+- DDGI (requires hardware raytracing)
+- Parallax-Corrected Cubemaps
 - PBR + IBL + HDR based on [Filament](https://google.github.io/filament/Filament.md.html)
 - Point lights
 - Tonemapping (tony-mc-mapface)
