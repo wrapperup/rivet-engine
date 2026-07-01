@@ -89,6 +89,7 @@ struct ReflectionProbe {
   ImageCube cube;
   Sampler sampler;
   u32 mip_count;
+  f32 priority;
 };
 
 struct ReflectionCapturePush {
