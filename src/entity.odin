@@ -105,37 +105,53 @@ EntitySystem :: struct {
 	subtype_storage: map[string]SubtypeStorage,
 }
 
+DestroyProc :: #type proc(entity: rawptr)
+
 SubtypeStorage :: struct {
 	ptr:       ^RawSparseSet,
 	type_info: runtime.Type_Info,
+	destroy:   DestroyProc,
 }
 
-new_or_get_entity_subtype_system :: proc($T: typeid) -> ^SparseSet(T) {
+register_entity_subtype_no_destroy :: proc($T: typeid) -> ^SparseSet(T) {
+	return register_entity_subtype_with_destroy(T, nil)
+}
+
+register_entity_subtype_with_destroy :: proc($T: typeid, destroy_proc: proc(_: ^T)) -> ^SparseSet(T) {
 	ty_info := type_info_of(T).variant.(runtime.Type_Info_Named)
 	name := ty_info.name
 
-	if _, ok := game.entity_system.subtype_storage[name]; !ok {
-		sparse_set := new(SparseSet(T))
+	_, ok := game.entity_system.subtype_storage[name]
+	assert(!ok, "Entity subtype already registered.")
 
-		subtype_storage := SubtypeStorage {
-			ptr       = cast(^RawSparseSet)sparse_set,
-			type_info = type_info_of(T)^,
-		}
+	sparse_set := new(SparseSet(T))
 
-		subtype_storage.ptr.sparse_map_info = runtime.map_info(type_of(sparse_set.sparse))^
-
-		game.entity_system.subtype_storage[name] = subtype_storage
-
+	subtype_storage := SubtypeStorage {
+		ptr       = cast(^RawSparseSet)sparse_set,
+		type_info = type_info_of(T)^,
+		destroy   = cast(DestroyProc)destroy_proc,
 	}
 
-	return get_entity_subtype_system(T)
+	subtype_storage.ptr.sparse_map_info = runtime.map_info(type_of(sparse_set.sparse))^
+
+	game.entity_system.subtype_storage[name] = subtype_storage
+
+	return sparse_set
 }
 
-get_entity_subtype_system :: proc "contextless" ($T: typeid) -> ^SparseSet(T) {
+register_entity_subtype :: proc {
+	register_entity_subtype_no_destroy,
+	register_entity_subtype_with_destroy,
+}
+
+get_entity_subtype_system :: proc($T: typeid) -> ^SparseSet(T) {
 	ty_info := type_info_of(T).variant.(runtime.Type_Info_Named)
 	name := ty_info.name
 
-	return cast(^SparseSet(T))(game.entity_system.subtype_storage[name].ptr)
+	storage, ok := game.entity_system.subtype_storage[name]
+	assert(ok, "Entity subtype was not registered.")
+
+	return cast(^SparseSet(T))(storage.ptr)
 }
 
 new_entity_subtype :: proc($T: typeid) -> ^T where intrinsics.type_is_subtype_of(T, ^Entity) {
@@ -143,7 +159,7 @@ new_entity_subtype :: proc($T: typeid) -> ^T where intrinsics.type_is_subtype_of
 	data.entity = new_entity_raw()
 	data.entity.subtype = T
 
-	storage := new_or_get_entity_subtype_system(T)
+	storage := get_entity_subtype_system(T)
 
 	return assign_at_sparse_set(storage, data.entity.id, data)
 }
@@ -214,7 +230,6 @@ get_entity :: proc {
 	get_entity_subtype_typed,
 }
 
-// Removes entity from the entities list, and invalidates all existing handles.
 remove_entity_raw :: proc(id: EntityId) -> bool {
 	entity := &game.entity_system.entities[id.index]
 
@@ -229,25 +244,69 @@ remove_entity_raw :: proc(id: EntityId) -> bool {
 	return true
 }
 
-remove_entity_subtype :: proc($T: typeid, id: EntityId) -> bool where intrinsics.type_is_subtype_of(T, ^Entity) {
-	// Remove the raw entity data.
+remove_elem_raw_sparse_set :: proc(set: ^RawSparseSet, id: EntityId, elem_size: int) -> bool {
+	sparse := cast(^map[EntityId]int)(&set.sparse)
+	deleted_index, ok := sparse^[id]
+	if !ok {
+		return false
+	}
+	delete_key(sparse, id)
+
+	last := set.dense.len - 1
+	if deleted_index != last {
+		dst := rawptr(uintptr(set.dense.data) + uintptr(deleted_index * elem_size))
+		src := rawptr(uintptr(set.dense.data) + uintptr(last * elem_size))
+		intrinsics.mem_copy(dst, src, elem_size) // swap last -> hole (unordered remove)
+		// The element formerly at `last` now lives at deleted_index; fix its sparse entry.
+		for k, v in sparse^ {
+			if v == last {
+				sparse^[k] = deleted_index
+				break
+			}
+		}
+	}
+	set.dense.len = last
+	return true
+}
+
+get_elem_raw_sparse_set :: proc(set: ^RawSparseSet, id: EntityId, elem_size: int) -> (rawptr, bool) {
+	sparse := cast(^map[EntityId]int)(&set.sparse)
+	index, ok := sparse^[id]
+	if !ok {
+		return nil, false
+	}
+	return rawptr(uintptr(set.dense.data) + uintptr(index * elem_size)), true
+}
+
+_remove_entity :: proc(id: EntityId) -> bool {
 	if !remove_entity_raw(id) {
 		return false
 	}
 
-	storage := get_entity_subtype_system(T)
-
-	return remove_elem_sparse_set(storage, id)
+	entity := &game.entity_system.entities[id.index]
+	name := type_info_of(entity.subtype).variant.(runtime.Type_Info_Named).name
+	if storage, ok := game.entity_system.subtype_storage[name]; ok {
+		remove_elem_raw_sparse_set(storage.ptr, id, storage.type_info.size)
+	}
+	return true
 }
 
-remove_entity_subtype_typed :: proc(id: TypedEntityId($T)) -> ^T {
-	return remove_entity_subtype(T, id.id)
-}
+destroy_entity :: proc(id: EntityId) -> bool {
+	entity := &game.entity_system.entities[id.index]
+	if entity.id.generation != id.generation {
+		return false
+	}
 
-remove_entity :: proc {
-	remove_entity_raw,
-	remove_entity_subtype,
-	remove_entity_subtype_typed,
+	name := type_info_of(entity.subtype).variant.(runtime.Type_Info_Named).name
+	if storage, ok := game.entity_system.subtype_storage[name]; ok {
+		if storage.destroy != nil {
+			if elem, eok := get_elem_raw_sparse_set(storage.ptr, id, storage.type_info.size); eok {
+				storage.destroy(elem)
+			}
+		}
+	}
+
+	return _remove_entity(id)
 }
 
 entity_id_of :: proc(subtype_entity: ^$T) -> TypedEntityId(T) where intrinsics.type_is_subtype_of(T, ^Entity) {
