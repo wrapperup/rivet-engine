@@ -34,6 +34,7 @@ if %ERRORLEVEL% neq 0 (
 set BASE_FLAGS=entrypoints ^
     -collection:deps=deps ^
     -custom-attribute:shader_shared ^
+    -custom-attribute:entity ^
     -show-timings ^
     -linker=radlink
 

@@ -5,6 +5,7 @@ set FLAGS=src ^
     -build-mode:dll ^
     -collection:deps=deps ^
     -custom-attribute:shader_shared ^
+    -custom-attribute:entity ^
     -show-timings ^
     -extra-linker-flags:/NODEFAULTLIB:libcmt ^
     -linker=radlink ^
