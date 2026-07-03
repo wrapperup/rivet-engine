@@ -25,6 +25,7 @@ Ground_Contact :: struct {
 	normal: Vec3,
 }
 
+@(entity)
 Player :: struct {
 	using entity:               ^Entity,
 	//
@@ -113,8 +114,8 @@ update_player :: proc(player: ^Player, dt: f64) {
 	max_sprinting_ground_speed: f32 = 10
 	max_air_speed: f32 = 10
 
-    filter_data := px.filter_data_new_2(get_words_from_filter({}))
-    filters := px.controller_filters_new(&filter_data, nil, nil)
+	filter_data := px.filter_data_new_2(get_words_from_filter({}))
+	filters := px.controller_filters_new(&filter_data, nil, nil)
 
 	camera_forward: Vec3
 	// camera_right: Vec3
@@ -178,7 +179,7 @@ update_player :: proc(player: ^Player, dt: f64) {
 		acceleration: Vec3
 
 		for contact in player.ground_contacts {
-            normal := contact.normal
+			normal := contact.normal
 			slope_angle := linalg.vector_angle_between(normal, Vec3{0, 1, 0})
 			is_grounded = is_grounded || slope_angle < math.PI / 4
 			is_sliding = !is_grounded
@@ -265,28 +266,28 @@ update_player :: proc(player: ^Player, dt: f64) {
 				player.footstep_distance_traveled = 0
 				player.footstep_time = 0
 
-                STEP_TABLE : []Asset_Name = {
-                    .a_step1,
-                    .a_step2,
-                    .a_step3,
-                    .a_step4,
-                    .a_step5,
-                    .a_step6,
-                    .a_step7,
-                    .a_step8,
-                    .a_step9,
-                    .a_step10,
-                    .a_step11,
-                    .a_step12,
-                    .a_step13,
-                    .a_step14,
-                    .a_step15,
-                    .a_step16,
-                    .a_step17,
-                    .a_step18,
-                    .a_step19,
-                    .a_step20,
-                }
+				STEP_TABLE: []Asset_Name = {
+					.a_step1,
+					.a_step2,
+					.a_step3,
+					.a_step4,
+					.a_step5,
+					.a_step6,
+					.a_step7,
+					.a_step8,
+					.a_step9,
+					.a_step10,
+					.a_step11,
+					.a_step12,
+					.a_step13,
+					.a_step14,
+					.a_step15,
+					.a_step16,
+					.a_step17,
+					.a_step18,
+					.a_step19,
+					.a_step20,
+				}
 
 				play_sound(STEP_TABLE[player.footstep])
 				player.footstep += 1
@@ -300,14 +301,14 @@ update_player :: proc(player: ^Player, dt: f64) {
 
 		player.footstep_time += dt
 
-        col_flags := px.controller_move_mut(
-            player.controller,
-            transmute(px.Vec3)((player.velocity * f32(dt)) - {0, player.is_grounded_last_frame ? 0.05 : 0, 0}),
-            0.001,
-            f32(dt),
-            filters,
-            nil,
-        )
+		col_flags := px.controller_move_mut(
+			player.controller,
+			transmute(px.Vec3)((player.velocity * f32(dt)) - {0, player.is_grounded_last_frame ? 0.05 : 0, 0}),
+			0.001,
+			f32(dt),
+			filters,
+			nil,
+		)
 
 	case .Noclip:
 		max_noclip_speed: f32 = 15
@@ -331,7 +332,7 @@ update_player :: proc(player: ^Player, dt: f64) {
 		px.controller_set_position_mut(player.controller, transmute(px.ExtendedVec3)linalg.array_cast(player.translation, f64))
 	}
 
-    player.eye_pos = player.translation + VEC3_UP * 1
+	player.eye_pos = player.translation + VEC3_UP * 1
 }
 
 // update_player :: proc(player: ^Player, dt: f64) {

@@ -1,5 +1,6 @@
 package game
 
+import "core:fmt"
 import "base:intrinsics"
 
 import "deps:gltf2"
@@ -130,7 +131,9 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 		}
 	}
 
-	if false {
+    assert(tangent_ok)
+
+	if tangent_ok {
         tangent_buf := gltf2.buffer_slice(data, tangent_idx).([][4]f32)
 
 		for val, i in tangent_buf {

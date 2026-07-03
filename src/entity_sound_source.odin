@@ -3,6 +3,7 @@ package game
 import "core:strings"
 import ma "vendor:miniaudio"
 
+@entity
 SoundSource :: struct {
 	using entity: ^Entity,
 	sound:        ma.sound,

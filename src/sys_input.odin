@@ -14,7 +14,6 @@ Action :: enum {
 	Fullscreen,
 	ExitGame,
     ShowDebug,
-	ToggleDoor,
     ReloadScene,
 }
 

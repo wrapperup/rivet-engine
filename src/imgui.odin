@@ -330,23 +330,36 @@ update_imgui :: proc() {
 			im.InputFloat("fov", &player.camera_fov_deg)
 			items := [len(ViewState)]cstring{"SceneColor", "SceneDepth", "ShadowDepth", "Raytracing", "DDGIAtlas"}
 			im.ComboChar("view", cast(^i32)(&game.view_state), raw_data(&items), len(items))
-			im.Checkbox("DDGI update", &game.state.update_ddgi)
-			im.Checkbox("DDGI probes", &game.render_state.draw_ddgi_probes)
-			im.SliderFloat("DDGI intensity", &game.render_state.ddgi_volume.gpu.intensity, 0.0, 4.0)
-			im.SliderFloat("DDGI feedback", &game.render_state.ddgi_volume.gpu.feedback, 0.0, 50.0)
-			im.SliderFloat("DDGI depth bias", &game.render_state.ddgi_volume.gpu.depth_bias, -2.0, 4.0)
-			im.SliderFloat("DDGI reloc max", &game.render_state.ddgi_volume.gpu.relocation_max, 0.0, 1.5)
-			im.SliderFloat("DDGI hysteresis", &game.render_state.ddgi_volume.gpu.hysteresis, 0.9, 0.999)
-			im.SliderFloat("DDGI normal bias", &game.render_state.ddgi_volume.gpu.normal_bias, 0.0, 2.0)
-			im.SliderFloat("DDGI cheb sharpness", &game.render_state.ddgi_volume.gpu.cheb_sharpness, 1.0, 16.0)
-			im.SliderFloat("DDGI ray max", &game.render_state.ddgi_volume.gpu.ray_max, 10.0, 500.0)
-			im.SliderFloat("DDGI max radiance", &game.render_state.ddgi_volume.gpu.max_radiance, 0.0, 50.0)
 		}
 		im.End()
 	}
 
+	if im.Begin("DDGI") {
+		im.Checkbox("Update", &game.state.update_ddgi)
+		im.Checkbox("Draw probes", &game.render_state.draw_ddgi_probes)
+		im.InputInt("Atlas debug volume", &game.render_state.ddgi_debug_volume)
+		for &volume, i in get_entities(DDGIVolume) {
+			im.PushIDInt(i32(i))
+			counts := volume.gpu.grid_counts
+			im.SeparatorText(fmt.ctprintf("Volume %d (%dx%dx%d, prio %.0f)", i, counts[0], counts[1], counts[2], volume.gpu.priority))
+			im.SliderFloat("intensity", &volume.gpu.intensity, 0.0, 4.0)
+			im.SliderFloat("feedback", &volume.gpu.feedback, 0.0, 50.0)
+			im.SliderFloat("depth bias", &volume.gpu.depth_bias, -2.0, 4.0)
+			im.SliderFloat("reloc max", &volume.gpu.relocation_max, 0.0, 1.5)
+			im.SliderFloat("hysteresis", &volume.gpu.hysteresis, 0.9, 0.999)
+			im.SliderFloat("surface bias", &volume.gpu.normal_bias, 0.0, 2.0)
+			im.SliderFloat("cheb sharpness", &volume.gpu.cheb_sharpness, 1.0, 16.0)
+			im.SliderFloat("ray max", &volume.gpu.ray_max, 10.0, 500.0)
+			im.SliderFloat("max radiance", &volume.gpu.max_radiance, 0.0, 50.0)
+			im.SliderFloat("edge fade", &volume.gpu.edge_fade, 0.0, 10.0)
+			im.PopID()
+		}
+	}
+	im.End()
+
 	if im.Begin("Reflection Probes") {
 		im.Checkbox("Draw volumes", &game.render_state.draw_reflection_probes)
+		im.Checkbox("Recapture every frame", &game.state.update_reflections)
 		// PushID per probe so widgets don't collide on shared labels when there are multiple.
 		for &probe, i in get_entities(ReflectionProbe) {
 			im.PushIDInt(i32(i))
@@ -361,8 +374,8 @@ update_imgui :: proc() {
 			im.InputFloat3("Half extents", &probe.half_extents)
 			im.PopID()
 		}
-		im.End()
 	}
+	im.End()
 
 	// Box volume overlay (drawn unconditionally on the flag, regardless of panel state).
 	if game.render_state.draw_reflection_probes {

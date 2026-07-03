@@ -36,7 +36,7 @@ GPUDDGIVolume :: struct #max_field_align(16) {
 	sampler:        gfx.SamplerId `Sampler`, // LINEAR, CLAMP_TO_EDGE
 	hysteresis:     f32, // 0.97 realtime
 	max_distance:   f32, // ~1.5 * length(probe_spacing)
-	normal_bias:    f32, // ~0.25 * min(spacing)
+	normal_bias:    f32,
 	frame_index:    u32, // rotates the ray set
 	intensity:      f32,
 	feedback:       f32,
@@ -45,9 +45,13 @@ GPUDDGIVolume :: struct #max_field_align(16) {
 	cheb_sharpness: f32, // Chebyshev visibility falloff power (higher = less thin-wall leak)
 	ray_max:        f32, // primary ray max distance (decoupled from the Chebyshev range)
 	max_radiance:   f32, // firefly clamp: max luminance per traced ray (0 = disabled)
+	priority:       f32,
+	edge_fade:      f32,
 }
 
-DDGI_Volume :: struct {
+MAX_DDGI_VOLUMES :: 8
+
+DDGI_Volume_Resources :: struct {
 	gpu:             GPUDDGIVolume,
 	config_buffer:   gfx.GPUBuffer(GPUDDGIVolume),
 	radiance_buffer: gfx.GPUBuffer(Vec4), // rays_per_probe * num_probes
@@ -56,7 +60,21 @@ DDGI_Volume :: struct {
 	offset:          gfx.GPUImage,
 }
 
-ddgi_volume_init :: proc(volume: ^DDGI_Volume, origin: Vec3, spacing: Vec3, counts: [3]u32) {
+@(entity)
+DDGIVolume :: struct {
+	using entity: ^Entity,
+	using volume: DDGI_Volume_Resources,
+}
+
+ddgi_volume_resources_init :: proc(
+	volume: ^DDGI_Volume_Resources,
+	origin: Vec3,
+	spacing: Vec3,
+	counts: [3]u32,
+	arena: ^gfx.ResourceArena,
+	priority: f32 = 0.0,
+	edge_fade: f32 = 1.0,
+) {
 	tiles_x := counts.x * counts.z
 	tiles_y := counts.y
 
@@ -65,9 +83,9 @@ ddgi_volume_init :: proc(volume: ^DDGI_Volume, origin: Vec3, spacing: Vec3, coun
 	volume.depth = gfx.create_image(.R16G16_SFLOAT, {tiles_x * DDGI_DEPTH_TILE, tiles_y * DDGI_DEPTH_TILE, 1}, atlas_usage)
 	volume.offset = gfx.create_image(.R16G16B16A16_SFLOAT, {tiles_x, tiles_y, 1}, atlas_usage)
 
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, volume.irradiance)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, volume.depth)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, volume.offset)
+	gfx.defer_destroy(arena, volume.irradiance)
+	gfx.defer_destroy(arena, volume.depth)
+	gfx.defer_destroy(arena, volume.offset)
 
 	if cmd, ok := gfx.immediate_submit(); ok {
 		gfx.transition_image(cmd, &volume.irradiance, .GENERAL)
@@ -95,7 +113,7 @@ ddgi_volume_init :: proc(volume: ^DDGI_Volume, origin: Vec3, spacing: Vec3, coun
 	}
 
 	sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, sampler)
+	gfx.defer_destroy(arena, sampler)
 
 	volume.gpu = GPUDDGIVolume {
 		grid_origin    = origin,
@@ -108,7 +126,7 @@ ddgi_volume_init :: proc(volume: ^DDGI_Volume, origin: Vec3, spacing: Vec3, coun
 		sampler        = gfx.add_sampler(sampler),
 		hysteresis     = 0.99,
 		max_distance   = 1.5 * linalg.length(spacing),
-		normal_bias    = 0.0,
+		normal_bias    = 0.2 * min(spacing.x, spacing.y, spacing.z),
 		frame_index    = 0,
 		intensity      = 1.0,
 		feedback       = 0.8,
@@ -117,15 +135,28 @@ ddgi_volume_init :: proc(volume: ^DDGI_Volume, origin: Vec3, spacing: Vec3, coun
 		cheb_sharpness = 3.0,
 		ray_max        = 200.0,
 		max_radiance   = 8.0,
+		priority       = priority,
+		edge_fade      = edge_fade,
 	}
 
 	volume.config_buffer = gfx.create_buffer(GPUDDGIVolume, 1, .DynUniform)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, volume.config_buffer)
+	gfx.defer_destroy(arena, volume.config_buffer)
 	gfx.write_buffer(&volume.config_buffer, &volume.gpu)
 
 	num_probes := counts.x * counts.y * counts.z
 	volume.radiance_buffer = gfx.create_buffer(Vec4, num_probes * DDGI_RAYS_PER_PROBE, .Storage)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, volume.radiance_buffer)
+	gfx.defer_destroy(arena, volume.radiance_buffer)
+}
+
+ddgi_volume_resources_destroy :: proc(volume: ^DDGI_Volume_Resources) {
+	gfx.remove_image(volume.gpu.irradiance)
+	gfx.remove_image(volume.gpu.depth)
+	gfx.remove_image(volume.gpu.offset)
+	gfx.remove_sampler(volume.gpu.sampler)
+}
+
+ddgi_volume_destroy :: proc(volume: ^DDGIVolume) {
+    ddgi_volume_resources_destroy(&volume.volume)
 }
 
 @(shader_shared)
@@ -212,7 +243,7 @@ ddgi_init_debug_sphere :: proc() {
 	rs.ddgi_probe_index_count = u32(len(indices))
 }
 
-ddgi_debug_probes_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume) {
+ddgi_debug_probes_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
 	rs := &game.render_state
 	gfx.cmd_begin_rendering(
 		cmd,
@@ -237,7 +268,7 @@ ddgi_debug_probes_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume) {
 	gfx.cmd_end_rendering(cmd)
 }
 
-ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume) {
+ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
 	counts := volume.gpu.grid_counts
 	num_probes := counts[0] * counts[1] * counts[2]
 
@@ -308,14 +339,14 @@ ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume) {
 
 ddgi_image_barrier :: proc(cmd: vk.CommandBuffer, image: vk.Image) {
 	barrier := vk.ImageMemoryBarrier2 {
-		sType            = .IMAGE_MEMORY_BARRIER_2,
-		srcStageMask     = {.COMPUTE_SHADER},
-		srcAccessMask    = {.SHADER_WRITE},
-		dstStageMask     = {.ALL_COMMANDS},
-		dstAccessMask    = {.SHADER_READ},
-		oldLayout        = .GENERAL,
-		newLayout        = .GENERAL,
-		image            = image,
+		sType = .IMAGE_MEMORY_BARRIER_2,
+		srcStageMask = {.COMPUTE_SHADER},
+		srcAccessMask = {.SHADER_WRITE},
+		dstStageMask = {.ALL_COMMANDS},
+		dstAccessMask = {.SHADER_READ},
+		oldLayout = .GENERAL,
+		newLayout = .GENERAL,
+		image = image,
 		subresourceRange = {aspectMask = {.COLOR}, levelCount = 1, layerCount = 1},
 	}
 	dep := vk.DependencyInfo {
@@ -326,19 +357,11 @@ ddgi_image_barrier :: proc(cmd: vk.CommandBuffer, image: vk.Image) {
 	vk.CmdPipelineBarrier2(cmd, &dep)
 }
 
-ddgi_debug_atlas_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume) {
+ddgi_debug_atlas_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
 	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_debug_pipeline)
 	gfx.cmd_push_constants(
 		cmd,
-		GPUDDGIDebugAtlasPush {
-			volume = volume.config_buffer.ptr,
-			out_image = game.render_state.temp_resources.resolved_image_id,
-		},
+		GPUDDGIDebugAtlasPush{volume = volume.config_buffer.ptr, out_image = game.render_state.temp_resources.resolved_image_id},
 	)
-	vk.CmdDispatch(
-		cmd,
-		u32(gfx.r_ctx.draw_extent.width + 15) / 16,
-		u32(gfx.r_ctx.draw_extent.height + 15) / 16,
-		1,
-	)
+	vk.CmdDispatch(cmd, u32(gfx.r_ctx.draw_extent.width + 15) / 16, u32(gfx.r_ctx.draw_extent.height + 15) / 16, 1)
 }

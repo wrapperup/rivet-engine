@@ -4,6 +4,7 @@ import "core:log"
 
 import px "deps:physx-odin"
 
+@(entity)
 Ball :: struct {
 	using entity:       ^Entity,
 	material:           MaterialId,
@@ -74,7 +75,7 @@ init_ball :: proc(ball: ^Ball, pos: Vec3, vel: [3]f32 = 0, skeleton: ^Skeleton, 
 
 update_ball_fixed :: proc(ball: ^Ball) {
 	sample_animation(&ball.skel_animator, ball.sample_time)
-	ball.sample_time += 0.005;
+	ball.sample_time += 0.005
 
 	pose := px.rigid_actor_get_global_pose(ball.rigid)
 	ball.translation = transmute(Vec3)pose.p

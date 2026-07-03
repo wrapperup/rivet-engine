@@ -114,8 +114,11 @@ GameState :: struct {
 	current_scene: Scene,
 	environment:   Environment,
 	player_id:     TypedEntityId(Player),
-	door_id:       TypedEntityId(StaticMesh),
 	update_ddgi:   bool,
+
+	// Re-RT-capture every reflection probe every frame (live), instead of the one-time auto capture.
+	// Costs one capture per probe per frame — fine for a few probes, expensive for many. See renderer.
+	update_reflections: bool,
 }
 
 Environment :: struct {

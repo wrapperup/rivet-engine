@@ -1,6 +1,6 @@
 package game
 
-@shader_shared
+@(shader_shared)
 GPUPointLight :: struct #max_field_align(16) {
 	color:     Vec3,
 	radius:    f32,
@@ -8,6 +8,7 @@ GPUPointLight :: struct #max_field_align(16) {
 	lumens:    f32,
 }
 
+@(entity)
 PointLight :: struct {
 	using entity: ^Entity,
 	color:        Vec3,
@@ -27,8 +28,8 @@ point_light_to_gpu :: proc(light: PointLight) -> GPUPointLight {
 }
 
 init_point_light :: proc(light: ^PointLight, position: Vec3, color: Vec3, radius: f32, lumens: f32) {
-    light.translation = position
-    light.color = color
-    light.radius = radius
-    light.lumens = lumens
+	light.translation = position
+	light.color = color
+	light.radius = radius
+	light.lumens = lumens
 }

@@ -45,6 +45,8 @@ Asset_Name :: enum {
     sk_materialball,
     sk_materialball_oldy,
     sk_skeltest2,
+    material_ball,
+    scene_map_test,
     scene_reflection_probes,
     sm_basicmesh,
     sm_bunny,
@@ -53,6 +55,7 @@ Asset_Name :: enum {
     sm_cube,
     sm_figure,
     sm_irradiance_volume_test,
+    sm_map,
     sm_map_door,
     sm_map_test,
     sm_materialball2,
@@ -117,6 +120,8 @@ load_generated_assets :: proc() -> bool {
     asset_map[.sk_materialball] = load_asset("assets/meshes/skel/sk_materialball.glb") or_return
     asset_map[.sk_materialball_oldy] = load_asset("assets/meshes/skel/sk_materialball_oldy.glb") or_return
     asset_map[.sk_skeltest2] = load_asset("assets/meshes/skel/sk_skeltest2.glb") or_return
+    asset_map[.material_ball] = load_asset("assets/meshes/static/material_ball.glb") or_return
+    asset_map[.scene_map_test] = load_asset("assets/meshes/static/scene_map_test.glb") or_return
     asset_map[.scene_reflection_probes] = load_asset("assets/meshes/static/scene_reflection_probes.glb") or_return
     asset_map[.sm_basicmesh] = load_asset("assets/meshes/static/sm_basicmesh.glb") or_return
     asset_map[.sm_bunny] = load_asset("assets/meshes/static/sm_bunny.glb") or_return
@@ -125,6 +130,7 @@ load_generated_assets :: proc() -> bool {
     asset_map[.sm_cube] = load_asset("assets/meshes/static/sm_cube.glb") or_return
     asset_map[.sm_figure] = load_asset("assets/meshes/static/sm_figure.glb") or_return
     asset_map[.sm_irradiance_volume_test] = load_asset("assets/meshes/static/sm_irradiance_volume_test.glb") or_return
+    asset_map[.sm_map] = load_asset("assets/meshes/static/sm_map.glb") or_return
     asset_map[.sm_map_door] = load_asset("assets/meshes/static/sm_map_door.glb") or_return
     asset_map[.sm_map_test] = load_asset("assets/meshes/static/sm_map_test.glb") or_return
     asset_map[.sm_materialball2] = load_asset("assets/meshes/static/sm_materialball2.glb") or_return

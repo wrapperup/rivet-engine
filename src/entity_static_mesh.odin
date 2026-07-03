@@ -6,6 +6,7 @@ import px "deps:physx-odin"
 
 import "gfx"
 
+@(entity)
 StaticMesh :: struct {
 	using entity: ^Entity,
 	mesh:         GPUMeshBuffers,
@@ -14,8 +15,17 @@ StaticMesh :: struct {
 	hidden:       bool,
 }
 
-init_static_mesh :: proc(static_mesh: ^StaticMesh, asset_name: Asset_Name, material: MaterialId) {
-	mesh, ok := load_mesh_from_file(asset_path(asset_name))
+// `path` is a mesh file relative to the working dir (e.g. "assets/meshes/static/sm_map_test.glb").
+// translation/rotation place both the rendered mesh and its physics body. Defaults keep it at the
+// origin with identity rotation — a zero-value quaternion would fail PhysX's pose.isSane() check.
+init_static_mesh :: proc(
+	static_mesh: ^StaticMesh,
+	path: string,
+	material: MaterialId,
+	translation: Vec3 = {0, 0, 0},
+	rotation: Quat = Quat(1),
+) {
+	mesh, ok := load_mesh_from_file(path)
 	assert(ok)
 
 	gpu_mesh := upload_mesh_to_gpu(mesh)
@@ -54,7 +64,7 @@ init_static_mesh :: proc(static_mesh: ^StaticMesh, asset_name: Asset_Name, mater
 
 	static_mesh.body = px.create_static(
 		game.phys.physics,
-		px.transform_new_1({0, 0, 0}),
+		px.transform_new_5(transmute(px.Vec3)translation, transmute(px.Quat)rotation),
 		&geometry,
 		phys_material,
 		px.transform_new_1({0, 0, 0}),
@@ -63,6 +73,19 @@ init_static_mesh :: proc(static_mesh: ^StaticMesh, asset_name: Asset_Name, mater
 
 	px.scene_add_actor_mut(game.phys.scene, static_mesh.body, nil)
 
+	static_mesh.translation = translation
+	static_mesh.rotation = rotation
 	static_mesh.mesh = gpu_mesh
 	static_mesh.material = material
+}
+
+// Release the PhysX body. Releasing an actor also removes it from its scene, so scene reload
+// doesn't accumulate invisible colliders. NOTE: the GPU mesh is still deferred to gfx global_arena
+// in init, so it survives reload (memory grows on repeated reloads) — route it through the scene
+// arena when the asset_name refactor lands.
+static_mesh_destroy :: proc(static_mesh: ^StaticMesh) {
+	if static_mesh.body != nil {
+		px.actor_release_mut(static_mesh.body)
+		static_mesh.body = nil
+	}
 }

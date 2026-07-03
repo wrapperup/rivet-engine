@@ -122,7 +122,8 @@ GPUGlobalData :: struct #max_field_align(16) {
 	camera_pos:               Vec3,
 	sun_direction:            Vec3,
 	default_sampler:          SamplerId `Sampler`,
-	ddgi:                     GPUPtr(GPUDDGIVolume),
+	ddgi_volumes:             GPUPtr(GPUDDGIVolume), // packed array (num_ddgi_volumes entries, priority-sorted)
+	num_ddgi_volumes:         u32,
 	reflection_probes:        GPUPtr(GPUReflectionProbe), // packed array (num_reflection_probes entries)
 	num_reflection_probes:    u32,
 }
@@ -191,8 +192,9 @@ RenderState :: struct {
 	// Imgui
 	imgui_ctx:                       ^im.Context,
 
-	// DDGI (single test volume for now)
-	ddgi_volume:                     DDGI_Volume,
+	// DDGI (volumes are DDGIVolume entities; this is the shared packed array + debug state)
+	ddgi_volumes_buffer:             gfx.GPUBuffer(GPUDDGIVolume), // packed per-frame array (priority-sorted)
+	ddgi_debug_volume:               i32, // which volume the DDGIAtlas debug view shows
 	ddgi_probe_vbuf:                 gfx.GPUBuffer(Vertex),
 	ddgi_probe_ibuf:                 gfx.GPUBuffer(u32),
 	ddgi_probe_index_count:          u32,
@@ -309,9 +311,6 @@ init_test_resources :: proc() {
 
 		tr.resolved_image_id = gfx.add_image(gfx.r_ctx.resolve_image)
 	}
-
-	// DDGI test volume: ~40x20x40 covered by a 16x8x16 probe grid.
-	ddgi_volume_init(&game.render_state.ddgi_volume, {-20, -2, -30}, {2.5, 2.5, 2.5}, {32, 8, 32})
 }
 
 init_test_materials :: proc() {
@@ -406,6 +405,8 @@ init_ddgi_pipelines :: proc() {
 	)
 	game.render_state.reflection_probes_buffer = gfx.create_buffer(GPUReflectionProbe, MAX_REFLECTION_PROBES, .DynUniform)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.reflection_probes_buffer)
+	game.render_state.ddgi_volumes_buffer = gfx.create_buffer(GPUDDGIVolume, MAX_DDGI_VOLUMES, .DynUniform)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.ddgi_volumes_buffer)
 	game.render_state.reflection_probe_debug_pipeline = add_graphics_shader(
 		"shaders/reflection_probe_debug.slang",
 		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
@@ -683,20 +684,30 @@ draw :: proc() {
 
 	build_scene_tlas(cmd)
 
-	// DDGI: trace + update the probe atlases (needs the scene TLAS).
+	// DDGI: trace + update every volume's probe atlases (needs the scene TLAS).
+	// TODO: cadence knob (round-robin / nearest-first) once volume counts grow.
 	if current_frame_game().tlas.address != 0 && game.state.update_ddgi {
-		ddgi_update_volume(cmd, &game.render_state.ddgi_volume)
+		for &volume in get_entities(DDGIVolume) {
+			ddgi_update_volume(cmd, &volume.volume)
+		}
 	}
 
-	// Reflection probes: RT-capture their cubemap once the TLAS is ready AND the DDGI atlas
+	// Reflection probes: RT-capture their cubemap once the TLAS is ready AND every DDGI atlas
 	// has had time to converge (else the captured indirect bounce is near-black). Recapture
 	// (imgui) re-triggers anytime. Capture after DDGI so it reflects the current probe field.
 	REFLECTION_AUTO_CAPTURE_FRAME :: 200
 	if current_frame_game().tlas.address != 0 {
-		converged := game.render_state.ddgi_volume.gpu.frame_index > REFLECTION_AUTO_CAPTURE_FRAME
+		converged := true // no volumes -> nothing to wait for
+		for &volume in get_entities(DDGIVolume) {
+			if volume.gpu.frame_index <= REFLECTION_AUTO_CAPTURE_FRAME {
+				converged = false
+				break
+			}
+		}
 		for &probe in get_entities(ReflectionProbe) {
 			auto := !probe.captured && converged
-			if probe.wants_recapture || auto {
+			live := game.state.update_reflections && converged // recapture every frame (imgui toggle)
+			if probe.wants_recapture || auto || live {
 				reflection_probe_capture(cmd, &probe)
 				probe.wants_recapture = false
 			}
@@ -739,7 +750,9 @@ draw :: proc() {
 	}
 	geometry_pass(cmd)
 	if game.render_state.draw_ddgi_probes {
-		ddgi_debug_probes_pass(cmd, &game.render_state.ddgi_volume)
+		for &volume in get_entities(DDGIVolume) {
+			ddgi_debug_probes_pass(cmd, &volume.volume)
+		}
 	}
 	if game.render_state.draw_reflection_probes {
 		reflection_probe_debug_spheres_pass(cmd)
@@ -804,7 +817,11 @@ draw :: proc() {
 		final_image = gfx.r_ctx.resolve_image.image
 	case .DDGIAtlas:
 		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
-		ddgi_debug_atlas_pass(cmd, &game.render_state.ddgi_volume)
+		volumes := get_entities(DDGIVolume)
+		if len(volumes) > 0 {
+			idx := clamp(int(game.render_state.ddgi_debug_volume), 0, len(volumes) - 1)
+			ddgi_debug_atlas_pass(cmd, &volumes[idx].volume)
+		}
 		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
 		final_image = gfx.r_ctx.resolve_image.image
 	case .SceneColor:
@@ -1308,7 +1325,26 @@ update_buffers :: proc() {
 	global_data.cascade_world_to_shadows = current_frame_game().cascade_matrices_buffer.ptr
 	global_data.cascade_configs = current_frame_game().cascade_configs_buffer.ptr
 	global_data.default_sampler = game.render_state.temp_resources.default_sampler_id
-	global_data.ddgi = game.render_state.ddgi_volume.config_buffer.ptr
+
+	// DDGI volumes: pack every volume into the array the lighting/trace/capture passes budget-fill
+	// over. Sorted priority-desc so leading volumes claim coverage first (same as reflection probes).
+	{
+		packed: [MAX_DDGI_VOLUMES]GPUDDGIVolume
+		count: u32 = 0
+		for &volume in get_entities(DDGIVolume) {
+			if int(count) >= MAX_DDGI_VOLUMES do break
+			packed[count] = volume.gpu
+			count += 1
+		}
+		slice.sort_by(packed[:count], proc(a, b: GPUDDGIVolume) -> bool {
+			return a.priority > b.priority
+		})
+		if count > 0 {
+			gfx.write_buffer_slice(&game.render_state.ddgi_volumes_buffer, packed[:count])
+		}
+		global_data.ddgi_volumes = game.render_state.ddgi_volumes_buffer.ptr
+		global_data.num_ddgi_volumes = count
+	}
 
 	// Reflection probes: write each probe's own config (debug passes) and pack them all into
 	// the array buffer the lighting pass loops over.

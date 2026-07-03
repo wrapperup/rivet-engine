@@ -25,19 +25,18 @@ GPUReflectionProbe :: struct #max_field_align(16) {
 	priority:       f32,
 }
 
-// Push for the RT capture compute (shaders/reflection_capture.slang).
+// Push for the RT capture compute (shaders/reflection_capture.slang). DDGI indirect at ray hits
+// comes from the packed volume array in global (world-space select), not a single volume pointer.
 @(shader_shared)
 GPUReflectionCapturePush :: struct #max_field_align(16) {
 	global:     GPUPtr(GPUGlobalData),
 	geometries: GPUPtr(GPUGeometry),
 	materials:  GPUPtr(GPUMaterial),
-	ddgi:       GPUPtr(GPUDDGIVolume),
 	tlas:       vk.DeviceAddress `AccelerationStructure`,
 	out_cube:   ImageId `RWImage2DArray`, // D2_ARRAY storage view of the cube (mip 0, 6 layers)
 	center:     Vec3,
 	face_size:  u32, // resolution per cube face
 	ray_max:    f32,
-	feedback:   f32, // indirect bounce gain (matches the DDGI volume)
 }
 
 // Push for the debug mirror-ball gizmo (shaders/reflection_probe_debug.slang).
@@ -61,24 +60,25 @@ GPUReflectionPrefilterPush :: struct #max_field_align(16) {
 	sample_count: u32,
 }
 
+@(entity)
 ReflectionProbe :: struct {
-	using entity:    ^Entity,
-	half_extents:    Vec3,
-	blend_distance:  f32,
-	intensity:       f32,
-	priority:        f32,
-	debug_radius:    f32,
-	face_size:       u32,
-	mip_count:       u32,
+	using entity:         ^Entity,
+	half_extents:         Vec3,
+	blend_distance:       f32,
+	intensity:            f32,
+	priority:             f32,
+	debug_radius:         f32,
+	face_size:            u32,
+	mip_count:            u32,
 
 	// GPU resources
-	cube_image:          gfx.GPUImage,
-	cube_sampled_id:     gfx.ImageId, // CUBE view  (read in lighting / prefilter source)
+	cube_image:           gfx.GPUImage,
+	cube_sampled_id:      gfx.ImageId, // CUBE view  (read in lighting / prefilter source)
 	cube_mip_storage_ids: [MAX_REFLECTION_MIPS]gfx.ImageId,
-	gpu_sampler_id:      gfx.SamplerId,
-	config:              gfx.GPUBuffer(GPUReflectionProbe),
-	captured:            bool,
-	wants_recapture:     bool,
+	gpu_sampler_id:       gfx.SamplerId,
+	config:               gfx.GPUBuffer(GPUReflectionProbe),
+	captured:             bool,
+	wants_recapture:      bool,
 }
 
 REFLECTION_PROBE_FACE_SIZE :: 128
@@ -216,14 +216,14 @@ reflection_probe_debug_draw_box :: proc(probe: ^ReflectionProbe) {
 
 reflection_probe_to_gpu :: proc(probe: ^ReflectionProbe) -> GPUReflectionProbe {
 	return GPUReflectionProbe {
-		center         = probe.translation,
+		center = probe.translation,
 		blend_distance = probe.blend_distance,
-		half_extents   = probe.half_extents,
-		intensity      = probe.intensity,
-		cube           = probe.cube_sampled_id,
-		sampler        = probe.gpu_sampler_id,
-		mip_count      = probe.mip_count,
-		priority       = probe.priority,
+		half_extents = probe.half_extents,
+		intensity = probe.intensity,
+		cube = probe.cube_sampled_id,
+		sampler = probe.gpu_sampler_id,
+		mip_count = probe.mip_count,
+		priority = probe.priority,
 	}
 }
 
@@ -245,13 +245,11 @@ reflection_probe_capture :: proc(cmd: vk.CommandBuffer, probe: ^ReflectionProbe)
 			global = current_frame_game().global_buffer.ptr,
 			geometries = current_frame_game().geometries_buffer.ptr,
 			materials = game.render_state.scene_resources.materials_buffer.ptr,
-			ddgi = game.render_state.ddgi_volume.config_buffer.ptr,
 			tlas = current_frame_game().tlas.address,
 			out_cube = probe.cube_mip_storage_ids[0],
 			center = probe.translation,
 			face_size = probe.face_size,
 			ray_max = 200.0,
-			feedback = game.render_state.ddgi_volume.gpu.feedback,
 		},
 	)
 	groups := (probe.face_size + 7) / 8
@@ -289,14 +287,14 @@ reflection_probe_capture :: proc(cmd: vk.CommandBuffer, probe: ^ReflectionProbe)
 @(private = "file")
 reflection_cube_barrier :: proc(cmd: vk.CommandBuffer, image: vk.Image) {
 	barrier := vk.ImageMemoryBarrier2 {
-		sType            = .IMAGE_MEMORY_BARRIER_2,
-		srcStageMask     = {.COMPUTE_SHADER},
-		srcAccessMask    = {.SHADER_WRITE},
-		dstStageMask     = {.COMPUTE_SHADER, .FRAGMENT_SHADER},
-		dstAccessMask    = {.SHADER_READ},
-		oldLayout        = .GENERAL,
-		newLayout        = .GENERAL,
-		image            = image,
+		sType = .IMAGE_MEMORY_BARRIER_2,
+		srcStageMask = {.COMPUTE_SHADER},
+		srcAccessMask = {.SHADER_WRITE},
+		dstStageMask = {.COMPUTE_SHADER, .FRAGMENT_SHADER},
+		dstAccessMask = {.SHADER_READ},
+		oldLayout = .GENERAL,
+		newLayout = .GENERAL,
+		image = image,
 		subresourceRange = {aspectMask = {.COLOR}, levelCount = vk.REMAINING_MIP_LEVELS, layerCount = 6},
 	}
 	dep := vk.DependencyInfo {
