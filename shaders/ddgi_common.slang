@@ -206,21 +206,15 @@ Vec4 ddgi_sample_one_ddgi_volume(
   // Compute the weight for this volume relative to other volumes
   float volume_weight = 1.0;
   if (skippable) {
-    // Compute the non-integer baseGridCoord. Use the unshifted position so that weights are consistent between
-    // volumes. Use the geometric mean across all axes.
-    Vec3 shifted_origin = ddgi_volume.grid_origin;
-
-    Vec3 real_grid_coord = (ws_position - shifted_origin) / ddgi_volume.probe_spacing;
-    for (int axis = 0; axis < 3; ++axis) {
-      float a = real_grid_coord[axis];
-      if (a < 1.0) {
-        volume_weight *= clamp(a, 0.0, 1.0);
-      } else if (a > float(ddgi_probe_counts(ddgi_volume)[axis]) - 2.0) {
-        volume_weight *= clamp(float(ddgi_probe_counts(ddgi_volume)[axis]) - 1.0 - a, 0.0, 1.0);
-      }
-    }
-    // Blending is improved without logarithmic fallof
-    //volumeWeight = pow(volumeWeight, 1.0 / 3.0);
+    // Deviation: full weight everywhere inside the probe grid, fading to zero over edge_fade outside it. The
+    // reference fades across the outermost cell inside the grid, which assumes volumes extend a cell past the
+    // geometry they light; this scene's volumes are authored tight to it, so the coarser volume behind would
+    // leak into surfaces in that cell.
+    Vec3 bmin = ddgi_volume.grid_origin;
+    Vec3 bmax = ddgi_volume.grid_origin + ddgi_volume.probe_spacing * Vec3(ddgi_probe_counts(ddgi_volume) - 1);
+    Vec3 inward = min(ws_position - bmin, bmax - ws_position); // per-axis distance to the walls (negative outside)
+    float m = min(inward.x, min(inward.y, inward.z));
+    volume_weight = saturate(1.0 + m / max(ddgi_volume.edge_fade, 1e-4));
   }
 
   if (volume_weight == 0.0) {
@@ -371,11 +365,43 @@ Vec4 ddgi_sample_one_ddgi_volume(
   return Vec4(irradiance.xyz, volume_weight);
 }
 
+// DDGIVolume.glsl: sampleIrradiance ([2021] §7.4)
+// Deviations: volumes come from a pointer and count (sorted by priority, highest first) instead of a fixed-size array,
+// and there are no camera-locked volumes (so no cameraPos) or debug parameters.
+Vec3 ddgi_sample_irradiance(
+    DDGIVolume* ddgi_volume_array,
+    u32 num_ddgi_volumes,
+    Vec3 ws_position,
+    Vec3 offset_pos,
+    Vec3 sample_direction) {
+
+  Vec4 sum = Vec4(0);
+
+  // Sample until we have "100%" weight covered, and then *stop* looking at lower-resolution
+  // volumes because they aren't needed.
+  for (u32 v = 0; (v < num_ddgi_volumes) && (sum.a < 1.0); ++v) {
+    // Can skip if not the last volume or some other volume has already contributed
+    bool skippable = (v < num_ddgi_volumes - 1) || (sum.a > 0.9f);
+    Vec4 irradiance = ddgi_sample_one_ddgi_volume(ddgi_volume_array[v], ws_position, offset_pos, sample_direction, skippable);
+
+    // Max contribution of other probes should be limited by how much more weight is required
+    irradiance.a *= saturate(1.0 - sum.a);
+
+    // Premultiply
+    irradiance.rgb *= irradiance.a;
+    sum += irradiance;
+  }
+
+  // Normalize
+  return sum.rgb / max(0.001, sum.a);
+}
+
 //------------------------------------------------------------------------
 // Engine entry points
 //------------------------------------------------------------------------
 
-// Deviation: a single volume, biased along the normal only.
-Vec3 ddgi_sample(DDGIVolume* ddgi_volume, Vec3 ws_position, Vec3 normal) {
-  return ddgi_sample_one_ddgi_volume(ddgi_volume[0], ws_position, normal, normal, false).rgb;
+// [2021] GIRenderer/GIRenderer_deferredShade.pix: computeScatteredIndirect
+Vec3 ddgi_sample_volumes(DDGIVolume* volumes, u32 num_volumes, Vec3 pos, Vec3 n, Vec3 camera_pos) {
+  Vec3 w_o = normalize(camera_pos - pos);
+  return ddgi_sample_irradiance(volumes, num_volumes, pos, n * 0.2 + w_o * 0.8, n);
 }

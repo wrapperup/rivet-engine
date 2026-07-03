@@ -25,6 +25,8 @@ struct DDGIVolume {
   f32 cheb_sharpness;
   f32 ray_max;
   f32 max_radiance;
+  f32 priority;
+  f32 edge_fade;
 };
 
 struct DDGITracePush {
@@ -96,13 +98,11 @@ struct ReflectionCapturePush {
   GlobalData* global;
   Geometry* geometries;
   Material* materials;
-  DDGIVolume* ddgi;
   AccelerationStructure tlas;
   RWImage2DArray out_cube;
   Vec3 center;
   u32 face_size;
   f32 ray_max;
-  f32 feedback;
 };
 
 struct ReflectionProbeDebugPush {
@@ -225,7 +225,8 @@ struct GlobalData {
   Vec3 camera_pos;
   Vec3 sun_direction;
   Sampler default_sampler;
-  DDGIVolume* ddgi;
+  DDGIVolume* ddgi_volumes;
+  u32 num_ddgi_volumes;
   ReflectionProbe* reflection_probes;
   u32 num_reflection_probes;
 };

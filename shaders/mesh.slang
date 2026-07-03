@@ -174,9 +174,13 @@ FragmentOutput fragment_main(FragmentInput in) {
     }
   }
 
-  // DDGI diffuse indirect (replaces the static SH/IBL ambient).
-  let dv = pc.global_data_buffer.ddgi;
-  frag_color += diffuse * ao * dv.intensity * ddgi_sample(dv, pos_ws, n);
+  // DDGI diffuse indirect (replaces the static SH/IBL ambient). Budget-fills the
+  // priority-sorted volume array; per-volume intensity is applied inside. camera_pos drives
+  // the view-aware surface bias (kills Chebyshev self-shadow splotches at grazing angles).
+  frag_color += diffuse * ao *
+                ddgi_sample_volumes(pc.global_data_buffer.ddgi_volumes,
+                                    pc.global_data_buffer.num_ddgi_volumes, pos_ws, n,
+                                    pc.global_data_buffer.camera_pos);
 
   // Specular reflections. The split-sum BRDF (DFG) weighting is shared; the reflected
   // *radiance* comes from the reflection probe (box-parallax + edge blend) where one

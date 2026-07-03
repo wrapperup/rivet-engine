@@ -69,7 +69,11 @@ float filter_pcf(Shadow_Params params, float2 screen_pos, float4 shadow_coord, f
   dirA *= dx;
   dirB *= dy;
 
-  float totalBias = bias + slope_bias * tan(acos(NoL));
+  // Clamp the slope term: tan(acos(NoL)) -> infinity at grazing NoL, which biases the receiver
+  // past its occluder and reads "lit" deep inside shadowed interiors (bright speckles on
+  // normal-mapped edges in dark rooms). 5 ~= NoL 0.2, so tuned cascade biases are unchanged
+  // above that; below it the direct term is killed by its own NoL factor anyway.
+  float totalBias = bias + slope_bias * min(tan(acos(NoL)), 5.0);
 
   for (int x = -range; x <= range; x++) {
     for (int y = -range; y <= range; y++) {

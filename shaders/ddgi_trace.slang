@@ -117,7 +117,7 @@ void compute_main(uint3 group_id: SV_GroupID, uint3 thread_id: SV_GroupThreadID)
     }
 
     // Multiple bounces: shade the hit with the probes' own irradiance ([2019] §5.3).
-    let indirect = ddgi_sample(pc.volume, hit_pos, N) * ddgi_volume.feedback;
+    let indirect = ddgi_sample_irradiance(pc.global.ddgi_volumes, pc.global.num_ddgi_volumes, hit_pos, N, N) * ddgi_volume.feedback;
 
     radiance = albedo * (pc.global.sun_color * ndotl * shadow + indirect);
   } else {

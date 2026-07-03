@@ -97,9 +97,10 @@ void compute_main(uint3 tid: SV_DispatchThreadID) {
       }
     }
 
-    // Match the forward pass's GI brightness: scale indirect by the volume's display
-    // intensity (NOT feedback, which is the DDGI bounce-recursion gain).
-    let indirect = ddgi_sample(pc.ddgi, hit_pos, N) * pc.ddgi.intensity;
+    // Match the forward pass's GI brightness: same volume-array select + per-volume display
+    // intensity as mesh.slang (NOT feedback, which is the DDGI bounce-recursion gain). The
+    // "viewer" for the surface bias is the capture center (where this ray came from).
+    let indirect = ddgi_sample_volumes(pc.global.ddgi_volumes, pc.global.num_ddgi_volumes, hit_pos, N, pc.center);
     radiance = albedo * (pc.global.sun_color * ndotl * shadow + indirect);
   } else {
     let env = pc.global.environment;
