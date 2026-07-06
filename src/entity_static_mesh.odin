@@ -1,8 +1,6 @@
 package game
 
-import "core:math/linalg/hlsl"
-
-import px "deps:physx-odin"
+import b3 "vendor:box3d"
 
 import "gfx"
 
@@ -11,13 +9,16 @@ StaticMesh :: struct {
 	using entity: ^Entity,
 	mesh:         GPUMeshBuffers,
 	material:     MaterialId,
-	body:         ^px.RigidStatic,
+	body:         b3.BodyId,
+	// Box3D keeps a reference to this baked mesh for the shape's lifetime, so we own it and must
+	// free it after the body is destroyed.
+	mesh_data:    ^b3.MeshData,
 	hidden:       bool,
 }
 
 // `path` is a mesh file relative to the working dir (e.g. "assets/meshes/static/sm_map_test.glb").
 // translation/rotation place both the rendered mesh and its physics body. Defaults keep it at the
-// origin with identity rotation — a zero-value quaternion would fail PhysX's pose.isSane() check.
+// origin with identity rotation.
 init_static_mesh :: proc(
 	static_mesh: ^StaticMesh,
 	path: string,
@@ -31,47 +32,40 @@ init_static_mesh :: proc(
 	gpu_mesh := upload_mesh_to_gpu(mesh)
 	defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, gpu_mesh)
 
-	tolerances_scale := px.tolerances_scale_new(1, 10)
-	params := px.cooking_params_new(tolerances_scale)
-
-	points_data := make([]hlsl.float3, len(mesh.vertices))
-	defer delete(points_data)
-
+	// Bake the triangle soup into a Box3D collision mesh (this is the "cook" step).
+	points := make([]b3.Vec3, len(mesh.vertices))
+	defer delete(points)
 	for vertex, i in mesh.vertices {
-		points_data[i] = vertex.position
+		points[i] = transmute(b3.Vec3)vertex.position
 	}
 
-	mesh_desc := px.triangle_mesh_desc_new()
+	indices := make([]i32, len(mesh.indices))
+	defer delete(indices)
+	for index, i in mesh.indices {
+		indices[i] = i32(index)
+	}
 
-	mesh_desc.points.count = u32(len(mesh.vertices))
-	mesh_desc.points.stride = size_of(hlsl.float3)
-	mesh_desc.points.data = raw_data(points_data)
+	mesh_def := b3.MeshDef {
+		vertices      = raw_data(points),
+		vertexCount   = i32(len(points)),
+		indices       = raw_data(indices),
+		triangleCount = i32(len(indices) / 3),
+		identifyEdges = true, // smoother character collision across mesh edges
+	}
 
-	mesh_desc.triangles.count = u32(len(mesh.indices)) / 3
-	mesh_desc.triangles.stride = 3 * size_of(u32)
-	mesh_desc.triangles.data = raw_data(mesh.indices)
+	static_mesh.mesh_data = b3.CreateMesh(mesh_def, nil, 0)
+	assert(static_mesh.mesh_data != nil)
 
-	// valid := px.validate_triangle_mesh(params, mesh_desc)
-	// assert(valid, "Mesh is not valid.")
+	body_def := b3.DefaultBodyDef()
+	body_def.type = .staticBody
+	body_def.position = translation
+	body_def.rotation = rotation
+	body_def.userData = entity_id_to_rawptr(static_mesh.id)
+	static_mesh.body = b3.CreateBody(game.phys.world, body_def)
 
-	result: px.TriangleMeshCookingResult
-	tri_mesh := px.create_triangle_mesh(params, mesh_desc, px.physics_get_physics_insertion_callback_mut(game.phys.physics), &result)
-	assert(result == .Success)
-
-	geometry := px.triangle_mesh_geometry_new(tri_mesh, px.mesh_scale_new_1(1), {})
-
-	phys_material := px.physics_create_material_mut(game.phys.physics, 0.9, 0.5, 0.1)
-
-	static_mesh.body = px.create_static(
-		game.phys.physics,
-		px.transform_new_5(transmute(px.Vec3)translation, transmute(px.Quat)rotation),
-		&geometry,
-		phys_material,
-		px.transform_new_1({0, 0, 0}),
-	)
-	assert(static_mesh.body != nil)
-
-	px.scene_add_actor_mut(game.phys.scene, static_mesh.body, nil)
+	shape_def := b3.DefaultShapeDef()
+	shape_def.baseMaterial = phys_default_material()
+	_ = b3.CreateMeshShape(static_mesh.body, shape_def, static_mesh.mesh_data, {1, 1, 1})
 
 	static_mesh.translation = translation
 	static_mesh.rotation = rotation
@@ -79,13 +73,18 @@ init_static_mesh :: proc(
 	static_mesh.material = material
 }
 
-// Release the PhysX body. Releasing an actor also removes it from its scene, so scene reload
-// doesn't accumulate invisible colliders. NOTE: the GPU mesh is still deferred to gfx global_arena
-// in init, so it survives reload (memory grows on repeated reloads) — route it through the scene
-// arena when the asset_name refactor lands.
+// Destroying the body also destroys its shapes and removes it from the world, so scene reload
+// doesn't accumulate invisible colliders. The baked mesh is freed after the body that referenced
+// it. NOTE: the GPU mesh is still deferred to gfx global_arena in init, so it survives reload
+// (memory grows on repeated reloads) — route it through the scene arena when the asset_name
+// refactor lands.
 static_mesh_destroy :: proc(static_mesh: ^StaticMesh) {
-	if static_mesh.body != nil {
-		px.actor_release_mut(static_mesh.body)
-		static_mesh.body = nil
+	if b3.IS_NON_NULL(static_mesh.body) {
+		b3.DestroyBody(static_mesh.body)
+		static_mesh.body = b3.nullBodyId
+	}
+	if static_mesh.mesh_data != nil {
+		b3.DestroyMesh(static_mesh.mesh_data)
+		static_mesh.mesh_data = nil
 	}
 }

@@ -5,18 +5,14 @@ import "core:time"
 
 import glfw "vendor:glfw"
 
-import px "deps:physx-odin"
+import b3 "vendor:box3d"
 
 import gfx "gfx"
 
 NUM_FRAME_AVG_COUNT :: 10
 
 PhysicsContext :: struct {
-	foundation:         ^px.Foundation,
-	dispatcher:         ^px.DefaultCpuDispatcher,
-	physics:            ^px.Physics,
-	scene:              ^px.Scene,
-	controller_manager: ^px.ControllerManager,
+	world: b3.WorldId,
 }
 
 ViewState :: enum {

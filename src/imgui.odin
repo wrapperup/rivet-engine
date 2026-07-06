@@ -10,7 +10,7 @@ import "core:slice"
 import "core:strings"
 
 import im "deps:odin-imgui"
-import px "deps:physx-odin"
+import b3 "vendor:box3d"
 
 import "gfx"
 
@@ -158,16 +158,8 @@ update_imgui :: proc() {
 
 	bl := im.GetBackgroundDrawList()
 
-	rb := px.scene_get_render_buffer_mut(game.phys.scene)
-	for i in 0 ..< px.render_buffer_get_nb_lines(rb) {
-		line := px.render_buffer_get_lines(rb)[i]
-
-		line0, ok := world_space_to_clip_space(view_projection, transmute(Vec3)line.pos0)
-		line1, ok2 := world_space_to_clip_space(view_projection, transmute(Vec3)line.pos1)
-
-		if !ok && !ok2 do continue
-
-		im.DrawList_AddLine(bl, line0, line1, line.color0, 1.0)
+	if g_show_physics_debug {
+		physics_debug_draw(view_projection, bl)
 	}
 
 	if action_just_pressed(.ShowDebug) {
@@ -212,18 +204,7 @@ update_imgui :: proc() {
 	}
 
 	if im.Begin("Physics") {
-		enabled := px.scene_get_visualization_parameter(game.phys.scene, .Scale) > 0.0
-		if im.Checkbox("Enable debug view", &enabled) {
-			min := player.translation - 50
-			max := player.translation + 50
-			px.scene_set_visualization_culling_box_mut(game.phys.scene, px.bounds3_new_1(transmute(px.Vec3)min, transmute(px.Vec3)max))
-			px.scene_set_visualization_parameter_mut(game.phys.scene, .Scale, enabled ? 1.0 : 0.0)
-			px.scene_set_visualization_parameter_mut(game.phys.scene, .CollisionShapes, enabled ? 1.0 : 0.0)
-			px.scene_set_visualization_parameter_mut(game.phys.scene, .CollisionCompounds, enabled ? 1.0 : 0.0)
-			px.scene_set_visualization_parameter_mut(game.phys.scene, .SimulationMesh, enabled ? 1.0 : 0.0)
-			px.scene_set_visualization_parameter_mut(game.phys.scene, .WorldAxes, enabled ? 1.0 : 0.0)
-
-		}
+		im.Checkbox("Enable debug view", &g_show_physics_debug)
 	}
 	im.End()
 
@@ -442,4 +423,75 @@ update_imgui :: proc() {
 	// 	}
 	// }
 	// im.End()
+}
+
+// ---------------------------------------------------------------------------
+// Box3D debug draw (replaces the PhysX render-buffer line loop)
+// ---------------------------------------------------------------------------
+
+@(private = "file")
+g_show_physics_debug: bool
+
+@(private = "file")
+Phys_Debug_Ctx :: struct {
+	view_projection: Mat4x4,
+	draw_list:       ^im.DrawList,
+}
+
+@(private = "file")
+phys_hex_to_im :: proc(color: b3.HexColor) -> u32 {
+	c := u32(color)
+	r := f32((c >> 16) & 0xff) / 255
+	g := f32((c >> 8) & 0xff) / 255
+	b := f32(c & 0xff) / 255
+	return im.GetColorU32ImVec4({r, g, b, 1})
+}
+
+@(private = "file")
+phys_debug_segment :: proc "c" (p1, p2: b3.Pos, color: b3.HexColor, ctx: rawptr) {
+	context = runtime.default_context()
+	dc := cast(^Phys_Debug_Ctx)ctx
+	a, ok0 := world_space_to_clip_space(dc.view_projection, transmute(Vec3)p1)
+	b, ok1 := world_space_to_clip_space(dc.view_projection, transmute(Vec3)p2)
+	if !ok0 || !ok1 do return
+	im.DrawList_AddLine(dc.draw_list, a, b, phys_hex_to_im(color), 1.0)
+}
+
+@(private = "file")
+phys_debug_bounds :: proc "c" (aabb: b3.AABB, color: b3.HexColor, ctx: rawptr) {
+	context = runtime.default_context()
+	dc := cast(^Phys_Debug_Ctx)ctx
+	lo := transmute(Vec3)aabb.lowerBound
+	hi := transmute(Vec3)aabb.upperBound
+	corners := [8]Vec3 {
+		{lo.x, lo.y, lo.z},
+		{hi.x, lo.y, lo.z},
+		{hi.x, hi.y, lo.z},
+		{lo.x, hi.y, lo.z},
+		{lo.x, lo.y, hi.z},
+		{hi.x, lo.y, hi.z},
+		{hi.x, hi.y, hi.z},
+		{lo.x, hi.y, hi.z},
+	}
+	edges := [12][2]int{{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6}, {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}}
+	col := phys_hex_to_im(color)
+	for e in edges {
+		a, ok0 := world_space_to_clip_space(dc.view_projection, corners[e[0]])
+		b, ok1 := world_space_to_clip_space(dc.view_projection, corners[e[1]])
+		if !ok0 || !ok1 do continue
+		im.DrawList_AddLine(dc.draw_list, a, b, col, 1.0)
+	}
+}
+
+physics_debug_draw :: proc(view_projection: Mat4x4, draw_list: ^im.DrawList) {
+	dc := Phys_Debug_Ctx{view_projection, draw_list}
+
+	dd := b3.DefaultDebugDraw()
+	dd.DrawSegmentFcn = phys_debug_segment
+	dd.DrawBoundsFcn = phys_debug_bounds
+	dd.drawShapes = true
+	dd.drawBounds = true
+	dd.ctx = &dc
+
+	b3.World_Draw(game.phys.world, &dd, max(u64))
 }

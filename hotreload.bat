@@ -7,7 +7,6 @@ set FLAGS=src ^
     -custom-attribute:shader_shared ^
     -custom-attribute:entity ^
     -show-timings ^
-    -extra-linker-flags:/NODEFAULTLIB:libcmt ^
     -linker=radlink ^
     -debug ^
     -o:none ^

@@ -107,13 +107,9 @@ GPUCascadeConfig :: struct #max_field_align(16) {
 
 @(shader_shared)
 GPUGlobalData :: struct #max_field_align(16) {
-	// Matrices MUST stay first. Odin aligns matrix[4,4]f32 to 32 (capped to 16 here), but the
-	// shaders use scalar layout where matrices align to 4 — the two only agree when each matrix
-	// sits on a 16-byte offset. Keeping them at the top pins them to offsets 0/64/128. The
-	// generated #assert guards in src/generated.odin fail the build if this is ever violated.
 	view_to_clip:             Mat4x4,
 	world_to_view:            Mat4x4,
-	clip_to_world:            Mat4x4, // inverse(view_to_clip * world_to_view), for ray reconstruction
+	clip_to_world:            Mat4x4,
 	environment:              GPUEnvironment,
 	cascade_world_to_shadows: GPUPtr(Mat4x4),
 	cascade_configs:          GPUPtr(GPUCascadeConfig),
@@ -122,9 +118,9 @@ GPUGlobalData :: struct #max_field_align(16) {
 	camera_pos:               Vec3,
 	sun_direction:            Vec3,
 	default_sampler:          SamplerId `Sampler`,
-	ddgi_volumes:             GPUPtr(GPUDDGIVolume), // packed array (num_ddgi_volumes entries, priority-sorted)
+	ddgi_volumes:             GPUPtr(GPUDDGIVolume),
 	num_ddgi_volumes:         u32,
-	reflection_probes:        GPUPtr(GPUReflectionProbe), // packed array (num_reflection_probes entries)
+	reflection_probes:        GPUPtr(GPUReflectionProbe),
 	num_reflection_probes:    u32,
 }
 
@@ -168,13 +164,17 @@ RenderState :: struct {
 
 	// Tonemapper pipelines
 	tonemapper_pipeline:             ^gfx.ComputePipeline,
-	debug_rt_pipeline:               ^gfx.ComputePipeline,
+
+
+    // DDGI pipelines
 	ddgi_trace_pipeline:             ^gfx.ComputePipeline,
 	ddgi_update_pipeline:            ^gfx.ComputePipeline,
 	ddgi_border_pipeline:            ^gfx.ComputePipeline,
 	ddgi_relocate_pipeline:          ^gfx.ComputePipeline,
 	ddgi_debug_pipeline:             ^gfx.ComputePipeline,
 	ddgi_probe_pipeline:             ^gfx.GraphicsPipeline,
+
+    // Reflection probe pipelines
 	reflection_capture_pipeline:     ^gfx.ComputePipeline,
 	reflection_prefilter_pipeline:   ^gfx.ComputePipeline,
 	reflection_probe_debug_pipeline: ^gfx.GraphicsPipeline,
@@ -184,6 +184,9 @@ RenderState :: struct {
 	skybox_pipeline:                 ^gfx.GraphicsPipeline,
 	skybox_mesh:                     GPUMeshBuffers,
 	draw_skybox:                     bool,
+
+    // Debug
+	debug_rt_pipeline:               ^gfx.ComputePipeline,
 
 	// UI
 	ui_pass:                         UIPass,

@@ -14,7 +14,6 @@ import ma "vendor:miniaudio"
 
 import im "deps:odin-imgui"
 import im_glfw "deps:odin-imgui/imgui_impl_glfw"
-import px "deps:physx-odin"
 import im_gfx "gfx/imgui_backend"
 
 import "gfx"
@@ -79,50 +78,8 @@ game_init :: proc() {
 	init_sound_system()
 	// init_asset_system()
 
-	g_physx_error_callback := px.create_error_callback(user_error_callback, nil)
-
 	// Physics
-	{
-		PX_PHYSICS_VERSION_MAJOR :: 5
-		PX_PHYSICS_VERSION_MINOR :: 1
-		PX_PHYSICS_VERSION_BUGFIX :: 3
-
-		PX_PHYSICS_VERSION :: ((PX_PHYSICS_VERSION_MAJOR << 24) + (PX_PHYSICS_VERSION_MINOR << 16) + (PX_PHYSICS_VERSION_BUGFIX << 8) + 0)
-
-		game.phys.foundation = px.create_foundation(PX_PHYSICS_VERSION, px.get_default_allocator(), g_physx_error_callback)
-
-		assert(game.phys.foundation != nil)
-
-		game.phys.dispatcher = px.default_cpu_dispatcher_create(1, nil, px.DefaultCpuDispatcherWaitForWorkMode.WaitForWork, 0)
-
-		game.phys.physics = px.create_physics_ext(game.phys.foundation)
-
-		assert(px.get_foundation() == game.phys.foundation)
-		assert(px.physics_get_foundation_mut(game.phys.physics) == game.phys.foundation)
-
-		callback_info := px.SimulationEventCallbackInfo {
-			collision_callback        = collision_callback,
-			trigger_callback          = trigger_callback,
-			constraint_break_callback = constraint_break_callback,
-			wake_sleep_callback       = wake_sleep_callback,
-			advance_callback          = advance_callback,
-		}
-
-		callback := px.create_simulation_event_callbacks(&callback_info)
-
-		scene_desc := px.scene_desc_new(px.tolerances_scale_new(1.0, 10.0))
-		scene_desc.gravity = px.vec3_new_3(0.0, -9.81 * 2, 0.0)
-		scene_desc.cpuDispatcher = game.phys.dispatcher
-		scene_desc.simulationEventCallback = callback
-
-		px.enable_custom_filter_shader(&scene_desc, collision_filter_shader, 1)
-
-		game.phys.scene = px.physics_create_scene_mut(game.phys.physics, scene_desc)
-
-		game.phys.controller_manager = px.create_controller_manager(game.phys.scene, false)
-
-		px.scene_set_visualization_culling_box_mut(game.phys.scene, px.bounds3_new_1({-50, -50, -50}, {50, 50, 50}))
-	}
+	physics_init()
 
 	// Rendering
 	{
@@ -280,9 +237,7 @@ game_update :: proc() -> bool {
 	{
 		scope_stat_time(.Physics)
 
-		px.scene_simulate_mut(game.phys.scene, f32(dt), nil, nil, 0, true)
-		error: u32 = 0
-		px.scene_fetch_results_mut(game.phys.scene, true, &error)
+		physics_step(f32(dt))
 	}
 
 	if glfw.GetWindowAttrib(game.window, glfw.ICONIFIED) == 0 {
@@ -323,12 +278,7 @@ game_update :: proc() -> bool {
 
 @(export)
 game_shutdown :: proc() {
-	px.controller_manager_release_mut(game.phys.controller_manager)
-	px.scene_release_mut(game.phys.scene)
-	px.scene_release_mut(game.phys.scene)
-	px.physics_release_mut(game.phys.physics)
-	px.default_cpu_dispatcher_release_mut(game.phys.dispatcher)
-	px.foundation_release_mut(game.phys.foundation)
+	physics_shutdown()
 
 	renderer_shutdown()
 }

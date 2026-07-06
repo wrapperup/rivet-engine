@@ -1,6 +1,5 @@
 package game
 
-import "core:math"
 import "gfx"
 import vk "vendor:vulkan"
 
