@@ -45,6 +45,7 @@ Asset_Name :: enum {
     sk_materialball,
     sk_materialball_oldy,
     sk_skeltest2,
+    door,
     material_ball,
     scene_map_test,
     scene_reflection_probes,
@@ -120,6 +121,7 @@ load_generated_assets :: proc() -> bool {
     asset_map[.sk_materialball] = load_asset("assets/meshes/skel/sk_materialball.glb") or_return
     asset_map[.sk_materialball_oldy] = load_asset("assets/meshes/skel/sk_materialball_oldy.glb") or_return
     asset_map[.sk_skeltest2] = load_asset("assets/meshes/skel/sk_skeltest2.glb") or_return
+    asset_map[.door] = load_asset("assets/meshes/static/door.glb") or_return
     asset_map[.material_ball] = load_asset("assets/meshes/static/material_ball.glb") or_return
     asset_map[.scene_map_test] = load_asset("assets/meshes/static/scene_map_test.glb") or_return
     asset_map[.scene_reflection_probes] = load_asset("assets/meshes/static/scene_reflection_probes.glb") or_return
