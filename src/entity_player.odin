@@ -23,7 +23,6 @@ Player :: struct {
 	move_mode:                  Move_Mode,
 	camera_rot:                 Vec3,
 	camera_fov_deg:             f32,
-	// Grounding from last frame's mover move: whether we're on standable ground and its true normal.
 	grounded:                   bool,
 	ground_normal:              Vec3,
 	fire_time:                  f64,
@@ -111,9 +110,6 @@ update_player :: proc(player: ^Player, dt: f64) {
 
 	switch player.move_mode {
 	case .Ground:
-		// Grounding comes from last frame's mover move, which probes the geometry directly beneath us
-		// with a downward ray — the true floor/step normal, not the capsule contact normals. So floor
-		// and step edges read as flat, standable ground rather than steep slopes.
 		is_grounded := player.grounded
 
 		acceleration: Vec3
@@ -134,14 +130,10 @@ update_player :: proc(player: ^Player, dt: f64) {
 			acceleration.xz +=
 				apply_acceleration(-linalg.normalize0(player.velocity), 10, max_braking_acceleration, player.velocity, is_grounded, dt).xz
 		} else if is_grounded && linalg.length(player.velocity.xz) < 1 {
-			// Standing on ground with no input: kill all velocity (not just horizontal) so a
-			// residual vertical component can't be projected into a downhill slide on slopes.
 			acceleration.xz = 0
 			player.velocity = 0
 		}
 
-		// Gravity only while airborne. On walkable ground we hold the player to the slope (below)
-		// instead — otherwise gravity's downhill component survives ClipVector and slides them off.
 		if !is_grounded {
 			player.velocity += {0, -70, 0} * f32(dt)
 		}
@@ -185,8 +177,6 @@ update_player :: proc(player: ^Player, dt: f64) {
 			player.is_grounded_last_frame = false
 		}
 
-		// On walkable ground the mover drives height (it moves us raised, then drops onto the floor),
-		// so vertical velocity plays no part — drop it. Kept when airborne so jumps keep their arc.
 		if player.is_grounded_last_frame {
 			player.velocity.y = 0
 		}

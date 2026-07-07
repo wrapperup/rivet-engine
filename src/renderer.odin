@@ -1,10 +1,10 @@
 package game
 
+import "core:log"
+import "core:math"
 import "core:math/linalg"
 import "core:slice"
 import "core:time"
-import "core:log"
-import "core:math"
 
 import im "deps:odin-imgui"
 import im_glfw "deps:odin-imgui/imgui_impl_glfw"
@@ -140,6 +140,7 @@ ShadowRenderPass :: struct {
 }
 
 PostProcessingRenderPass :: struct {
+	tony_mc_mapface_id:  ImageId,
 	tonemapper_pipeline: ^gfx.ComputePipeline,
 }
 
@@ -171,7 +172,6 @@ RenderState :: struct {
 		point_light_buffer: gfx.GPUBuffer(GPUPointLight),
 	},
 	temp_resources:                  struct {
-		tony_mc_mapface_id:      ImageId,
 		dfg_id:                  ImageId,
 		env_id:                  ImageId,
 		default_sampler_id:      SamplerId,
@@ -309,7 +309,7 @@ init_test_resources :: proc() {
 		rs := &game.render_state
 		tr := &rs.temp_resources
 
-		tr.tony_mc_mapface_id = gfx.add_image(tony_mc_mapface)
+		rs.post_process_rp.tony_mc_mapface_id = gfx.add_image(tony_mc_mapface)
 		tr.dfg_id = gfx.add_image(dfg)
 		tr.env_id = gfx.add_image(env)
 
@@ -351,55 +351,37 @@ init_render_passes :: proc() {
 }
 
 init_ddgi_rp :: proc() {
-    ddgi_rp := &game.render_state.ddgi_rp
+	ddgi_rp := &game.render_state.ddgi_rp
 
-	ddgi_rp.trace_pipeline = add_compute_shader(
-		"shaders/ddgi_trace.slang",
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("DDGI_Trace", module, GPUDDGITracePush)
-		},
-	)
-	ddgi_rp.update_pipeline = add_compute_shader(
-		"shaders/ddgi_update.slang",
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("DDGI_Update", module, GPUDDGIUpdatePush)
-		},
-	)
-	ddgi_rp.border_pipeline = add_compute_shader(
-		"shaders/ddgi_border.slang",
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("DDGI_Border", module, GPUDDGIUpdatePush)
-		},
-	)
-	ddgi_rp.relocate_pipeline = add_compute_shader(
-		"shaders/ddgi_relocate.slang",
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("DDGI_Relocate", module, GPUDDGIRelocatePush)
-		},
-	)
-	ddgi_rp.debug_pipeline = add_compute_shader(
-		"shaders/ddgi_debug_atlas.slang",
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("DDGI_Debug_Atlas", module, GPUDDGIDebugAtlasPush)
-		},
-	)
-	ddgi_rp.probe_pipeline = add_graphics_shader(
-		"shaders/ddgi_debug_probes.slang",
-		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-			return gfx.create_graphics_pipeline(
-				name = "DDGI_Debug_Probes",
-				shader = module,
-				input_topology = .TRIANGLE_LIST,
-				polygon_mode = .FILL,
-				cull_mode = {},
-				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-				color_format = gfx.r_ctx.draw_image.format,
-				multisampling_samples = gfx.msaa_samples(),
-				push_constants = GPUDDGIProbePush,
-			)
-		},
-	)
+	ddgi_rp.trace_pipeline = add_compute_shader("shaders/ddgi_trace.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+		return gfx.create_compute_pipeline("DDGI_Trace", module, GPUDDGITracePush)
+	})
+	ddgi_rp.update_pipeline = add_compute_shader("shaders/ddgi_update.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+		return gfx.create_compute_pipeline("DDGI_Update", module, GPUDDGIUpdatePush)
+	})
+	ddgi_rp.border_pipeline = add_compute_shader("shaders/ddgi_border.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+		return gfx.create_compute_pipeline("DDGI_Border", module, GPUDDGIUpdatePush)
+	})
+	ddgi_rp.relocate_pipeline = add_compute_shader("shaders/ddgi_relocate.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+		return gfx.create_compute_pipeline("DDGI_Relocate", module, GPUDDGIRelocatePush)
+	})
+	ddgi_rp.debug_pipeline = add_compute_shader("shaders/ddgi_debug_atlas.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+		return gfx.create_compute_pipeline("DDGI_Debug_Atlas", module, GPUDDGIDebugAtlasPush)
+	})
+	ddgi_rp.probe_pipeline = add_graphics_shader("shaders/ddgi_debug_probes.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
+		return gfx.create_graphics_pipeline(
+			name = "DDGI_Debug_Probes",
+			shader = module,
+			input_topology = .TRIANGLE_LIST,
+			polygon_mode = .FILL,
+			cull_mode = {},
+			front_face = .COUNTER_CLOCKWISE,
+			depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
+			color_format = gfx.r_ctx.draw_image.format,
+			multisampling_samples = gfx.msaa_samples(),
+			push_constants = GPUDDGIProbePush,
+		)
+	})
 	game.render_state.reflection_capture_pipeline = add_compute_shader(
 		"shaders/reflection_capture.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
@@ -1096,7 +1078,7 @@ post_processing_pass :: proc(cmd: vk.CommandBuffer) {
 		cmd,
 		GPUPostProcessingPushConstants {
 			resolved_image = game.render_state.temp_resources.resolved_image_id,
-			tony_mc_mapface = game.render_state.temp_resources.tony_mc_mapface_id,
+			tony_mc_mapface = game.render_state.post_process_rp.tony_mc_mapface_id,
 			sampler = game.render_state.temp_resources.default_sampler_id,
 		},
 	)
