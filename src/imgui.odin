@@ -317,8 +317,8 @@ update_imgui :: proc() {
 
 	if im.Begin("DDGI") {
 		im.Checkbox("Update", &game.state.update_ddgi)
-		im.Checkbox("Draw probes", &game.render_state.draw_ddgi_probes)
-		im.InputInt("Atlas debug volume", &game.render_state.ddgi_debug_volume)
+		im.Checkbox("Draw probes", &game.render_state.ddgi_rp.draw_probes)
+		im.InputInt("Atlas debug volume", &game.render_state.ddgi_rp.debug_volume)
 		for &volume, i in get_entities(DDGIVolume) {
 			im.PushIDInt(i32(i))
 			counts := volume.gpu.grid_counts
@@ -339,7 +339,7 @@ update_imgui :: proc() {
 	im.End()
 
 	if im.Begin("Reflection Probes") {
-		im.Checkbox("Draw volumes", &game.render_state.draw_reflection_probes)
+		im.Checkbox("Draw volumes", &game.render_state.ddgi_rp.draw_reflection_probes)
 		im.Checkbox("Recapture every frame", &game.state.update_reflections)
 		// PushID per probe so widgets don't collide on shared labels when there are multiple.
 		for &probe, i in get_entities(ReflectionProbe) {
@@ -359,7 +359,7 @@ update_imgui :: proc() {
 	im.End()
 
 	// Box volume overlay (drawn unconditionally on the flag, regardless of panel state).
-	if game.render_state.draw_reflection_probes {
+	if game.render_state.ddgi_rp.draw_reflection_probes {
 		for &probe in get_entities(ReflectionProbe) {
 			reflection_probe_debug_draw_box(&probe)
 		}

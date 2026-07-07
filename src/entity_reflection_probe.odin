@@ -165,7 +165,7 @@ reflection_probe_destroy :: proc(probe: ^ReflectionProbe) {
 // Debug gizmo: draw a perfect mirror sphere at each probe's capture point, sampling its
 // captured cube. Reuses the DDGI debug-sphere mesh. Renders into the HDR scene.
 reflection_probe_debug_spheres_pass :: proc(cmd: vk.CommandBuffer) {
-	rs := &game.render_state
+	rp := &game.render_state.ddgi_rp
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = gfx.r_ctx.draw_extent,
@@ -173,8 +173,8 @@ reflection_probe_debug_spheres_pass :: proc(cmd: vk.CommandBuffer) {
 		depth_attachment = &{view = gfx.r_ctx.depth_image.image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL},
 	)
 	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
-	gfx.cmd_bind_pipeline(cmd, rs.reflection_probe_debug_pipeline)
-	gfx.cmd_bind_index_buffer(cmd, rs.ddgi_probe_ibuf.buffer)
+	gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_probe_debug_pipeline)
+	gfx.cmd_bind_index_buffer(cmd, rp.probe_ibuf.buffer)
 
 	for &probe in get_entities(ReflectionProbe) {
 		// Always drawn (even before the first capture, where the cube reads black) so the
@@ -184,12 +184,12 @@ reflection_probe_debug_spheres_pass :: proc(cmd: vk.CommandBuffer) {
 			GPUReflectionProbeDebugPush {
 				global = current_frame_game().global_buffer.ptr,
 				probe = probe.config.ptr,
-				vertex_buffer = rs.ddgi_probe_vbuf.ptr,
+				vertex_buffer = rp.probe_vbuf.ptr,
 				center = probe.translation,
 				radius = probe.debug_radius,
 			},
 		)
-		gfx.cmd_draw_indexed(cmd, rs.ddgi_probe_index_count, instance_count = 1)
+		gfx.cmd_draw_indexed(cmd, rp.probe_index_count, instance_count = 1)
 	}
 	gfx.cmd_end_rendering(cmd)
 }

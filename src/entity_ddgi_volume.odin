@@ -229,22 +229,22 @@ ddgi_make_sphere :: proc(rings, sectors: int) -> ([]Vertex, []u32) {
 }
 
 ddgi_init_debug_sphere :: proc() {
-	rs := &game.render_state
+	rp := &game.render_state.ddgi_rp
 	verts, indices := ddgi_make_sphere(12, 16)
 	defer delete(verts)
 	defer delete(indices)
 
-	rs.ddgi_probe_vbuf = gfx.create_buffer(Vertex, len(verts))
-	rs.ddgi_probe_ibuf = gfx.create_buffer(u32, len(indices), .Index)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rs.ddgi_probe_vbuf)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rs.ddgi_probe_ibuf)
-	gfx.staging_write_buffer_slice(&rs.ddgi_probe_vbuf, verts)
-	gfx.staging_write_buffer_slice(&rs.ddgi_probe_ibuf, indices)
-	rs.ddgi_probe_index_count = u32(len(indices))
+	rp.probe_vbuf = gfx.create_buffer(Vertex, len(verts))
+	rp.probe_ibuf = gfx.create_buffer(u32, len(indices), .Index)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.probe_vbuf)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.probe_ibuf)
+	gfx.staging_write_buffer_slice(&rp.probe_vbuf, verts)
+	gfx.staging_write_buffer_slice(&rp.probe_ibuf, indices)
+	rp.probe_index_count = u32(len(indices))
 }
 
 ddgi_debug_probes_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
-	rs := &game.render_state
+	rp := &game.render_state.ddgi_rp
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = gfx.r_ctx.draw_extent,
@@ -252,19 +252,19 @@ ddgi_debug_probes_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resou
 		depth_attachment = &{view = gfx.r_ctx.depth_image.image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL},
 	)
 	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
-	gfx.cmd_bind_pipeline(cmd, rs.ddgi_probe_pipeline)
-	gfx.cmd_bind_index_buffer(cmd, rs.ddgi_probe_ibuf.buffer)
+	gfx.cmd_bind_pipeline(cmd, rp.probe_pipeline)
+	gfx.cmd_bind_index_buffer(cmd, rp.probe_ibuf.buffer)
 	gfx.cmd_push_constants(
 		cmd,
 		GPUDDGIProbePush {
 			global = current_frame_game().global_buffer.ptr,
 			volume = volume.config_buffer.ptr,
-			vertex_buffer = rs.ddgi_probe_vbuf.ptr,
+			vertex_buffer = rp.probe_vbuf.ptr,
 			probe_radius = 0.3,
 		},
 	)
 	counts := volume.gpu.grid_counts
-	gfx.cmd_draw_indexed(cmd, rs.ddgi_probe_index_count, instance_count = counts[0] * counts[1] * counts[2])
+	gfx.cmd_draw_indexed(cmd, rp.probe_index_count, instance_count = counts[0] * counts[1] * counts[2])
 	gfx.cmd_end_rendering(cmd)
 }
 
@@ -285,7 +285,7 @@ ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources
 	}
 
 	// Pass A: trace.
-	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_trace_pipeline)
+	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_rp.trace_pipeline)
 	gfx.cmd_push_constants(
 		cmd,
 		GPUDDGITracePush {
@@ -304,7 +304,7 @@ ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources
 
 	init_iteration := volume.gpu.frame_index
 	if init_iteration >= 1 && init_iteration <= 6 {
-		gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_relocate_pipeline)
+		gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_rp.relocate_pipeline)
 		gfx.cmd_push_constants(
 			cmd,
 			GPUDDGIRelocatePush {
@@ -320,7 +320,7 @@ ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources
 	}
 
 	// Pass B: update irradiance and visibility.
-	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_update_pipeline)
+	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_rp.update_pipeline)
 	gfx.cmd_push_constants(cmd, update_push)
 	vk.CmdDispatch(cmd, num_probes, 1, DDGI_UPDATE_BLOCKS_PER_PROBE)
 
@@ -329,7 +329,7 @@ ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources
 	ddgi_image_barrier(cmd, volume.depth.image)
 
 	// Pass C: octahedral border copy.
-	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_border_pipeline)
+	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_rp.border_pipeline)
 	gfx.cmd_push_constants(cmd, update_push)
 	vk.CmdDispatch(cmd, num_probes, 1, 1)
 	ddgi_image_barrier(cmd, volume.irradiance.image)
@@ -358,7 +358,7 @@ ddgi_image_barrier :: proc(cmd: vk.CommandBuffer, image: vk.Image) {
 }
 
 ddgi_debug_atlas_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
-	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_debug_pipeline)
+	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_rp.debug_pipeline)
 	gfx.cmd_push_constants(
 		cmd,
 		GPUDDGIDebugAtlasPush{volume = volume.config_buffer.ptr, out_image = game.render_state.temp_resources.resolved_image_id},

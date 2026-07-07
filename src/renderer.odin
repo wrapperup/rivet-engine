@@ -1,18 +1,15 @@
 package game
 
-import "core:fmt"
-import "core:image"
-import "core:log"
-import "core:math"
 import "core:math/linalg"
-import "core:os"
 import "core:slice"
 import "core:time"
+import "core:log"
+import "core:math"
 
-import sp "deps:odin-slang/slang"
-import vk "vendor:vulkan"
 import im "deps:odin-imgui"
 import im_glfw "deps:odin-imgui/imgui_impl_glfw"
+import sp "deps:odin-slang/slang"
+import vk "vendor:vulkan"
 
 import "gfx"
 import im_gfx "gfx/imgui_backend"
@@ -124,6 +121,44 @@ GPUGlobalData :: struct #max_field_align(16) {
 	num_reflection_probes:    u32,
 }
 
+GeometryRenderPass :: struct {
+	mesh_pipeline:  ^gfx.GraphicsPipeline,
+	model_matrices: [dynamic]Mat4x4,
+}
+
+SkinningRenderPass :: struct {
+	skinning_pipeline: ^gfx.ComputePipeline,
+}
+
+ShadowRenderPass :: struct {
+	mesh_shadow_pipeline:            ^gfx.GraphicsPipeline,
+	shadow_depth_image:              gfx.GPUImage,
+	shadow_depth_image_id:           ImageId,
+	shadow_depth_attach_image_views: [NUM_CASCADES]vk.ImageView,
+	cascade_world_to_shadows:        [NUM_CASCADES]Mat4x4,
+	cascade_configs:                 [NUM_CASCADES]GPUCascadeConfig,
+}
+
+PostProcessingRenderPass :: struct {
+	tonemapper_pipeline: ^gfx.ComputePipeline,
+}
+
+DDGIRenderPass :: struct {
+	trace_pipeline:         ^gfx.ComputePipeline,
+	update_pipeline:        ^gfx.ComputePipeline,
+	border_pipeline:        ^gfx.ComputePipeline,
+	relocate_pipeline:      ^gfx.ComputePipeline,
+	debug_pipeline:         ^gfx.ComputePipeline,
+	probe_pipeline:         ^gfx.GraphicsPipeline,
+	volumes_buffer:         gfx.GPUBuffer(GPUDDGIVolume),
+	debug_volume:           i32,
+	probe_vbuf:             gfx.GPUBuffer(Vertex),
+	probe_ibuf:             gfx.GPUBuffer(u32),
+	probe_index_count:      u32,
+	draw_probes:            bool,
+	draw_reflection_probes: bool,
+}
+
 RenderState :: struct {
 	frame_data:                      [gfx.FRAME_OVERLAP]GameFrameData,
 
@@ -146,35 +181,15 @@ RenderState :: struct {
 	},
 	shader_manager:                  ShaderManager,
 	global_session:                  ^sp.IGlobalSession,
+	ddgi_rp:                         DDGIRenderPass,
+	geometry_rp:                     GeometryRenderPass,
+	skinning_rp:                     SkinningRenderPass,
+	shadow_rp:                       ShadowRenderPass,
+	post_process_rp:                 PostProcessingRenderPass,
 
-	// Mesh pipelines
-	mesh_pipeline:                   ^gfx.GraphicsPipeline,
-	model_matrices:                  [dynamic]Mat4x4,
+	// DDGI pipelines
 
-	// Skeletal mesh pipelines
-	skinning_pipeline:               ^gfx.ComputePipeline,
-
-	// Shadow pipelines
-	mesh_shadow_pipeline:            ^gfx.GraphicsPipeline,
-	shadow_depth_image:              gfx.GPUImage,
-	shadow_depth_image_id:           ImageId,
-	shadow_depth_attach_image_views: [NUM_CASCADES]vk.ImageView,
-	cascade_world_to_shadows:        [NUM_CASCADES]Mat4x4,
-	cascade_configs:                 [NUM_CASCADES]GPUCascadeConfig,
-
-	// Tonemapper pipelines
-	tonemapper_pipeline:             ^gfx.ComputePipeline,
-
-
-    // DDGI pipelines
-	ddgi_trace_pipeline:             ^gfx.ComputePipeline,
-	ddgi_update_pipeline:            ^gfx.ComputePipeline,
-	ddgi_border_pipeline:            ^gfx.ComputePipeline,
-	ddgi_relocate_pipeline:          ^gfx.ComputePipeline,
-	ddgi_debug_pipeline:             ^gfx.ComputePipeline,
-	ddgi_probe_pipeline:             ^gfx.GraphicsPipeline,
-
-    // Reflection probe pipelines
+	// Reflection probe pipelines
 	reflection_capture_pipeline:     ^gfx.ComputePipeline,
 	reflection_prefilter_pipeline:   ^gfx.ComputePipeline,
 	reflection_probe_debug_pipeline: ^gfx.GraphicsPipeline,
@@ -185,24 +200,13 @@ RenderState :: struct {
 	skybox_mesh:                     GPUMeshBuffers,
 	draw_skybox:                     bool,
 
-    // Debug
+	// Debug
 	debug_rt_pipeline:               ^gfx.ComputePipeline,
-
-	// UI
-	ui_pass:                         UIPass,
-	ui_state:                        UIState,
 
 	// Imgui
 	imgui_ctx:                       ^im.Context,
 
 	// DDGI (volumes are DDGIVolume entities; this is the shared packed array + debug state)
-	ddgi_volumes_buffer:             gfx.GPUBuffer(GPUDDGIVolume), // packed per-frame array (priority-sorted)
-	ddgi_debug_volume:               i32, // which volume the DDGIAtlas debug view shows
-	ddgi_probe_vbuf:                 gfx.GPUBuffer(Vertex),
-	ddgi_probe_ibuf:                 gfx.GPUBuffer(u32),
-	ddgi_probe_index_count:          u32,
-	draw_ddgi_probes:                bool,
-	draw_reflection_probes:          bool,
 }
 
 GameFrameData :: struct {
@@ -245,15 +249,15 @@ init_game_renderer :: proc() {
 	init_shadow_maps()
 	init_test_resources()
 	init_test_materials()
-	init_pipelines()
+	init_render_passes()
 	init_buffers()
 }
 
 init_imgui :: proc() {
-    game.render_state.imgui_ctx = im.CreateContext()
-    im.SetCurrentContext(game.render_state.imgui_ctx)
+	game.render_state.imgui_ctx = im.CreateContext()
+	im.SetCurrentContext(game.render_state.imgui_ctx)
 
-    im_glfw.InitForVulkan(game.window, true)
+	im_glfw.InitForVulkan(game.window, true)
 
 	im_gfx.gfx_imgui_init()
 }
@@ -261,20 +265,22 @@ init_imgui :: proc() {
 init_shadow_maps :: proc() {
 	extent := vk.Extent3D{game.config.shadow_map_size, game.config.shadow_map_size, 1}
 
-	game.render_state.shadow_depth_image = gfx.create_image(
+	shadow_rp := &game.render_state.shadow_rp
+
+	shadow_rp.shadow_depth_image = gfx.create_image(
 		.D32_SFLOAT,
 		extent,
 		{.DEPTH_STENCIL_ATTACHMENT, .SAMPLED},
 		array_layers = NUM_CASCADES,
 	)
 
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.shadow_depth_image.image_view)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.shadow_depth_image.image, game.render_state.shadow_depth_image.allocation)
+	shadow_rp.shadow_depth_image_id = gfx.add_image(shadow_rp.shadow_depth_image)
 
-	depth_image := &game.render_state.shadow_depth_image
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image.image_view)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image.image, shadow_rp.shadow_depth_image.allocation)
 
-	for &view, i in game.render_state.shadow_depth_attach_image_views {
-		view = gfx.create_image_view(depth_image.image, depth_image.format, .D2, 0, 1, i, 1)
+	for &view, i in shadow_rp.shadow_depth_attach_image_views {
+		view = gfx.create_image_view(shadow_rp.shadow_depth_image.image, shadow_rp.shadow_depth_image.format, .D2, 0, 1, i, 1)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, view)
 	}
 }
@@ -303,7 +309,6 @@ init_test_resources :: proc() {
 		rs := &game.render_state
 		tr := &rs.temp_resources
 
-		rs.shadow_depth_image_id = gfx.add_image(game.render_state.shadow_depth_image)
 		tr.tony_mc_mapface_id = gfx.add_image(tony_mc_mapface)
 		tr.dfg_id = gfx.add_image(dfg)
 		tr.env_id = gfx.add_image(env)
@@ -334,50 +339,51 @@ init_test_materials :: proc() {
 	add_material({base_color_id = base_color_id, normal_map_id = normal_map_id, ao_roughness_metallic_id = proughness_metallic_ao_id})
 }
 
-init_pipelines :: proc() {
+init_render_passes :: proc() {
 	assert(sp.createGlobalSession(sp.API_VERSION, &game.render_state.global_session) == sp.OK)
 
-	init_mesh_pipelines()
-	init_skinning_pipelines()
-	init_skybox_pipelines()
-	init_tonemapper_pipelines()
-	init_ui_pipelines()
-	init_debug_rt_pipelines()
-	init_ddgi_pipelines()
+	init_geometry_rp()
+	init_skinning_rp()
+	init_skybox_rp()
+	init_post_process_rp()
+	init_debug_rt_rp()
+	init_ddgi_rp()
 }
 
-init_ddgi_pipelines :: proc() {
-	game.render_state.ddgi_trace_pipeline = add_compute_shader(
+init_ddgi_rp :: proc() {
+    ddgi_rp := &game.render_state.ddgi_rp
+
+	ddgi_rp.trace_pipeline = add_compute_shader(
 		"shaders/ddgi_trace.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("DDGI_Trace", module, GPUDDGITracePush)
 		},
 	)
-	game.render_state.ddgi_update_pipeline = add_compute_shader(
+	ddgi_rp.update_pipeline = add_compute_shader(
 		"shaders/ddgi_update.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("DDGI_Update", module, GPUDDGIUpdatePush)
 		},
 	)
-	game.render_state.ddgi_border_pipeline = add_compute_shader(
+	ddgi_rp.border_pipeline = add_compute_shader(
 		"shaders/ddgi_border.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("DDGI_Border", module, GPUDDGIUpdatePush)
 		},
 	)
-	game.render_state.ddgi_relocate_pipeline = add_compute_shader(
+	ddgi_rp.relocate_pipeline = add_compute_shader(
 		"shaders/ddgi_relocate.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("DDGI_Relocate", module, GPUDDGIRelocatePush)
 		},
 	)
-	game.render_state.ddgi_debug_pipeline = add_compute_shader(
+	ddgi_rp.debug_pipeline = add_compute_shader(
 		"shaders/ddgi_debug_atlas.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("DDGI_Debug_Atlas", module, GPUDDGIDebugAtlasPush)
 		},
 	)
-	game.render_state.ddgi_probe_pipeline = add_graphics_shader(
+	ddgi_rp.probe_pipeline = add_graphics_shader(
 		"shaders/ddgi_debug_probes.slang",
 		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
 			return gfx.create_graphics_pipeline(
@@ -408,8 +414,8 @@ init_ddgi_pipelines :: proc() {
 	)
 	game.render_state.reflection_probes_buffer = gfx.create_buffer(GPUReflectionProbe, MAX_REFLECTION_PROBES, .DynUniform)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.reflection_probes_buffer)
-	game.render_state.ddgi_volumes_buffer = gfx.create_buffer(GPUDDGIVolume, MAX_DDGI_VOLUMES, .DynUniform)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.ddgi_volumes_buffer)
+	ddgi_rp.volumes_buffer = gfx.create_buffer(GPUDDGIVolume, MAX_DDGI_VOLUMES, .DynUniform)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, ddgi_rp.volumes_buffer)
 	game.render_state.reflection_probe_debug_pipeline = add_graphics_shader(
 		"shaders/reflection_probe_debug.slang",
 		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
@@ -430,7 +436,7 @@ init_ddgi_pipelines :: proc() {
 	ddgi_init_debug_sphere()
 }
 
-init_debug_rt_pipelines :: proc() {
+init_debug_rt_rp :: proc() {
 	game.render_state.debug_rt_pipeline = add_compute_shader(
 		"shaders/debug_rt.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
@@ -439,23 +445,27 @@ init_debug_rt_pipelines :: proc() {
 	)
 }
 
-init_mesh_pipelines :: proc() {
-	game.render_state.mesh_pipeline = add_graphics_shader("shaders/mesh.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-		return gfx.create_graphics_pipeline(
-			name = "Basic_Mesh_Pipeline",
-			shader = module,
-			input_topology = .TRIANGLE_LIST,
-			polygon_mode = .FILL,
-			cull_mode = {.BACK},
-			front_face = .COUNTER_CLOCKWISE,
-			depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-			color_format = gfx.r_ctx.draw_image.format,
-			multisampling_samples = gfx.msaa_samples(),
-			push_constants = GPUDrawPushConstants,
-		)
-	})
+// TODO: Shadow RP is coupled in here. They should be split.
+init_geometry_rp :: proc() {
+	game.render_state.geometry_rp.mesh_pipeline = add_graphics_shader(
+		"shaders/mesh.slang",
+		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
+			return gfx.create_graphics_pipeline(
+				name = "Basic_Mesh_Pipeline",
+				shader = module,
+				input_topology = .TRIANGLE_LIST,
+				polygon_mode = .FILL,
+				cull_mode = {.BACK},
+				front_face = .COUNTER_CLOCKWISE,
+				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
+				color_format = gfx.r_ctx.draw_image.format,
+				multisampling_samples = gfx.msaa_samples(),
+				push_constants = GPUDrawPushConstants,
+			)
+		},
+	)
 
-	game.render_state.mesh_shadow_pipeline = add_graphics_shader(
+	game.render_state.shadow_rp.mesh_shadow_pipeline = add_graphics_shader(
 		"shaders/shadow_depth.slang",
 		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
 			return gfx.create_graphics_pipeline(
@@ -474,8 +484,8 @@ init_mesh_pipelines :: proc() {
 	)
 }
 
-init_skinning_pipelines :: proc() {
-	game.render_state.skinning_pipeline = add_compute_shader(
+init_skinning_rp :: proc() {
+	game.render_state.skinning_rp.skinning_pipeline = add_compute_shader(
 		"shaders/skinning.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("Skinning", module, GPUSkinningPushConstants)
@@ -483,7 +493,7 @@ init_skinning_pipelines :: proc() {
 	)
 }
 
-init_skybox_pipelines :: proc() {
+init_skybox_rp :: proc() {
 	game.render_state.skybox_pipeline = add_graphics_shader("shaders/skybox.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
 		return gfx.create_graphics_pipeline(
 			name = "Skybox_Pipeline",
@@ -500,64 +510,13 @@ init_skybox_pipelines :: proc() {
 	})
 }
 
-init_tonemapper_pipelines :: proc() {
-	game.render_state.tonemapper_pipeline = add_compute_shader(
+init_post_process_rp :: proc() {
+	game.render_state.post_process_rp.tonemapper_pipeline = add_compute_shader(
 		"shaders/tonemapping.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("Tonemapper_Pipeline", module, GPUPostProcessingPushConstants)
 		},
 	)
-}
-
-init_ui_pipelines :: proc() {
-	game.render_state.ui_pass = create_ui_pass()
-	game.render_state.ui_pass.render_pass->init()
-}
-
-// GPUFontRendererPushConstants :: struct {
-// 	atlas:     ImageId,
-// 	sampler:   u32,
-// 	instances: GPUPtr(GPU_Font_Instance),
-// }
-
-init_font_renderer :: proc() {
-	// font_state := &game.render_state.font_state
-	//
-	// fontstash.Init(&font_state.font_ctx, 512, 512, .BOTTOMLEFT)
-	// font_state.font_index = fontstash.AddFontMem(&font_state.font_ctx, "Default", asset_content(.f_roboto_regular), false)
-	//
-	// font_state.font_pip_layout = gfx.create_pipeline_layout_pc(
-	// 	"Font_Pipeline_Layout",
-	// 	&game.render_state.bindless_system.descriptor_layout,
-	// 	GPUFontRendererPushConstants,
-	// )
-	// gfx.defer_destroy(&gfx.r_ctx.global_arena, font_state.font_pip_layout)
-	//
-	// game.render_state.font_state.font_shader = add_shader("shaders/text.slang", proc(module: vk.ShaderModule, _: rawptr) -> (vk.Pipeline, bool) {
-	// 	return gfx.create_graphics_pipeline(
-	// 		name = "Font_Pipeline_Layout",
-	// 		pipeline_layout = game.render_state.font_state.font_pip_layout,
-	// 		shader = module,
-	// 		input_topology = .TRIANGLE_LIST,
-	// 		polygon_mode = .FILL,
-	// 		cull_mode = {},
-	// 		front_face = .COUNTER_CLOCKWISE,
-	// 		blend_mode = .Alpha,
-	// 		depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-	// 		color_format = gfx.r_ctx.draw_image.format,
-	// 		multisampling_samples = gfx.msaa_samples(),
-	// 	)
-	// })
-
-	// font_state.font_instance_buf = gfx.create_buffer(
-	// 	GPU_Font_Instance,
-	//        512,
-	// 	{.TRANSFER_DST, .STORAGE_BUFFER, .SHADER_DEVICE_ADDRESS},
-	// 	.CPU_TO_GPU,
-	// )
-	//
-	// font_state.font_index_buf = gfx.create_buffer(u32, 6, {.INDEX_BUFFER, .TRANSFER_DST}, .GPU_ONLY)
-	// gfx.staging_write_buffer_slice(&font_state.font_index_buf, []u32{2, 1, 0, 1, 2, 3})
 }
 
 init_buffers :: proc() {
@@ -612,7 +571,7 @@ init_buffers :: proc() {
 		dfg              = game.render_state.temp_resources.dfg_id,
 	}
 
-	reserve(&game.render_state.model_matrices, 16_000)
+	reserve(&game.render_state.geometry_rp.model_matrices, 16_000)
 }
 
 draw :: proc() {
@@ -738,8 +697,8 @@ draw :: proc() {
 	// End skinning pass
 
 	// Begin shadow pass
-	gfx.transition_image(cmd, &game.render_state.shadow_depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
-	for i in 0 ..< len(game.render_state.shadow_depth_attach_image_views) {
+	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
+	for i in 0 ..< len(game.render_state.shadow_rp.shadow_depth_attach_image_views) {
 		shadow_map_pass(cmd, u32(i))
 	}
 	// End shadow pass
@@ -747,60 +706,20 @@ draw :: proc() {
 	// Begin mesh pass
 	gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .COLOR_ATTACHMENT_OPTIMAL)
 	gfx.transition_image(cmd, &gfx.r_ctx.depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
-	gfx.transition_image(cmd, &game.render_state.shadow_depth_image, .DEPTH_READ_ONLY_OPTIMAL)
+	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_READ_ONLY_OPTIMAL)
 	if game.render_state.draw_skybox {
 		skybox_pass(cmd)
 	}
 	geometry_pass(cmd)
-	if game.render_state.draw_ddgi_probes {
+	if game.render_state.ddgi_rp.draw_probes {
 		for &volume in get_entities(DDGIVolume) {
 			ddgi_debug_probes_pass(cmd, &volume.volume)
 		}
 	}
-	if game.render_state.draw_reflection_probes {
+	if game.render_state.ddgi_rp.draw_reflection_probes {
 		reflection_probe_debug_spheres_pass(cmd)
 	}
 	// End mesh pass
-
-	// {
-	// 	font_state := &game.render_state.font_state
-	//
-	// 	// Draw text
-	// 	if len(font_state.font_instances) > 0 {
-	// 		color_attachment := gfx.init_attachment_info(gfx.r_ctx.draw_image.image_view, nil, .GENERAL)
-	// 		depth_attachment := gfx.init_attachment_info(
-	// 			gfx.r_ctx.depth_image.image_view,
-	// 			&{depthStencil = {depth = 1.0}},
-	// 			.DEPTH_ATTACHMENT_OPTIMAL,
-	// 		)
-	//
-	// 		render_info := gfx.init_rendering_info(gfx.r_ctx.draw_extent, &color_attachment, &depth_attachment)
-	// 		vk.CmdBeginRendering(cmd, &render_info)
-	// 		gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
-	//
-	// 		gfx.cmd_bind_pipeline(cmd, .GRAPHICS, get_shader(font_state.font_shader).pipeline)
-	//
-	// 		vk.CmdBindIndexBuffer(cmd, font_state.font_index_buf.buffer, 0, .UINT32)
-	//
-	// 		gfx.cmd_push_constants(
-	// 			cmd,
-	// 			font_state.font_pip_layout,
-	// 			{.VERTEX, .FRAGMENT},
-	// 			0,
-	// 			size_of(GPUFontRendererPushConstants),
-	// 			&GPUFontRendererPushConstants {
-	// 				atlas = FONT_ATLAS_ID,
-	// 				sampler = DEFAULT_SAMPLER_ID,
-	// 				instances = font_state.font_instance_buf.ptr,
-	// 			},
-	// 		)
-	//
-	// 		vk.CmdDrawIndexed(cmd, 6, u32(len(font_state.font_instances)), 0, 0, 0)
-	// 		clear(&font_state.font_instances)
-	//
-	// 		gfx.cmd_end_rendering(cmd)
-	// 	}
-	// }
 
 	// Finalize ImGui draw data for this frame; gfx_imgui_render consumes it below.
 	im.Render()
@@ -811,8 +730,8 @@ draw :: proc() {
 		gfx.transition_image(cmd, &gfx.r_ctx.depth_image, .TRANSFER_SRC_OPTIMAL)
 		final_image = gfx.r_ctx.depth_image.image
 	case .ShadowDepth:
-		gfx.transition_image(cmd, &game.render_state.shadow_depth_image, .TRANSFER_SRC_OPTIMAL)
-		final_image = game.render_state.shadow_depth_image.image
+		gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = game.render_state.shadow_rp.shadow_depth_image.image
 	case .Raytracing:
 		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
 		debug_rt_pass(cmd)
@@ -822,7 +741,7 @@ draw :: proc() {
 		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
 		volumes := get_entities(DDGIVolume)
 		if len(volumes) > 0 {
-			idx := clamp(int(game.render_state.ddgi_debug_volume), 0, len(volumes) - 1)
+			idx := clamp(int(game.render_state.ddgi_rp.debug_volume), 0, len(volumes) - 1)
 			ddgi_debug_atlas_pass(cmd, &volumes[idx].volume)
 		}
 		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
@@ -856,7 +775,6 @@ draw :: proc() {
 
 			gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
 			post_processing_pass(cmd)
-			ui_pass(cmd)
 
 			// Prepare swapchain image
 			gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
@@ -872,15 +790,15 @@ draw :: proc() {
 
 	gfx.copy_image_to_swapchain(cmd, final_image, gfx.r_ctx.draw_extent)
 
-    sc := &gfx.r_ctx.swapchain
-    sc_image := sc.swapchain_images[sc.swapchain_image_index]
-    sc_view := sc.swapchain_image_views[sc.swapchain_image_index]
+	sc := &gfx.r_ctx.swapchain
+	sc_image := sc.swapchain_images[sc.swapchain_image_index]
+	sc_view := sc.swapchain_image_views[sc.swapchain_image_index]
 
-    gfx.transition_vk_image(cmd, sc_image, .TRANSFER_DST_OPTIMAL, .COLOR_ATTACHMENT_OPTIMAL)
-    im_gfx.gfx_imgui_render(cmd, sc_view, sc.swapchain_extent)
-    // submit() expects the swapchain image in TRANSFER_DST before it
-    // transitions to PRESENT, so hand it back in that layout.
-    gfx.transition_vk_image(cmd, sc_image, .COLOR_ATTACHMENT_OPTIMAL, .TRANSFER_DST_OPTIMAL)
+	gfx.transition_vk_image(cmd, sc_image, .TRANSFER_DST_OPTIMAL, .COLOR_ATTACHMENT_OPTIMAL)
+	im_gfx.gfx_imgui_render(cmd, sc_view, sc.swapchain_extent)
+	// submit() expects the swapchain image in TRANSFER_DST before it
+	// transitions to PRESENT, so hand it back in that layout.
+	gfx.transition_vk_image(cmd, sc_image, .COLOR_ATTACHMENT_OPTIMAL, .TRANSFER_DST_OPTIMAL)
 
 	swapchain_resized := gfx.submit(cmd)
 
@@ -901,11 +819,11 @@ draw :: proc() {
 
 	clear(&current_frame_game().mesh_draws)
 	clear(&current_frame_game().skel_instances)
-	clear(&game.render_state.model_matrices)
+	clear(&game.render_state.geometry_rp.model_matrices)
 }
 
 skinning_pass :: proc(cmd: vk.CommandBuffer, instance: ^SkeletalMeshInstance) {
-	gfx.cmd_bind_pipeline(cmd, game.render_state.skinning_pipeline)
+	gfx.cmd_bind_pipeline(cmd, game.render_state.skinning_rp.skinning_pipeline)
 
 	gfx.cmd_push_constants(
 		cmd,
@@ -944,7 +862,7 @@ GPUGeometry :: struct #max_field_align(16) {
 }
 
 draw_mesh :: proc(mesh: GPUMeshBuffers, material: MaterialId, translation: Vec3, rotation: quaternion128, scale: [3]f32) {
-	model_index := len(game.render_state.model_matrices)
+	model_index := len(game.render_state.geometry_rp.model_matrices)
 
 	append(
 		&current_frame_game().mesh_draws,
@@ -959,7 +877,7 @@ draw_mesh :: proc(mesh: GPUMeshBuffers, material: MaterialId, translation: Vec3,
 		},
 	)
 
-	append(&game.render_state.model_matrices, linalg.matrix4_from_trs_f32(translation, rotation, scale))
+	append(&game.render_state.geometry_rp.model_matrices, linalg.matrix4_from_trs_f32(translation, rotation, scale))
 }
 
 draw_skeletal_mesh :: proc(
@@ -969,7 +887,7 @@ draw_skeletal_mesh :: proc(
 	rotation: quaternion128,
 	scale: Vec3,
 ) {
-	model_index := len(game.render_state.model_matrices)
+	model_index := len(game.render_state.geometry_rp.model_matrices)
 
 	append(&current_frame_game().skel_instances, instance)
 	append(
@@ -983,7 +901,7 @@ draw_skeletal_mesh :: proc(
 		},
 	)
 
-	append(&game.render_state.model_matrices, linalg.matrix4_from_trs_f32(translation, rotation, scale))
+	append(&game.render_state.geometry_rp.model_matrices, linalg.matrix4_from_trs_f32(translation, rotation, scale))
 }
 
 // Row-major 3x4 expected by VkAccelerationStructureInstanceKHR. m[r, c] is the
@@ -1007,28 +925,26 @@ build_scene_tlas :: proc(cmd: vk.CommandBuffer) {
 	gfx.defer_destroy_accel(&gfx.current_frame().arena, frame.tlas)
 	frame.tlas = {}
 
-	instances := make(
-		[dynamic]vk.AccelerationStructureInstanceKHR,
-		0,
-		len(frame.mesh_draws),
-		context.temp_allocator,
-	)
+	instances := make([dynamic]vk.AccelerationStructureInstanceKHR, 0, len(frame.mesh_draws), context.temp_allocator)
 	geometries := make([dynamic]GPUGeometry, 0, len(frame.mesh_draws), context.temp_allocator)
 	for mesh_draw in frame.mesh_draws {
 		if mesh_draw.blas_address == 0 do continue // no BLAS (e.g. skeletal)
 
 		inst: vk.AccelerationStructureInstanceKHR
-		inst.transform = mat4_to_vk_transform(game.render_state.model_matrices[mesh_draw.model_index])
+		inst.transform = mat4_to_vk_transform(game.render_state.geometry_rp.model_matrices[mesh_draw.model_index])
 		inst.mask = 0xFF
 		inst.instanceCustomIndex = u32(len(instances)) // -> geometry-table slot
 		inst.accelerationStructureReference = u64(mesh_draw.blas_address)
 		append(&instances, inst)
 
-		append(&geometries, GPUGeometry {
-			vertex_buffer = mesh_draw.vertex_buffer,
-			index_buffer = mesh_draw.index_buffer_ptr,
-			material_index = mesh_draw.material_index,
-		})
+		append(
+			&geometries,
+			GPUGeometry {
+				vertex_buffer = mesh_draw.vertex_buffer,
+				index_buffer = mesh_draw.index_buffer_ptr,
+				material_index = mesh_draw.material_index,
+			},
+		)
 	}
 
 	if len(instances) == 0 do return
@@ -1051,8 +967,8 @@ build_scene_tlas :: proc(cmd: vk.CommandBuffer) {
 }
 
 shadow_map_pass :: proc(cmd: vk.CommandBuffer, cascade: u32) {
-	image_view := game.render_state.shadow_depth_attach_image_views[cascade]
-	extent := game.render_state.shadow_depth_image.extent
+	image_view := game.render_state.shadow_rp.shadow_depth_attach_image_views[cascade]
+	extent := game.render_state.shadow_rp.shadow_depth_image.extent
 
 	width := extent.width
 	height := extent.height
@@ -1062,9 +978,9 @@ shadow_map_pass :: proc(cmd: vk.CommandBuffer, cascade: u32) {
 		area = {width, height},
 		depth_attachment = &{view = image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL, clear_value = &{depthStencil = {depth = 1.0}}},
 	)
-	gfx.set_viewport_and_scissor(cmd, game.render_state.shadow_depth_image.extent)
+	gfx.set_viewport_and_scissor(cmd, game.render_state.shadow_rp.shadow_depth_image.extent)
 
-	gfx.cmd_bind_pipeline(cmd, game.render_state.mesh_shadow_pipeline)
+	gfx.cmd_bind_pipeline(cmd, game.render_state.shadow_rp.mesh_shadow_pipeline)
 
 	for mesh_draw in current_frame_game().mesh_draws {
 		gfx.cmd_bind_index_buffer(cmd, mesh_draw.index_buffer)
@@ -1099,7 +1015,7 @@ geometry_pass :: proc(cmd: vk.CommandBuffer) {
 	)
 	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
 
-	gfx.cmd_bind_pipeline(cmd, game.render_state.mesh_pipeline)
+	gfx.cmd_bind_pipeline(cmd, game.render_state.geometry_rp.mesh_pipeline)
 
 	for mesh_draw in current_frame_game().mesh_draws {
 		gfx.cmd_bind_index_buffer(cmd, mesh_draw.index_buffer)
@@ -1113,7 +1029,7 @@ geometry_pass :: proc(cmd: vk.CommandBuffer) {
 				model_index = mesh_draw.model_index,
 				material_index = mesh_draw.material_index,
 				num_cascades = NUM_CASCADES,
-				shadow_depth = game.render_state.shadow_depth_image_id,
+				shadow_depth = game.render_state.shadow_rp.shadow_depth_image_id,
 				shadow_sampler = game.render_state.temp_resources.shadow_depth_sampler_id,
 			},
 		)
@@ -1175,7 +1091,7 @@ debug_rt_pass :: proc(cmd: vk.CommandBuffer) {
 }
 
 post_processing_pass :: proc(cmd: vk.CommandBuffer) {
-	gfx.cmd_bind_pipeline(cmd, game.render_state.tonemapper_pipeline)
+	gfx.cmd_bind_pipeline(cmd, game.render_state.post_process_rp.tonemapper_pipeline)
 	gfx.cmd_push_constants(
 		cmd,
 		GPUPostProcessingPushConstants {
@@ -1191,18 +1107,6 @@ post_processing_pass :: proc(cmd: vk.CommandBuffer) {
 		u32(math.ceil(f32(gfx.r_ctx.draw_extent.height) / 16.0)),
 		1,
 	)
-}
-
-ui_pass :: proc(cmd: vk.CommandBuffer) {
-	game.render_state.ui_pass.render_pass->run(cmd)
-	// gfx.cmd_bind_pipeline(cmd, game.render_state.ui_pipeline)
-	//
-	// vk.CmdDispatch(
-	// 	cmd,
-	// 	u32(math.ceil(f32(gfx.r_ctx.draw_extent.width) / 16.0)),
-	// 	u32(math.ceil(f32(gfx.r_ctx.draw_extent.height) / 16.0)),
-	// 	1,
-	// )
 }
 
 calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 300) {
@@ -1298,8 +1202,8 @@ calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 30
 			cascade_view_to_clip = shadowProj
 		}
 
-		game.render_state.cascade_world_to_shadows[i] = cascade_view_to_clip * cascade_world_to_view
-		game.render_state.cascade_configs[i] = {
+		game.render_state.shadow_rp.cascade_world_to_shadows[i] = cascade_view_to_clip * cascade_world_to_view
+		game.render_state.shadow_rp.cascade_configs[i] = {
 			split_dist = test_far,
 			bias       = game.config.shadow_map_biases[i],
 			slope_bias = game.config.shadow_map_slope_biases[i],
@@ -1343,9 +1247,9 @@ update_buffers :: proc() {
 			return a.priority > b.priority
 		})
 		if count > 0 {
-			gfx.write_buffer_slice(&game.render_state.ddgi_volumes_buffer, packed[:count])
+			gfx.write_buffer_slice(&game.render_state.ddgi_rp.volumes_buffer, packed[:count])
 		}
-		global_data.ddgi_volumes = game.render_state.ddgi_volumes_buffer.ptr
+		global_data.ddgi_volumes = game.render_state.ddgi_rp.volumes_buffer.ptr
 		global_data.num_ddgi_volumes = count
 	}
 
@@ -1373,11 +1277,11 @@ update_buffers :: proc() {
 		global_data.num_reflection_probes = count
 	}
 
-	gfx.write_buffer_slice(&current_frame_game().cascade_matrices_buffer, game.render_state.cascade_world_to_shadows[:])
-	gfx.write_buffer_slice(&current_frame_game().cascade_configs_buffer, game.render_state.cascade_configs[:])
+	gfx.write_buffer_slice(&current_frame_game().cascade_matrices_buffer, game.render_state.shadow_rp.cascade_world_to_shadows[:])
+	gfx.write_buffer_slice(&current_frame_game().cascade_configs_buffer, game.render_state.shadow_rp.cascade_configs[:])
 	gfx.write_buffer(&current_frame_game().global_buffer, global_data)
 
-	gfx.write_buffer_slice(&current_frame_game().model_matrices_buffer, game.render_state.model_matrices[:])
+	gfx.write_buffer_slice(&current_frame_game().model_matrices_buffer, game.render_state.geometry_rp.model_matrices[:])
 
 	for &ball in get_entities(Ball) {
 		gfx.write_buffer_slice(
