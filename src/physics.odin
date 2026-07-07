@@ -13,15 +13,15 @@ phys_query_filter :: proc "contextless" () -> b3.QueryFilter {
 	return {categoryBits = PHYS_CATEGORY_ALL, maskBits = PHYS_CATEGORY_ALL}
 }
 
-// A per-object surface material. Matches the single tuple PhysX used everywhere (0.9/0.5/0.1).
+// A per-object surface material.
 phys_default_material :: proc "contextless" () -> b3.SurfaceMaterial {
 	return {friction = 0.5, restitution = 0.1}
 }
 
 physics_init :: proc() {
 	def := b3.DefaultWorldDef()
-	def.gravity = {0, -9.81 * 2, 0} // matches the old PhysX scene gravity
-	def.workerCount = 1 // single-threaded; no task callbacks needed
+	def.gravity = {0, -9.81 * 2, 0}
+	def.workerCount = 1
 	game.phys.world = b3.CreateWorld(def)
 	assert(b3.World_IsValid(game.phys.world))
 }
@@ -38,12 +38,11 @@ physics_shutdown :: proc() {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Character mover (replaces PxController)
-// ---------------------------------------------------------------------------
 PHYS_MAX_PLANES :: 32
-PHYS_GROUND_SNAP :: 0.4
 PHYS_LAND_EPS :: 0.05
+
+// TODO: these shouldn't be constant.
+PHYS_GROUND_SNAP :: 0.4
 PHYS_STEP_HEIGHT :: 4.0
 
 PHYS_MOVER_ITERATIONS :: 4
@@ -60,7 +59,9 @@ phys_add_plane :: proc "contextless" (m: ^Mover_Ctx, cp: b3.CollisionPlane) {
 			return
 		}
 	}
-	if m.count >= PHYS_MAX_PLANES do return
+	if m.count >= PHYS_MAX_PLANES {
+		return
+	}
 	m.planes[m.count] = cp
 	m.count += 1
 }
@@ -79,7 +80,11 @@ phys_clip_walls :: proc(v: Vec3, ctx: ^Mover_Ctx) -> Vec3 {
 			n += 1
 		}
 	}
-	if n == 0 do return v
+
+	if n == 0 {
+		return v
+	}
+
 	return b3.ClipVector(v, &walls[0], c.int(n))
 }
 
@@ -108,7 +113,9 @@ phys_collide_and_solve :: proc(mover: ^b3.Capsule, origin: b3.Pos, filter: b3.Qu
 phys_slide :: proc(mover: ^b3.Capsule, origin: b3.Pos, filter: b3.QueryFilter, displacement: Vec3, all: ^Mover_Ctx) {
 	delta := displacement
 	for _ in 0 ..< PHYS_MOVER_ITERATIONS {
-		if linalg.length(delta) < 1e-6 do break
+		if linalg.length(delta) < 1e-6 {
+			break
+		}
 
 		frac := b3.World_CastMover(game.phys.world, origin, mover^, delta, filter, nil, nil)
 		safe := delta * frac
@@ -117,7 +124,9 @@ phys_slide :: proc(mover: ^b3.Capsule, origin: b3.Pos, filter: b3.QueryFilter, d
 
 		ctx := phys_collide_and_solve(mover, origin, filter, all)
 
-		if frac >= 1 do break // consumed the whole displacement
+		if frac >= 1 {
+			break
+		}
 
 		// Slide the leftover along walls only — never along walkable floor/edge contacts.
 		delta = phys_clip_walls(delta * (1 - frac), &ctx)
@@ -129,8 +138,12 @@ phys_ground_probe :: proc(mover: b3.Capsule, max_snap: f32) -> (grounded: bool, 
 	base := transmute(Vec3)mover.center1
 
 	// Keeps us grounded.
-	if r := b3.World_CastRayClosest(game.phys.world, transmute(b3.Pos)base, {0, -(capsule_radius + max_snap + 0.05), 0}, phys_query_filter());
-	   r.hit && r.normal.y >= min_y {
+	if r := b3.World_CastRayClosest(
+		game.phys.world,
+		transmute(b3.Pos)base,
+		{0, -(capsule_radius + max_snap + 0.05), 0},
+		phys_query_filter(),
+	); r.hit && r.normal.y >= min_y {
 		return true, r.normal
 	}
 
@@ -138,15 +151,21 @@ phys_ground_probe :: proc(mover: b3.Capsule, max_snap: f32) -> (grounded: bool, 
 	start := base + {0, START_LIFT, 0}
 	point, sweep_n, hit := query_sweep_sphere(start, start + {0, -(START_LIFT + max_snap), 0}, capsule_radius)
 	if !hit {
-        return false, VEC3_UP
-    }
+		return false, VEC3_UP
+	}
 
-	if sweep_n.y >= min_y do return true, sweep_n
+	if sweep_n.y >= min_y {
+		return true, sweep_n
+	}
 
 	to_surface := linalg.normalize0(Vec3{point.x - base.x, 0, point.z - base.z})
 	from := point + to_surface * 0.05 + Vec3{0, 0.05, 0}
+
 	res := b3.World_CastRayClosest(game.phys.world, transmute(b3.Pos)from, {0, -(max_snap + 0.1), 0}, phys_query_filter())
-	if !res.hit || res.normal.y < min_y do return false, VEC3_UP
+	if !res.hit || res.normal.y < min_y {
+		return false, VEC3_UP
+	}
+
 	return true, res.normal
 }
 
@@ -164,7 +183,10 @@ phys_try_step_up :: proc(
 	// 1. Sweep up by the step height (a ceiling right above caps how far we can rise).
 	up := f32(PHYS_STEP_HEIGHT)
 	up_frac := b3.World_CastMover(game.phys.world, origin, mover^, {0, up, 0}, filter, nil, nil)
-	if up_frac <= 0.01 do return false // no headroom -> can't step, leave the wall slide as-is
+	if up_frac <= 0.01 {
+		return false // no headroom -> can't step, leave the wall slide as-is
+	}
+
 	up *= up_frac
 	mover.center1 += {0, up, 0}
 	mover.center2 += {0, up, 0}
@@ -200,7 +222,10 @@ phys_try_step_up :: proc(
 		return false
 	}
 
-	for i in 0 ..< tmp.count do phys_add_plane(all, tmp.planes[i])
+	for i in 0 ..< tmp.count {
+		phys_add_plane(all, tmp.planes[i])
+	}
+
 	return true
 }
 

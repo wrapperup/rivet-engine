@@ -1,9 +1,6 @@
 [submodule "deps/odin-libktx"]
 	path = deps/odin-libktx
 	url = https://github.com/wrapperup/odin-libktx
-[submodule "deps/physx-odin"]
-	path = deps/physx-odin
-	url = https://github.com/wrapperup/physx-odin
 [submodule "deps/odin-vma"]
 	path = deps/odin-vma
 	url = https://github.com/wrapperup/odin-vma
