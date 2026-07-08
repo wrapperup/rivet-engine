@@ -1,4 +1,6 @@
+import "../bindless";
 import "../brdf";
+import "../types";
 
 // https://github.com/google/filament/blob/87249950421bb3552682185dc17c439d92805a99/libs/ibl/src/CubemapIBL.cpp#L170
 float visibility(float NoV, float NoL, float a) {
@@ -34,8 +36,8 @@ float2 dfv(float NoV, float linear_roughness, int sample_count, bool multiscatte
 		float NoH = saturate(H.z);
 
 		if (NoL > 0.0f) {
-			let v = visibility(NoV, NoL, linear_roughness) * NoL * (VoH / NoH);
-			float Gv = v * NoL * (VoH / NoH);
+			// Importance-sampling weight applied exactly once (Filament CubemapIBL DFV).
+			float Gv = visibility(NoV, NoL, linear_roughness) * NoL * (VoH / NoH);
 			float Fc = pow(1.0f - VoH, 5.0);
 
 			if (multiscatter) {
@@ -51,11 +53,11 @@ float2 dfv(float NoV, float linear_roughness, int sample_count, bool multiscatte
 	return r * (4.0f / float(sample_count));
 }
 
-[vk_binding(0, 0)] RWTexture2D<float2> DfgTexture;
-
+// Matches DfgGeneratePassPC in src/dfg.odin (bindless storage image via ImageId).
 struct DfgPushConstant {
     uint32_t sample_count;
     bool multiscatter;
+    RWImage2D<float2> dfg_image;
 };
 
 [vk_push_constant] DfgPushConstant pc;
@@ -69,18 +71,17 @@ void compute_main(uint3 dispatchThreadID: SV_DispatchThreadID) {
 
     uint width;
     uint height;
-    uint levels;
-    DfgTexture.GetDimensions(0, width, height, levels);
+    pc.dfg_image.get_dimensions(width, height);
 
     let x = texel_coord.x;
     let y = texel_coord.y;
 
     let h = float(height);
-    let coord = saturate((h - float(y) + 0.5) / h);
+    let coord = saturate((float(y) + 0.5) / h);
     let linear_roughness = coord * coord;
 
     let NoV = saturate((float(x) + 0.5) / float(width));
-    let r = dfv(NoV, linear_roughness, 1024, pc.multiscatter);
+    let r = dfv(NoV, linear_roughness, int(pc.sample_count), pc.multiscatter);
 
-    DfgTexture[texel_coord] = r;
+    pc.dfg_image.store(texel_coord, r);
 }

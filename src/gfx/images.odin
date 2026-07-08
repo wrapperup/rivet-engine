@@ -503,7 +503,7 @@ staging_write_image_slice :: proc(gpu_image: ^GPUImage, in_data: []$T, offset: v
 
 write_buffer_to_ktx_file :: proc(
 	filename: cstring,
-	buffer: ^GPUBuffer,
+	buffer: ^GPUBuffer($T),
 	extent: vk.Extent3D,
 	format: vk.Format,
 	format_size: u32,

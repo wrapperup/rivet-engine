@@ -87,7 +87,7 @@ calculate_dfg_to_file :: proc(filename: cstring, width, height: u32) {
 	fmt.println("Generating DFG image...")
 	pass := impl.create_dfg_generate_pipeline(width, height)
 	if cmd, ok := gfx.immediate_submit(); ok {
-		gfx.transition_image(cmd, pass.dfg_image.image, .UNDEFINED, .GENERAL)
+		gfx.transition_image(cmd, &pass.image, .GENERAL)
 		impl.run_dfg_generate_pass(&pass, cmd)
 
 		region := vk.BufferImageCopy {
@@ -100,7 +100,7 @@ calculate_dfg_to_file :: proc(filename: cstring, width, height: u32) {
 		}
 
 		// Copy image to staging buffer
-		vk.CmdCopyImageToBuffer(cmd, pass.dfg_image.image, .GENERAL, pass.dfg_image_mapped_buffer.buffer, 1, &region)
+		vk.CmdCopyImageToBuffer(cmd, pass.image.image, .GENERAL, pass.dfg_image_mapped_buffer.buffer, 1, &region)
 	}
 
 	extent := vk.Extent3D{pass.width, pass.height, 1}

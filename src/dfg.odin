@@ -14,6 +14,7 @@ DfgGeneratePass :: struct {
 	pipeline:                gfx.ComputePipeline,
 
 	// Resources
+	image:                   gfx.GPUImage, // backing image (tool needs it for layout transitions/readback)
 	dfg_image:               gfx.ImageId,
 	dfg_image_mapped_buffer: gfx.GPUBuffer(f32),
 	width, height:           u32,
@@ -34,8 +35,8 @@ create_dfg_generate_pipeline :: proc(width, height: u32) -> DfgGeneratePass {
 
     gfx.destroy_shader_module(dfg_shader)
 
-	dfg_image := gfx.create_image(.R16G16_SFLOAT, {width, height, 1}, {.STORAGE, .TRANSFER_SRC})
-	pass.dfg_image = gfx.add_image(dfg_image)
+	pass.image = gfx.create_image(.R16G16_SFLOAT, {width, height, 1}, {.STORAGE, .TRANSFER_SRC})
+	pass.dfg_image = gfx.add_image(pass.image)
 
 	// R16G16_SFLOAT = size_of(f32) * 1 (2 components mapped to bytes of float)
 	pass.dfg_image_mapped_buffer = gfx.create_buffer(f32, width * height, .Readback)

@@ -168,7 +168,7 @@ load_shader_module :: proc(file_name: string, allocator: runtime.Allocator) -> (
 		return 0, false
 	}
 
-	defer delete(buffer)
+	defer delete(buffer, allocator)
 
 	return load_shader_module_from_bytes(buffer)
 }

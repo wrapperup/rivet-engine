@@ -17,8 +17,7 @@ Vec3 evaluate_specular_ibl(PBR_Params params, Vec3 r, f32 perceptualRoughness) {
 }
 
 Vec3 sample_dfg(PBR_Params params, f32 NoV, f32 p_roughness) {
-    let linear_roughness = p_roughness * p_roughness;
-    return params.dfg.sample(params.default_sampler, Vec2(NoV, linear_roughness)).rgb;
+    return params.dfg.sample(params.env_sampler, Vec2(NoV, p_roughness)).rgb;
 }
 
 Vec3 evaluate_specular_ibl_term(PBR_Params params, Vec3 n, Vec3 v, Vec3 f0, f32 p_roughness) {

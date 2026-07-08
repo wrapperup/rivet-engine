@@ -99,15 +99,13 @@ FragmentOutput fragment_main(FragmentInput in) {
 
   f32 reflectance = 0.5f;
 
+  // ORM is linear data in a BC7_UNORM texture — read raw, no transfer function.
   let ao_roughness_metallic =
       material.ao_roughness_metallic_id.sample(pc.global_data_buffer.default_sampler, uv).rgb;
 
-  let ao_roughness_metallic_srgb = linear_to_srgb(ao_roughness_metallic);
-
   let ao = ao_roughness_metallic.r;
-  // let ao = 1.f;
-  let proughness = ao_roughness_metallic_srgb.g;
-  let metallic = ao_roughness_metallic_srgb.b;
+  let proughness = ao_roughness_metallic.g;
+  let metallic = ao_roughness_metallic.b;
 
   Vec3 f0 = 0.16 * reflectance * reflectance * (1.0 - metallic) +
             base_color * metallic;
