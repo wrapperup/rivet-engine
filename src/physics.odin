@@ -27,7 +27,6 @@ physics_init :: proc() {
 }
 
 physics_step :: proc(dt: f32) {
-	// 4 sub-steps is the Box3D-recommended default.
 	b3.World_Step(game.phys.world, dt, 4)
 }
 

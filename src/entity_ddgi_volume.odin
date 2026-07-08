@@ -290,11 +290,11 @@ ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources
 		cmd,
 		GPUDDGITracePush {
 			volume = volume.config_buffer.ptr,
-			geometries = current_frame_game().geometries_buffer.ptr,
+			geometries = current_frame_game().rt.geometries_buffer.ptr,
 			materials = game.render_state.scene_resources.materials_buffer.ptr,
 			global = current_frame_game().global_buffer.ptr,
 			radiance = volume.radiance_buffer.ptr,
-			tlas = current_frame_game().tlas.address,
+			tlas = current_frame_game().rt.tlas.address,
 		},
 	)
 	vk.CmdDispatch(cmd, num_probes, 1, 1)

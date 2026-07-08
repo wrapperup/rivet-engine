@@ -204,6 +204,7 @@ update_imgui :: proc() {
 	}
 
 	if im.Begin("Physics") {
+		im.Checkbox("Enable Tick", &game.update_physics)
 		im.Checkbox("Enable debug view", &g_show_physics_debug)
 	}
 	im.End()

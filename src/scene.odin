@@ -20,10 +20,6 @@ Scene :: struct {
 	entities:        [dynamic]EntityId,
 }
 
-// Load a scene glTF into `scene` in place. Everything the scene spawns is owned by it: entity ids
-// go in scene.entities, GPU resources are deferred to scene.gpu_arena — so reload_scene can tear
-// it all down cleanly. Building in place (rather than returning by value) is what keeps the probe
-// GPU deferrals landing in the arena that actually survives.
 load_scene_from_file :: proc(scene: ^Scene, path: string) -> bool {
 	data, error := gltf2.load_from_file(path)
 	if error != nil {
@@ -38,8 +34,6 @@ load_scene_from_file :: proc(scene: ^Scene, path: string) -> bool {
 	return true
 }
 
-// Poll the source file's mtime and reload if it changed (e.g. a Blender re-export). Throttled so
-// it's not hundreds of filesystem calls per second, like check_shader_hotreload. Call from update.
 check_scene_hotreload :: proc(scene: ^Scene) {
 	@(static) last_check: time.Time
 	now := time.now()
@@ -58,23 +52,18 @@ check_scene_hotreload :: proc(scene: ^Scene) {
 	}
 }
 
-// Rebuild the scene from its source file: destroy the old entities + GPU resources, then reload
-// into the same Scene.
 reload_scene :: proc(scene: ^Scene) {
-	// The GPU may still be using probe cubes from an in-flight frame; wait before freeing.
 	vk.DeviceWaitIdle(gfx.r_ctx.device)
 
-	gfx.flush_vk_arena(&scene.gpu_arena) // frees probe cubes/samplers/buffers (clears the queue)
+	gfx.flush_vk_arena(&scene.gpu_arena)
 	for id in scene.entities {
-		destroy_entity(id) // runs the probe teardown (bindless slots) + removes from storage
+		destroy_entity(id)
 	}
 	clear(&scene.entities)
 
 	load_scene_from_file(scene, scene.source)
 }
 
-// glTF numbers arrive as json.Integer OR json.Float depending on whether the value had a decimal
-// point (e.g. "intensity": 1 vs "blend_distance": 1.6), so accept both.
 json_f32 :: proc(v: json.Value, default: f32) -> f32 {
 	#partial switch t in v {
 	case json.Integer:
@@ -87,7 +76,6 @@ json_f32 :: proc(v: json.Value, default: f32) -> f32 {
 
 parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 	for node in data.nodes {
-		// Nodes without extras (meshes, empties) simply aren't engine entities — skip, don't crash.
 		object, has_extras := node.extras.(json.Object)
 		if !has_extras {
 			continue
@@ -96,9 +84,6 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 
 		switch engine_type {
 		case "ddgi_volume":
-			// The node's box (translation = center, scale = half-extents) is the probe-grid AABB.
-			// Counts derive from the target spacing, then spacing is re-fit so the grid spans the
-			// box exactly (grid AABB == authored box, which is what edge_fade measures against).
 			spacing_target := json_f32(object["probe_spacing"], 2.5)
 			half := Vec3{node.scale.x, node.scale.y, node.scale.z}
 			origin := Vec3{node.translation.x, node.translation.y, node.translation.z} - half
@@ -131,8 +116,6 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 			probe.priority = json_f32(object["priority"], probe.priority)
 			append(&scene.entities, probe.id)
 		case "static_mesh":
-			// The node's `asset` extra is a mesh path relative to the working dir; the transform
-			// places both the rendered mesh and its physics body. We ignore the glTF mesh data.
 			asset, has_asset := object["asset"].(json.String)
 			if !has_asset || asset == "" {
 				log.warn("static_mesh node missing 'asset' path, skipping:", node.name.? or_else "<unnamed>")

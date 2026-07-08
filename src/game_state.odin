@@ -34,7 +34,6 @@ init_skeletal_mesh_instance :: proc(skel: ^Skeleton, anim: ^SkeletalAnimation) -
 		skel = skel,
 	}
 
-
 	for i in 0 ..< gfx.FRAME_OVERLAP {
 		instance.joint_matrices_buffers[i] = gfx.create_buffer(
 			Mat4x4,
@@ -83,6 +82,10 @@ Game :: struct {
 
 	// Debug
 	show_imgui:         bool,
+
+    // TEMP storage
+    ball_mesh: GPUMeshBuffers,
+    update_physics: bool,
 }
 
 FrameTimeStats :: enum {
@@ -111,9 +114,6 @@ GameState :: struct {
 	environment:   Environment,
 	player_id:     TypedEntityId(Player),
 	update_ddgi:   bool,
-
-	// Re-RT-capture every reflection probe every frame (live), instead of the one-time auto capture.
-	// Costs one capture per probe per frame — fine for a few probes, expensive for many. See renderer.
 	update_reflections: bool,
 }
 

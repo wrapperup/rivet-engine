@@ -92,26 +92,30 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 	}
 
 	{
-        vertices_buf := gltf2.buffer_slice(data, pos_idx).([][3]f32)
-		mesh.vertices = make([]Vertex, len(vertices_buf))
+        positions := read_accessor(data, pos_idx, [3]f32) or_return
+        defer delete(positions)
 
-		for val, i in vertices_buf {
+		mesh.vertices = make([]Vertex, len(positions))
+
+		for val, i in positions {
 			mesh.vertices[i].position = val
 		}
 	}
 
 	if norm_ok {
-        norm_buf := gltf2.buffer_slice(data, norm_idx).([][3]f32)
+        normals := read_accessor(data, norm_idx, [3]f32) or_return
+        defer delete(normals)
 
-		for val, i in norm_buf {
+		for val, i in normals {
 			mesh.vertices[i].normal = val
 		}
 	}
 
 	if color_ok {
-        color_buf := gltf2.buffer_slice(data, color_idx).([][3]f32)
+        colors := read_accessor(data, color_idx, [3]f32) or_return
+        defer delete(colors)
 
-		for val, i in color_buf {
+		for val, i in colors {
 			mesh.vertices[i].color.xyz = val
             mesh.vertices[i].color.a = 1
 		}
@@ -123,9 +127,10 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 	}
 
 	if uv_ok {
-        uv_buf := gltf2.buffer_slice(data, uv_idx).([][2]f32)
+        uvs := read_accessor(data, uv_idx, [2]f32) or_return
+        defer delete(uvs)
 
-		for val, i in uv_buf {
+		for val, i in uvs {
 			mesh.vertices[i].uv_x  = val.x
             mesh.vertices[i].uv_y = val.y
 		}
@@ -134,9 +139,10 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
     assert(tangent_ok)
 
 	if tangent_ok {
-        tangent_buf := gltf2.buffer_slice(data, tangent_idx).([][4]f32)
+        tangents := read_accessor(data, tangent_idx, [4]f32) or_return
+        defer delete(tangents)
 
-		for val, i in tangent_buf {
+		for val, i in tangents {
             mesh.vertices[i].tangent = val
 		}
 	} else if uv_ok && norm_ok {
@@ -206,6 +212,166 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 	ok = true
 
 	return mesh, ok
+}
+
+// Reads a whole accessor into a freshly-allocated []T, casting each element from whatever
+// the glTF stored (any component type / component count) into T via try_cast_accessor_type.
+// Normalized integer accessors are decoded to floats. Mirrors buffer_slice's pointer math
+// but doesn't care that Blender emits VEC4 u16 for one mesh and VEC3 f32 for another.
+read_accessor :: proc(data: ^gltf2.Data, accessor_index: gltf2.Integer, $T: typeid, allocator := context.allocator) -> ([]T, bool) {
+	accessor    := data.accessors[accessor_index]
+	buffer_view := data.buffer_views[accessor.buffer_view.?]
+	bytes       := data.buffers[buffer_view.buffer].uri.([]byte)
+
+	start  := int(accessor.byte_offset + buffer_view.byte_offset)
+	stride := component_size(accessor.component_type) * accessor_component_count(accessor.type)
+
+	out := make([]T, accessor.count, allocator)
+	for i in 0 ..< int(accessor.count) {
+		value_ptr := rawptr(uintptr(rawptr(&bytes[start])) + uintptr(i * stride))
+		value, ok := try_cast_accessor_type(T, value_ptr, accessor.component_type, accessor.type, accessor.normalized)
+		if !ok {
+			delete(out, allocator)
+			return nil, false
+		}
+		out[i] = value
+	}
+
+	return out, true
+}
+
+component_size :: proc(ct: gltf2.Component_Type) -> int {
+	switch ct {
+	case .Byte, .Unsigned_Byte:   return 1
+	case .Short, .Unsigned_Short: return 2
+	case .Unsigned_Int, .Float:   return 4
+	}
+	return 0
+}
+
+accessor_component_count :: proc(t: gltf2.Accessor_Type) -> int {
+	switch t {
+	case .Scalar:  return 1
+	case .Vector2: return 2
+	case .Vector3: return 3
+	case .Vector4: return 4
+	case .Matrix2: return 4
+	case .Matrix3: return 9
+	case .Matrix4: return 16
+	}
+	return 0
+}
+
+try_cast_accessor_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.Component_Type, type: gltf2.Accessor_Type, normalized := false) -> (T, bool) {
+	when intrinsics.type_is_array(T) {
+		value, ok := try_cast_vec_type(T, value_ptr, component_type, type, normalized)
+		return value, ok
+	} else when intrinsics.type_is_integer(T) {
+		value, ok := try_cast_numeric_type(T, value_ptr, component_type, normalized)
+		return value, ok
+	} else when intrinsics.type_is_float(T) {
+		value, ok := try_cast_numeric_type(T, value_ptr, component_type, normalized)
+		return value, ok
+	} else {
+		// Unreachable.
+		v: T = ---
+		return v, false
+	}
+}
+
+try_cast_numeric_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.Component_Type, normalized := false) -> (T, bool)
+	where intrinsics.type_is_float(T) || intrinsics.type_is_integer(T) {
+
+	when intrinsics.type_is_integer(T) {
+		when intrinsics.type_is_unsigned(T) {
+			value, ok := try_cast_uint_type(T, value_ptr, component_type)
+			return value, ok
+		} else {
+			value, ok := try_cast_int_type(T, value_ptr, component_type)
+			return value, ok
+		}
+	} else when intrinsics.type_is_float(T) {
+		value, ok := try_cast_float_type(T, value_ptr, component_type, normalized)
+		return value, ok
+	}
+}
+
+try_cast_int_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.Component_Type) -> (T, bool)
+	where intrinsics.type_is_integer(T) && !intrinsics.type_is_unsigned(T) {
+
+	value: T = ---
+
+	#partial switch component_type {
+	case .Byte:  value = T((cast(^i8)  value_ptr)^)
+	case .Short: value = T((cast(^i16) value_ptr)^)
+
+	case: return 0, false
+	}
+
+	return value, true
+}
+
+try_cast_uint_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.Component_Type) -> (T, bool)
+	where intrinsics.type_is_integer(T) && intrinsics.type_is_unsigned(T) {
+
+	value: T = ---
+
+	#partial switch component_type {
+	case .Unsigned_Byte:  value = T((cast(^u8)  value_ptr)^)
+	case .Unsigned_Short: value = T((cast(^u16) value_ptr)^)
+	case .Unsigned_Int:   value = T((cast(^u32) value_ptr)^)
+
+	case: return 0, false
+	}
+
+	return value, true
+}
+
+// Diverges from the equivalent Jai proc, which only accepted .FLOAT: glTF stores normalized
+// integer colors, so we also decode integer components (scaled to [0,1]/[-1,1] when
+// `normalized`). Without this, demo_ball's u16 colors come out as 61537.0 instead of 0.94.
+try_cast_float_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.Component_Type, normalized := false) -> (T, bool)
+	where intrinsics.type_is_float(T) {
+
+	value: T = ---
+
+	#partial switch component_type {
+	case .Float:          value = T((cast(^f32) value_ptr)^)
+	case .Unsigned_Byte:  value = normalized ? T(f32((cast(^u8)  value_ptr)^) / 255.0)           : T((cast(^u8)  value_ptr)^)
+	case .Byte:           value = normalized ? T(max(f32((cast(^i8)  value_ptr)^) / 127.0,   -1)) : T((cast(^i8)  value_ptr)^)
+	case .Unsigned_Short: value = normalized ? T(f32((cast(^u16) value_ptr)^) / 65535.0)         : T((cast(^u16) value_ptr)^)
+	case .Short:          value = normalized ? T(max(f32((cast(^i16) value_ptr)^) / 32767.0, -1)) : T((cast(^i16) value_ptr)^)
+	case .Unsigned_Int:   value = T((cast(^u32) value_ptr)^)
+
+	case: return 0, false
+	}
+
+	return value, true
+}
+
+try_cast_vec_type :: proc($T: typeid/[$N]$E, value_ptr: rawptr, component_type: gltf2.Component_Type, type: gltf2.Accessor_Type, normalized := false) -> (T, bool) {
+	value: T = ---
+
+	// We narrow but never widen: a target with fewer components than the source drops the
+	// extras (glTF VEC4 color -> [3]f32). Reading past what the buffer holds is the one case
+	// we refuse. Composes the scalar casters per component instead of a bulk array_cast so
+	// normalization threads through the same path.
+	if accessor_component_count(type) < N {
+		return value, false
+	}
+
+	comp_size := component_size(component_type)
+
+	for i in 0 ..< N {
+		comp_ptr := rawptr(uintptr(value_ptr) + uintptr(i * comp_size))
+		v, ok := try_cast_numeric_type(E, comp_ptr, component_type, normalized)
+		if !ok {
+			return value, false
+		}
+		value[i] = v
+	}
+
+	return value, true
 }
 
 Mesh :: struct {

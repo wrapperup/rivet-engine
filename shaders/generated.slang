@@ -231,6 +231,11 @@ struct GlobalData {
   u32 num_reflection_probes;
 };
 
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\rt_scene.odin
+//
 struct Geometry {
   Vertex* vertex_buffer;
   u32* index_buffer;

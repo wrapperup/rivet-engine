@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:log"
 import "core:math"
 import "core:math/linalg"
-import "core:os"
+import "core:math/rand"
 import "core:sys/info"
 import "core:sys/windows"
 import "core:time"
@@ -136,11 +136,23 @@ game_init :: proc() {
 		sound_source := new_entity(SoundSource)
 		init_sound_source(sound_source, .a_outdoors_birds, true, 0.1, false, 0.5)
 
+        game.update_physics = false
 		game.state = GameState {
 			player_id = entity_id_of(player),
 			environment = Environment{sun_direction = linalg.normalize(Vec3{12, 15, 10}), sun_color = 2.0, sky_color = 1.0},
 			update_ddgi = true, // DDGI must run for reflection capture (and GI) to populate
 		}
+
+        game.ball_mesh, _ = load_gpu_mesh_from_file(asset_path(.demo_ball))
+
+        for i in 0 ..< 256 {
+		ball := new_entity(Ball)
+        init_ball(ball, {
+			(rand.float32() - 0.5) * 0.01 * f32(i) + 2,
+			5.0 * f32(i),
+			(rand.float32() - 0.5) * 0.01 * f32(i),
+        }, 0)
+	}
 
 		// Load AFTER `game.state = GameState{...}` — that assignment replaces the whole struct,
 		// so setting current_scene before it just gets wiped (source -> "", arenas -> zero).
@@ -237,7 +249,9 @@ game_update :: proc() -> bool {
 	{
 		scope_stat_time(.Physics)
 
-		physics_step(f32(dt))
+        if game.update_physics {
+            physics_step(f32(dt))
+        }
 	}
 
 	if glfw.GetWindowAttrib(game.window, glfw.ICONIFIED) == 0 {

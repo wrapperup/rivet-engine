@@ -40,11 +40,13 @@ Asset_Name :: enum {
     a_step7,
     a_step8,
     a_step9,
+    skeltest2,
     sk_cube,
     sk_cubeskel,
     sk_materialball,
     sk_materialball_oldy,
     sk_skeltest2,
+    demo_ball,
     door,
     material_ball,
     scene_map_test,
@@ -116,11 +118,13 @@ load_generated_assets :: proc() -> bool {
     asset_map[.a_step7] = load_asset("assets/audio/footsteps/a_step7.wav") or_return
     asset_map[.a_step8] = load_asset("assets/audio/footsteps/a_step8.wav") or_return
     asset_map[.a_step9] = load_asset("assets/audio/footsteps/a_step9.wav") or_return
+    asset_map[.skeltest2] = load_asset("assets/meshes/skel/skeltest2.glb") or_return
     asset_map[.sk_cube] = load_asset("assets/meshes/skel/sk_cube.glb") or_return
     asset_map[.sk_cubeskel] = load_asset("assets/meshes/skel/sk_cubeskel.glb") or_return
     asset_map[.sk_materialball] = load_asset("assets/meshes/skel/sk_materialball.glb") or_return
     asset_map[.sk_materialball_oldy] = load_asset("assets/meshes/skel/sk_materialball_oldy.glb") or_return
     asset_map[.sk_skeltest2] = load_asset("assets/meshes/skel/sk_skeltest2.glb") or_return
+    asset_map[.demo_ball] = load_asset("assets/meshes/static/demo_ball.glb") or_return
     asset_map[.door] = load_asset("assets/meshes/static/door.glb") or_return
     asset_map[.material_ball] = load_asset("assets/meshes/static/material_ball.glb") or_return
     asset_map[.scene_map_test] = load_asset("assets/meshes/static/scene_map_test.glb") or_return

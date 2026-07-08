@@ -10,15 +10,9 @@ StaticMesh :: struct {
 	mesh:         GPUMeshBuffers,
 	material:     MaterialId,
 	body:         b3.BodyId,
-	// Box3D keeps a reference to this baked mesh for the shape's lifetime, so we own it and must
-	// free it after the body is destroyed.
 	mesh_data:    ^b3.MeshData,
-	hidden:       bool,
 }
 
-// `path` is a mesh file relative to the working dir (e.g. "assets/meshes/static/sm_map_test.glb").
-// translation/rotation place both the rendered mesh and its physics body. Defaults keep it at the
-// origin with identity rotation.
 init_static_mesh :: proc(
 	static_mesh: ^StaticMesh,
 	path: string,
@@ -73,11 +67,6 @@ init_static_mesh :: proc(
 	static_mesh.material = material
 }
 
-// Destroying the body also destroys its shapes and removes it from the world, so scene reload
-// doesn't accumulate invisible colliders. The baked mesh is freed after the body that referenced
-// it. NOTE: the GPU mesh is still deferred to gfx global_arena in init, so it survives reload
-// (memory grows on repeated reloads) — route it through the scene arena when the asset_name
-// refactor lands.
 static_mesh_destroy :: proc(static_mesh: ^StaticMesh) {
 	if b3.IS_NON_NULL(static_mesh.body) {
 		b3.DestroyBody(static_mesh.body)

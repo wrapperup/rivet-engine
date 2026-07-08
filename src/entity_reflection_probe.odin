@@ -233,7 +233,7 @@ reflection_probe_write_config :: proc(probe: ^ReflectionProbe) {
 }
 
 // Record an RT capture of all 6 cube faces (mip 0), then GGX-prefilter the roughness mips.
-// Uses the per-frame scene TLAS, so call after build_scene_tlas + DDGI update.
+// Uses the per-frame scene TLAS, so call after rt_scene_build + DDGI update.
 reflection_probe_capture :: proc(cmd: vk.CommandBuffer, probe: ^ReflectionProbe) {
 	reflection_probe_write_config(probe)
 
@@ -243,9 +243,9 @@ reflection_probe_capture :: proc(cmd: vk.CommandBuffer, probe: ^ReflectionProbe)
 		cmd,
 		GPUReflectionCapturePush {
 			global = current_frame_game().global_buffer.ptr,
-			geometries = current_frame_game().geometries_buffer.ptr,
+			geometries = current_frame_game().rt.geometries_buffer.ptr,
 			materials = game.render_state.scene_resources.materials_buffer.ptr,
-			tlas = current_frame_game().tlas.address,
+			tlas = current_frame_game().rt.tlas.address,
 			out_cube = probe.cube_mip_storage_ids[0],
 			center = probe.translation,
 			face_size = probe.face_size,

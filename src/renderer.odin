@@ -216,9 +216,7 @@ GameFrameData :: struct {
 	cascade_configs_buffer:  gfx.GPUBuffer(GPUCascadeConfig),
 	mesh_draws:              [dynamic]MeshDraw,
 	skel_instances:          [dynamic]^SkeletalMeshInstance,
-	tlas_instances_buffer:   gfx.GPUBuffer(vk.AccelerationStructureInstanceKHR),
-	geometries_buffer:       gfx.GPUBuffer(GPUGeometry),
-	tlas:                    gfx.Raytracing_Accel,
+	rt:                      RaytracingScene,
 }
 
 GPU_Font_Instance :: struct {
@@ -522,13 +520,8 @@ init_buffers :: proc() {
 		frame.model_matrices_buffer = gfx.create_buffer(Mat4x4, 16_384, .DynUniform)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.model_matrices_buffer)
 
-		// TLAS instances (rebuilt per frame from mesh_draws)
-		frame.tlas_instances_buffer = gfx.create_buffer(vk.AccelerationStructureInstanceKHR, 16_384, .AccelInstances)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.tlas_instances_buffer)
-
-		// RT geometry table (parallel to the TLAS instances)
-		frame.geometries_buffer = gfx.create_buffer(GPUGeometry, 16_384, .DynUniform)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.geometries_buffer)
+		// Raytraced scene (TLAS instances + geometry table, collected by draw_mesh)
+		rt_scene_init(&frame.rt)
 
 		frame.cascade_matrices_buffer = gfx.create_buffer(Mat4x4, NUM_CASCADES, .DynUniform)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.cascade_matrices_buffer)
@@ -569,17 +562,14 @@ draw :: proc() {
 				log.warn("Shaders failed to load!")
 			}
 		}
-	}
+    }
 
 	// TEMP: test draw command
 	for &ball in get_entities(Ball) {
-		draw_skeletal_mesh(&ball.skel_mesh_instance, ball.material, ball.translation, ball.rotation, 1)
+		draw_mesh(game.ball_mesh, 1, ball.translation, ball.rotation, 1, include_in_raytracing = false)
 	}
 
 	for static_mesh in get_entities(StaticMesh) {
-		if static_mesh.hidden {
-			continue
-		}
 		draw_mesh(static_mesh.mesh, static_mesh.material, static_mesh.translation, static_mesh.rotation, 1)
 	}
 
@@ -626,11 +616,11 @@ draw :: proc() {
 
 	update_buffers()
 
-	build_scene_tlas(cmd)
+	rt_scene_build(&current_frame_game().rt, cmd)
 
 	// DDGI: trace + update every volume's probe atlases (needs the scene TLAS).
 	// TODO: cadence knob (round-robin / nearest-first) once volume counts grow.
-	if current_frame_game().tlas.address != 0 && game.state.update_ddgi {
+	if current_frame_game().rt.tlas.address != 0 && game.state.update_ddgi {
 		for &volume in get_entities(DDGIVolume) {
 			ddgi_update_volume(cmd, &volume.volume)
 		}
@@ -640,7 +630,7 @@ draw :: proc() {
 	// has had time to converge (else the captured indirect bounce is near-black). Recapture
 	// (imgui) re-triggers anytime. Capture after DDGI so it reflects the current probe field.
 	REFLECTION_AUTO_CAPTURE_FRAME :: 200
-	if current_frame_game().tlas.address != 0 {
+	if current_frame_game().rt.tlas.address != 0 {
 		converged := true // no volumes -> nothing to wait for
 		for &volume in get_entities(DDGIVolume) {
 			if volume.gpu.frame_index <= REFLECTION_AUTO_CAPTURE_FRAME {
@@ -801,6 +791,7 @@ draw :: proc() {
 
 	clear(&current_frame_game().mesh_draws)
 	clear(&current_frame_game().skel_instances)
+	rt_scene_reset(&current_frame_game().rt)
 	clear(&game.render_state.geometry_rp.model_matrices)
 }
 
@@ -823,43 +814,33 @@ skinning_pass :: proc(cmd: vk.CommandBuffer, instance: ^SkeletalMeshInstance) {
 
 // TODO: Encode this as indirect draw args instead.
 MeshDraw :: struct {
-	vertex_buffer:    GPUPtr(Vertex),
-	index_buffer:     vk.Buffer,
-	index_buffer_ptr: GPUPtr(u32), // device address, for the RT geometry table
-	index_count:      u32,
-	model_index:      u32,
-	material_index:   MaterialId,
-	blas_address:     vk.DeviceAddress, // 0 if the mesh has no BLAS (e.g. skeletal)
-}
-
-// Per-instance indirection for ray-hit shading: a ray hit gives instance/primitive
-// indices but no vertex data, so this table (indexed by instanceCustomIndex) points
-// back at the mesh's buffers + material. Plain BDA buffer, not a bindless descriptor.
-@(shader_shared)
-GPUGeometry :: struct #max_field_align(16) {
 	vertex_buffer:  GPUPtr(Vertex),
-	index_buffer:   GPUPtr(u32),
+	index_buffer:   vk.Buffer,
+	index_count:    u32,
+	model_index:    u32,
 	material_index: MaterialId,
-	_pad:           [3]u32,
 }
 
-draw_mesh :: proc(mesh: GPUMeshBuffers, material: MaterialId, translation: Vec3, rotation: quaternion128, scale: [3]f32) {
+draw_mesh :: proc(mesh: GPUMeshBuffers, material: MaterialId, translation: Vec3, rotation: quaternion128, scale: [3]f32, include_in_raytracing := true) {
 	model_index := len(game.render_state.geometry_rp.model_matrices)
+	model := linalg.matrix4_from_trs_f32(translation, rotation, scale)
 
 	append(
 		&current_frame_game().mesh_draws,
 		MeshDraw {
 			vertex_buffer = mesh.vertex_buffer.ptr,
 			index_buffer = mesh.index_buffer.buffer,
-			index_buffer_ptr = mesh.index_buffer.ptr,
 			index_count = mesh.index_count,
 			model_index = u32(model_index),
 			material_index = material,
-			blas_address = mesh.blas.address,
 		},
 	)
 
-	append(&game.render_state.geometry_rp.model_matrices, linalg.matrix4_from_trs_f32(translation, rotation, scale))
+	append(&game.render_state.geometry_rp.model_matrices, model)
+
+	if include_in_raytracing {
+		rt_scene_add(&current_frame_game().rt, mesh, material, model)
+	}
 }
 
 draw_skeletal_mesh :: proc(
@@ -884,68 +865,6 @@ draw_skeletal_mesh :: proc(
 	)
 
 	append(&game.render_state.geometry_rp.model_matrices, linalg.matrix4_from_trs_f32(translation, rotation, scale))
-}
-
-// Row-major 3x4 expected by VkAccelerationStructureInstanceKHR. m[r, c] is the
-// mathematical element regardless of Odin's column-major storage.
-mat4_to_vk_transform :: proc(m: Mat4x4) -> vk.TransformMatrixKHR {
-	t: vk.TransformMatrixKHR
-	for r in 0 ..< 3 {
-		for c in 0 ..< 4 {
-			t.mat[r][c] = m[r, c]
-		}
-	}
-	return t
-}
-
-// Rebuilds a scene-wide TLAS each frame from the static (BLAS-backed) mesh draws,
-// recording the build into `cmd`. Scratch + the previous TLAS for this frame slot
-// are deferred on the frame arena (freed once this slot's fence signals).
-build_scene_tlas :: proc(cmd: vk.CommandBuffer) {
-	frame := current_frame_game()
-
-	gfx.defer_destroy_accel(&gfx.current_frame().arena, frame.tlas)
-	frame.tlas = {}
-
-	instances := make([dynamic]vk.AccelerationStructureInstanceKHR, 0, len(frame.mesh_draws), context.temp_allocator)
-	geometries := make([dynamic]GPUGeometry, 0, len(frame.mesh_draws), context.temp_allocator)
-	for mesh_draw in frame.mesh_draws {
-		if mesh_draw.blas_address == 0 do continue // no BLAS (e.g. skeletal)
-
-		inst: vk.AccelerationStructureInstanceKHR
-		inst.transform = mat4_to_vk_transform(game.render_state.geometry_rp.model_matrices[mesh_draw.model_index])
-		inst.mask = 0xFF
-		inst.instanceCustomIndex = u32(len(instances)) // -> geometry-table slot
-		inst.accelerationStructureReference = u64(mesh_draw.blas_address)
-		append(&instances, inst)
-
-		append(
-			&geometries,
-			GPUGeometry {
-				vertex_buffer = mesh_draw.vertex_buffer,
-				index_buffer = mesh_draw.index_buffer_ptr,
-				material_index = mesh_draw.material_index,
-			},
-		)
-	}
-
-	if len(instances) == 0 do return
-
-	gfx.write_buffer_slice(&frame.tlas_instances_buffer, instances[:])
-	gfx.write_buffer_slice(&frame.geometries_buffer, geometries[:])
-
-	scratch: gfx.GPUBuffer(u8)
-	frame.tlas, scratch = gfx.build_tlas(cmd, frame.tlas_instances_buffer, u32(len(instances)))
-	gfx.defer_destroy(&gfx.current_frame().arena, scratch)
-
-	// AS build write -> ray query read.
-	gfx.transition_buffer(
-		cmd,
-		frame.tlas.buffer,
-		{.ACCELERATION_STRUCTURE_WRITE_KHR},
-		{.ACCELERATION_STRUCTURE_READ_KHR},
-		gfx.r_ctx.graphics_queue_family,
-	)
 }
 
 shadow_map_pass :: proc(cmd: vk.CommandBuffer, cascade: u32) {
@@ -1057,9 +976,9 @@ debug_rt_pass :: proc(cmd: vk.CommandBuffer) {
 		cmd,
 		GPUDebugRTPushConstants {
 			global = current_frame_game().global_buffer.ptr,
-			geometries = current_frame_game().geometries_buffer.ptr,
+			geometries = current_frame_game().rt.geometries_buffer.ptr,
 			materials = game.render_state.scene_resources.materials_buffer.ptr,
-			tlas = current_frame_game().tlas.address,
+			tlas = current_frame_game().rt.tlas.address,
 			out_image = game.render_state.temp_resources.resolved_image_id,
 		},
 	)
@@ -1264,13 +1183,6 @@ update_buffers :: proc() {
 	gfx.write_buffer(&current_frame_game().global_buffer, global_data)
 
 	gfx.write_buffer_slice(&current_frame_game().model_matrices_buffer, game.render_state.geometry_rp.model_matrices[:])
-
-	for &ball in get_entities(Ball) {
-		gfx.write_buffer_slice(
-			&ball.skel_mesh_instance.joint_matrices_buffers[gfx.current_frame_index()],
-			ball.skel_animator.calc_joints[:],
-		)
-	}
 
 	for &point_light, i in get_entities(PointLight) {
 		if i >= len(game.render_state.scene_resources.point_lights) do break
