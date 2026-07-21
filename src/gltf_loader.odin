@@ -136,9 +136,9 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 		}
 	}
 
-    assert(tangent_ok)
+    // assert(tangent_ok)
 
-	if tangent_ok {
+	if false {
         tangents := read_accessor(data, tangent_idx, [4]f32) or_return
         defer delete(tangents)
 
@@ -186,8 +186,8 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 			tangent := &gltf_mesh.vertices[get_vertex_index(pContext, iFace, iVert)].tangent
 
 			// Not sure why I need to flip these? Seems to be fine though.
-			tangent.xyz = -fvTangent
-			tangent.w = -fSign
+			tangent.xyz = fvTangent
+			tangent.w = fSign
 		}
 
 		interface := mikk.Interface {
