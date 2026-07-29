@@ -20,6 +20,37 @@ GPUImage :: struct {
 	usage:          vk.ImageUsageFlags,
 }
 
+ImageAccess :: enum {
+	None,
+	AllWrites,
+	AllReadsWrites,
+	ComputeShaderRead,
+	ComputeShaderWrite,
+	AllShaderRead,
+	ComputeFragmentShaderRead,
+	FragmentShaderRead,
+	ColorAttachmentReadWrite,
+	DepthAttachmentReadWrite,
+	TransferRead,
+	TransferWrite,
+}
+
+// A count of zero covers all remaining mip levels or array layers.
+ImageSubresourceRange :: struct {
+	base_mip_level:   u32,
+	mip_count:        u32,
+	base_array_layer: u32,
+	layer_count:      u32,
+}
+
+ImageBarrierInfo :: struct {
+	image:        ^GPUImage,
+	src_access:   ImageAccess,
+	dst_access:   ImageAccess,
+	new_layout:   Maybe(vk.ImageLayout),
+	range:        ImageSubresourceRange,
+}
+
 // This allocates on the GPU, make sure to call `destroy_image` or add to the deletion queue when you are finished with the image.
 create_image :: proc(
 	format: vk.Format,
@@ -209,16 +240,117 @@ create_sampler :: proc(
 	return sampler
 }
 
+image_access_masks :: proc(access: ImageAccess) -> (vk.PipelineStageFlags2, vk.AccessFlags2) {
+	switch access {
+	case .None:
+		return {}, {}
+	case .AllWrites:
+		return {.ALL_COMMANDS}, {.MEMORY_WRITE}
+	case .AllReadsWrites:
+		return {.ALL_COMMANDS}, {.MEMORY_READ, .MEMORY_WRITE}
+	case .ComputeShaderRead:
+		return {.COMPUTE_SHADER}, {.SHADER_READ}
+	case .ComputeShaderWrite:
+		return {.COMPUTE_SHADER}, {.SHADER_WRITE}
+	case .AllShaderRead:
+		return {.ALL_COMMANDS}, {.SHADER_READ}
+	case .ComputeFragmentShaderRead:
+		return {.COMPUTE_SHADER, .FRAGMENT_SHADER}, {.SHADER_READ}
+	case .FragmentShaderRead:
+		return {.FRAGMENT_SHADER}, {.SHADER_READ}
+	case .ColorAttachmentReadWrite:
+		return {.COLOR_ATTACHMENT_OUTPUT}, {.COLOR_ATTACHMENT_READ, .COLOR_ATTACHMENT_WRITE}
+	case .DepthAttachmentReadWrite:
+		return {.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS}, {.DEPTH_STENCIL_ATTACHMENT_READ, .DEPTH_STENCIL_ATTACHMENT_WRITE}
+	case .TransferRead:
+		return {.ALL_TRANSFER}, {.TRANSFER_READ}
+	case .TransferWrite:
+		return {.ALL_TRANSFER}, {.TRANSFER_WRITE}
+	}
+
+	unreachable()
+}
+
+image_barrier :: proc(cmd: vk.CommandBuffer, info: ImageBarrierInfo) -> bool {
+	assert(info.image != nil)
+
+	src_stage_mask, src_access_mask := image_access_masks(info.src_access)
+	dst_stage_mask, dst_access_mask := image_access_masks(info.dst_access)
+
+	new_layout := info.image.current_layout
+	if layout, ok := info.new_layout.?; ok {
+		new_layout = layout
+	}
+
+	mip_count := info.range.mip_count
+	if mip_count == 0 {
+		mip_count = vk.REMAINING_MIP_LEVELS
+	}
+
+	layer_count := info.range.layer_count
+	if layer_count == 0 {
+		layer_count = vk.REMAINING_ARRAY_LAYERS
+	}
+
+	if _, ok := info.new_layout.?; ok {
+		assert(
+			info.range.base_mip_level == 0 &&
+				(info.range.mip_count == 0 || info.range.mip_count == info.image.mip_levels) &&
+				info.range.base_array_layer == 0 &&
+				(info.range.layer_count == 0 || info.range.layer_count == info.image.array_layers),
+			"GPUImage only tracks whole-image layouts",
+		)
+	}
+
+	barrier := vk.ImageMemoryBarrier2 {
+		sType               = .IMAGE_MEMORY_BARRIER_2,
+		pNext               = nil,
+		srcStageMask        = src_stage_mask,
+		srcAccessMask       = src_access_mask,
+		dstStageMask        = dst_stage_mask,
+		dstAccessMask       = dst_access_mask,
+		oldLayout           = info.image.current_layout,
+		newLayout           = new_layout,
+		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
+		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
+		image               = info.image.image,
+		subresourceRange    = {
+			aspectMask     = vk_aspect_of_format(info.image.format),
+			baseMipLevel   = info.range.base_mip_level,
+			levelCount     = mip_count,
+			baseArrayLayer = info.range.base_array_layer,
+			layerCount     = layer_count,
+		},
+	}
+
+	dep_info := vk.DependencyInfo {
+		sType                   = .DEPENDENCY_INFO,
+		pNext                   = nil,
+		imageMemoryBarrierCount = 1,
+		pImageMemoryBarriers    = &barrier,
+	}
+
+	vk.CmdPipelineBarrier2(cmd, &dep_info)
+
+	if _, ok := info.new_layout.?; ok {
+		info.image.current_layout = new_layout
+	}
+
+	return true
+}
+
 transition_vk_image :: proc(cmd: vk.CommandBuffer, image: vk.Image, current_layout: vk.ImageLayout, new_layout: vk.ImageLayout) {
 	image_barrier := vk.ImageMemoryBarrier2 {
-		sType         = .IMAGE_MEMORY_BARRIER_2,
-		pNext         = nil,
-		srcStageMask  = {.ALL_COMMANDS},
-		srcAccessMask = {.MEMORY_WRITE},
-		dstStageMask  = {.ALL_COMMANDS},
-		dstAccessMask = {.MEMORY_WRITE, .MEMORY_READ},
-		oldLayout     = current_layout,
-		newLayout     = new_layout,
+		sType               = .IMAGE_MEMORY_BARRIER_2,
+		pNext               = nil,
+		srcStageMask        = {.ALL_COMMANDS},
+		srcAccessMask       = {.MEMORY_WRITE},
+		dstStageMask        = {.ALL_COMMANDS},
+		dstAccessMask       = {.MEMORY_WRITE, .MEMORY_READ},
+		oldLayout           = current_layout,
+		newLayout           = new_layout,
+		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
+		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
 	}
 
 	aspect_mask: vk.ImageAspectFlags =
@@ -238,34 +370,15 @@ transition_vk_image :: proc(cmd: vk.CommandBuffer, image: vk.Image, current_layo
 }
 
 transition_image :: proc(cmd: vk.CommandBuffer, image: ^GPUImage, new_layout: vk.ImageLayout) -> bool {
-	image_barrier := vk.ImageMemoryBarrier2 {
-		sType         = .IMAGE_MEMORY_BARRIER_2,
-		pNext         = nil,
-		srcStageMask  = {.ALL_COMMANDS},
-		srcAccessMask = {.MEMORY_WRITE},
-		dstStageMask  = {.ALL_COMMANDS},
-		dstAccessMask = {.MEMORY_WRITE, .MEMORY_READ},
-		oldLayout     = image.current_layout,
-		newLayout     = new_layout,
-	}
-
-	aspect_mask: vk.ImageAspectFlags =
-		(new_layout == .DEPTH_ATTACHMENT_OPTIMAL || new_layout == .DEPTH_READ_ONLY_OPTIMAL) ? {.DEPTH} : {.COLOR}
-
-	image_barrier.subresourceRange = init_image_subresource_range(aspect_mask)
-	image_barrier.image = image.image
-
-	dep_info := vk.DependencyInfo {
-		sType                   = .DEPENDENCY_INFO,
-		pNext                   = nil,
-		imageMemoryBarrierCount = 1,
-		pImageMemoryBarriers    = &image_barrier,
-	}
-
-	vk.CmdPipelineBarrier2(cmd, &dep_info)
-	image.current_layout = new_layout
-
-	return true
+	return image_barrier(
+		cmd,
+		ImageBarrierInfo {
+			image      = image,
+			src_access = .AllWrites,
+			dst_access = .AllReadsWrites,
+			new_layout = new_layout,
+		},
+	)
 }
 
 copy_image_to_image :: proc(cmd: vk.CommandBuffer, source: vk.Image, destination: vk.Image, src_size: vk.Extent2D, dst_size: vk.Extent2D) {
