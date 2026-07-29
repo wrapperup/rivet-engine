@@ -42,11 +42,17 @@ float filter_pcf(Shadow_Params params, float2 screen_pos, float4 shadow_coord, f
   int elems;
   params.depth.get_dimensions(texDim.x, texDim.y, elems);
 
-  if (shadow_coord.x < 0 || shadow_coord.x > 1) {
+  let proj_coords = shadow_coord.xyz / shadow_coord.w;
+
+  if (proj_coords.x < 0 || proj_coords.x > 1) {
     return 1.f;
   }
 
-  if (shadow_coord.y < 0 || shadow_coord.y > 1) {
+  if (proj_coords.y < 0 || proj_coords.y > 1) {
+    return 1.f;
+  }
+
+  if (proj_coords.z < 0 || proj_coords.z > 1) {
     return 1.f;
   }
 

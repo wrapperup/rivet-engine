@@ -131,17 +131,21 @@ FragmentOutput fragment_main(FragmentInput in) {
     }
   }
 
-  let world_to_shadow = pc.global_data_buffer.cascade_world_to_shadows[cascade_index];
-  let shadow_space_pos = mul(BIAS_MAT, mul(world_to_shadow, in.pos_ws));
+  float shadow = 1.0;
+  if (cascade_index < pc.num_cascades) {
+    let world_to_shadow = pc.global_data_buffer.cascade_world_to_shadows[cascade_index];
+    let shadow_space_pos = mul(BIAS_MAT, mul(world_to_shadow, in.pos_ws));
 
-  let bias = pc.global_data_buffer.cascade_configs[cascade_index].bias;
-  let slope_bias = pc.global_data_buffer.cascade_configs[cascade_index].slope_bias;
+    let bias = pc.global_data_buffer.cascade_configs[cascade_index].bias;
+    let slope_bias = pc.global_data_buffer.cascade_configs[cascade_index].slope_bias;
 
-  Shadow_Params shadow_params;
-  shadow_params.depth = pc.shadow_depth;
-  shadow_params.sampler = pc.shadow_sampler;
+    Shadow_Params shadow_params;
+    shadow_params.depth = pc.shadow_depth;
+    shadow_params.sampler = pc.shadow_sampler;
 
-  let shadow = filter_pcf(shadow_params, in.pos_cs.xy, shadow_space_pos, cascade_index, bias, slope_bias, sun_NoL);
+    shadow = filter_pcf(shadow_params, in.pos_cs.xy, shadow_space_pos, cascade_index,
+                        bias, slope_bias, sun_NoL);
+  }
 
   Vec3 frag_color = 0;
   frag_color = saturate( (min(sun_NoL, min(shadow, ao)) * pc.global_data_buffer.sun_color) *

@@ -165,13 +165,13 @@ calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 30
 		clip_to_world := linalg.inverse(world_to_clip)
 
 		CORNERS_NDC :: [8]Vec4 {
-			{-1.0, -1.0, -1.0, 1.0},
+			{-1.0, -1.0, 0.0, 1.0},
 			{-1.0, -1.0, 1.0, 1.0},
-			{-1.0, 1.0, -1.0, 1.0},
+			{-1.0, 1.0, 0.0, 1.0},
 			{-1.0, 1.0, 1.0, 1.0},
-			{1.0, -1.0, -1.0, 1.0},
+			{1.0, -1.0, 0.0, 1.0},
 			{1.0, -1.0, 1.0, 1.0},
-			{1.0, 1.0, -1.0, 1.0},
+			{1.0, 1.0, 0.0, 1.0},
 			{1.0, 1.0, 1.0, 1.0},
 		}
 
@@ -195,14 +195,13 @@ calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 30
 
 		radius: f32
 		for corner in corners_ws {
-			// distance := linalg.length(corner - center_ws)
-			// radius = max(radius, distance)
-
-			distance_x := math.abs(corner.x - center_ws.x)
-			distance_y := math.abs(corner.y - center_ws.y)
-			distance_z := math.abs(corner.z - center_ws.z)
-			radius = max(radius, distance_x, distance_y, distance_z)
+			// A sphere remains conservative after rotating into light space. The
+			// previous max-axis extent did not, so diagonal corners could be clipped.
+			radius = max(radius, linalg.length(corner.xyz - center_ws))
 		}
+
+		// Keep rasterization and PCF taps away from the exact projection boundary.
+		radius *= 1.01
 
 		aabb: Aabb
 		aabb.min = -radius

@@ -90,7 +90,7 @@ RenderState :: struct {
 	reflection_capture_pipeline:     ^gfx.ComputePipeline,
 	reflection_prefilter_pipeline:   ^gfx.ComputePipeline,
 	reflection_probe_debug_pipeline: ^gfx.GraphicsPipeline,
-	reflection_probes_buffer:        gfx.GPUBuffer(GPUReflectionProbe), // packed per-frame array
+	reflection_probes_buffers:       [gfx.FRAME_OVERLAP]gfx.GPUBuffer(GPUReflectionProbe),
 
 	// Skybox pipelines
 	skybox_pipeline:                 ^gfx.GraphicsPipeline,
@@ -164,9 +164,6 @@ init_test_resources :: proc() {
 	// Default Imageture Sampler
 	default_sampler := gfx.create_sampler(.LINEAR, .REPEAT, max_lod = 10.0, max_anisotropy = gfx.r_ctx.limits.maxSamplerAnisotropy)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, default_sampler)
-
-	font_image_sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, font_image_sampler)
 
 	// Shadow Depth Imageture Sampler
 	shadow_depth_sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, .LESS_OR_EQUAL)
@@ -270,48 +267,12 @@ draw :: proc() {
 		draw_mesh(static_mesh.mesh, static_mesh.material, static_mesh.translation, static_mesh.rotation, 1)
 	}
 
-	// {
-	// 	font_state := &game.render_state.font_state
-	//
-	// 	if len(font_state.font_instances) > 0 {
-	// 		gfx.write_buffer_slice(&font_state.font_instance_buf, font_state.font_instances[:])
-	// 	}
-	//
-	// 	atlas_size := UVec2{u32(font_state.font_ctx.width), u32(font_state.font_ctx.height)}
-	// 	dirty_texture :=
-	// 		font_state.font_ctx.dirtyRect[0] < font_state.font_ctx.dirtyRect[2] &&
-	// 		font_state.font_ctx.dirtyRect[1] < font_state.font_ctx.dirtyRect[3]
-	//
-	// 	if font_state.font_atlas_size != atlas_size {
-	// 		dirty_texture = true
-	// 		font_state.font_atlas_size = atlas_size
-	//
-	// 		vk.DeviceWaitIdle(gfx.r_ctx.device)
-	//
-	// 		if font_state.font_img.image != 0 {
-	// 			gfx.defer_destroy(&gfx.current_frame().arena, font_state.font_img)
-	// 		}
-	//
-	// 		font_state.font_img = gfx.create_image(
-	// 			.R8_UINT,
-	// 			{atlas_size.x, atlas_size.y, 1},
-	// 			{.TRANSFER_DST, .SAMPLED},
-	// 		)
-	//
-	// 		set_texture(font_state.font_img, FONT_ATLAS_ID)
-	// 	}
-	//
-	// 	if dirty_texture {
-	// 		gfx.staging_write_image_slice(&font_state.font_img, font_state.font_ctx.textureData)
-	// 	}
-	//
-	// 	font_state.font_ctx.state_count = 0
-	// 	fontstash.Reset(&font_state.font_ctx)
-	// }
-
 	frame := current_frame_game()
 	volumes := get_entities(DDGIVolume)
 	probes := get_entities(ReflectionProbe)
+
+	// Wait for this frame slot before writing any of its CPU-visible buffers.
+	cmd := gfx.begin_command_buffer()
 
 	// CPU preparation and uploads happen before command recording.
 	geometry_prepare()
@@ -321,8 +282,6 @@ draw :: proc() {
 	ddgi_prepare(volumes, game.state.update_ddgi && len(frame.rt.instances) > 0)
 	reflection_probe_prepare(probes)
 	prepare_shared_frame_data()
-
-	cmd := gfx.begin_command_buffer()
 
 	record_rt_scene_pass(cmd, &frame.rt)
 	record_ddgi_pass(cmd, volumes)

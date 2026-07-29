@@ -63,8 +63,10 @@ init_reflection_probe_rp :: proc() {
 			return gfx.create_compute_pipeline("Reflection_Prefilter", module, GPUReflectionPrefilterPush)
 		},
 	)
-	game.render_state.reflection_probes_buffer = gfx.create_buffer(GPUReflectionProbe, MAX_REFLECTION_PROBES, .DynUniform)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.reflection_probes_buffer)
+	for &probes_buffer in game.render_state.reflection_probes_buffers {
+		probes_buffer = gfx.create_buffer(GPUReflectionProbe, MAX_REFLECTION_PROBES, .DynUniform)
+		gfx.defer_destroy(&gfx.r_ctx.global_arena, probes_buffer)
+	}
 	game.render_state.reflection_probe_debug_pipeline = add_graphics_shader(
 		"shaders/reflection_probe_debug.slang",
 		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
@@ -85,6 +87,7 @@ init_reflection_probe_rp :: proc() {
 }
 
 reflection_probe_prepare :: proc(probes: []ReflectionProbe) {
+	frame_index := gfx.current_frame_index()
 	packed: [MAX_REFLECTION_PROBES]GPUReflectionProbe
 	count: u32
 
@@ -100,10 +103,10 @@ reflection_probe_prepare :: proc(probes: []ReflectionProbe) {
 		return a.priority > b.priority
 	})
 	if count > 0 {
-		gfx.write_buffer_slice(&game.render_state.reflection_probes_buffer, packed[:count])
+		gfx.write_buffer_slice(&game.render_state.reflection_probes_buffers[frame_index], packed[:count])
 	}
 
-	game.render_state.global_data.reflection_probes = game.render_state.reflection_probes_buffer.ptr
+	game.render_state.global_data.reflection_probes = game.render_state.reflection_probes_buffers[frame_index].ptr
 	game.render_state.global_data.num_reflection_probes = count
 }
 
@@ -147,7 +150,7 @@ record_reflection_probe_debug_pass :: proc(cmd: vk.CommandBuffer, probes: []Refl
 			cmd,
 			GPUReflectionProbeDebugPush {
 				global = current_frame_game().global_buffer.ptr,
-				probe = probe.config.ptr,
+				probe = probe.configs[gfx.current_frame_index()].ptr,
 				vertex_buffer = rp.probe_vbuf.ptr,
 				center = probe.translation,
 				radius = probe.debug_radius,
@@ -180,6 +183,13 @@ reflection_probe_debug_draw_box :: proc(probe: ^ReflectionProbe) {
 // Uses the per-frame scene TLAS, so call after record_rt_scene_pass + DDGI update.
 @(private = "file")
 record_reflection_probe_capture :: proc(cmd: vk.CommandBuffer, probe: ^ReflectionProbe) {
+	gfx.image_barrier(
+		cmd,
+		&probe.cube_image,
+		src_access = .AllReadsWrites,
+		dst_access = .ComputeShaderWrite,
+	)
+
 	gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_capture_pipeline)
 	gfx.cmd_push_constants(
 		cmd,

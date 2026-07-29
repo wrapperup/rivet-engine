@@ -26,6 +26,7 @@ ImageAccess :: enum {
 	AllReadsWrites,
 	ComputeShaderRead,
 	ComputeShaderWrite,
+	ComputeShaderReadWrite,
 	AllShaderRead,
 	ComputeFragmentShaderRead,
 	FragmentShaderRead,
@@ -244,6 +245,8 @@ image_access_masks :: proc(access: ImageAccess) -> (vk.PipelineStageFlags2, vk.A
 		return {.COMPUTE_SHADER}, {.SHADER_READ}
 	case .ComputeShaderWrite:
 		return {.COMPUTE_SHADER}, {.SHADER_WRITE}
+	case .ComputeShaderReadWrite:
+		return {.COMPUTE_SHADER}, {.SHADER_READ, .SHADER_WRITE}
 	case .AllShaderRead:
 		return {.ALL_COMMANDS}, {.SHADER_READ}
 	case .ComputeFragmentShaderRead:

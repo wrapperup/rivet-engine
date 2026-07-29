@@ -43,7 +43,7 @@ MAX_DDGI_VOLUMES :: 8
 
 DDGI_Volume_Resources :: struct {
 	gpu:             GPUDDGIVolume,
-	config_buffer:   gfx.GPUBuffer(GPUDDGIVolume),
+	config_buffers:  [gfx.FRAME_OVERLAP]gfx.GPUBuffer(GPUDDGIVolume),
 	radiance_buffer: gfx.GPUBuffer(Vec4), // rays_per_probe * num_probes
 	irradiance:      gfx.GPUImage,
 	depth:           gfx.GPUImage,
@@ -129,9 +129,11 @@ ddgi_volume_resources_init :: proc(
 		edge_fade      = edge_fade,
 	}
 
-	volume.config_buffer = gfx.create_buffer(GPUDDGIVolume, 1, .DynUniform)
-	gfx.defer_destroy(arena, volume.config_buffer)
-	gfx.write_buffer(&volume.config_buffer, &volume.gpu)
+	for &config_buffer in volume.config_buffers {
+		config_buffer = gfx.create_buffer(GPUDDGIVolume, 1, .DynUniform)
+		gfx.defer_destroy(arena, config_buffer)
+		gfx.write_buffer(&config_buffer, &volume.gpu)
+	}
 
 	num_probes := counts.x * counts.y * counts.z
 	volume.radiance_buffer = gfx.create_buffer(Vec4, num_probes * DDGI_RAYS_PER_PROBE, .Storage)

@@ -33,7 +33,7 @@ ReflectionProbe :: struct {
 	cube_sampled_id:      gfx.ImageId, // CUBE view  (read in lighting / prefilter source)
 	cube_mip_storage_ids: [MAX_REFLECTION_MIPS]gfx.ImageId,
 	gpu_sampler_id:       gfx.SamplerId,
-	config:               gfx.GPUBuffer(GPUReflectionProbe),
+	configs:              [gfx.FRAME_OVERLAP]gfx.GPUBuffer(GPUReflectionProbe),
 	captured:             bool,
 	wants_recapture:      bool,
 }
@@ -101,11 +101,16 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe, position: Vec3, half_exte
 	sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, max_lod = f32(probe.mip_count - 1))
 	gfx.defer_destroy(arena, sampler)
 
-	probe.config = gfx.create_buffer(GPUReflectionProbe, 1, .DynUniform)
-	gfx.defer_destroy(arena, probe.config)
+	for &config in probe.configs {
+		config = gfx.create_buffer(GPUReflectionProbe, 1, .DynUniform)
+		gfx.defer_destroy(arena, config)
+	}
 
 	probe.gpu_sampler_id = gfx.add_sampler(sampler)
-	reflection_probe_write_config(probe)
+	cfg := reflection_probe_to_gpu(probe)
+	for &config in probe.configs {
+		gfx.write_buffer(&config, &cfg)
+	}
 }
 
 // Release a probe's bindless slots so a scene reload can recycle them. The underlying
@@ -134,5 +139,5 @@ reflection_probe_to_gpu :: proc(probe: ^ReflectionProbe) -> GPUReflectionProbe {
 
 reflection_probe_write_config :: proc(probe: ^ReflectionProbe) {
 	cfg := reflection_probe_to_gpu(probe)
-	gfx.write_buffer(&probe.config, &cfg)
+	gfx.write_buffer(&probe.configs[gfx.current_frame_index()], &cfg)
 }
