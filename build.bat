@@ -35,8 +35,7 @@ set BASE_FLAGS=entrypoints ^
     -collection:deps=deps ^
     -custom-attribute:shader_shared ^
     -custom-attribute:entity ^
-    -show-timings ^
-    -linker=radlink
+    -show-timings
 
 :: If first arg is "1", do release; otherwise hotreloadable debug (with hotreload)
 if "%~1"=="1" (

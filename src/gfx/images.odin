@@ -43,14 +43,6 @@ ImageSubresourceRange :: struct {
 	layer_count:      u32,
 }
 
-ImageBarrierInfo :: struct {
-	image:        ^GPUImage,
-	src_access:   ImageAccess,
-	dst_access:   ImageAccess,
-	new_layout:   Maybe(vk.ImageLayout),
-	range:        ImageSubresourceRange,
-}
-
 // This allocates on the GPU, make sure to call `destroy_image` or add to the deletion queue when you are finished with the image.
 create_image :: proc(
 	format: vk.Format,
@@ -271,33 +263,40 @@ image_access_masks :: proc(access: ImageAccess) -> (vk.PipelineStageFlags2, vk.A
 	unreachable()
 }
 
-image_barrier :: proc(cmd: vk.CommandBuffer, info: ImageBarrierInfo) -> bool {
-	assert(info.image != nil)
+image_barrier :: proc(
+	cmd: vk.CommandBuffer,
+	image: ^GPUImage,
+	src_access: ImageAccess,
+	dst_access: ImageAccess,
+	new_layout: Maybe(vk.ImageLayout) = nil,
+	range: ImageSubresourceRange = {},
+) -> bool {
+	assert(image != nil)
 
-	src_stage_mask, src_access_mask := image_access_masks(info.src_access)
-	dst_stage_mask, dst_access_mask := image_access_masks(info.dst_access)
+	src_stage_mask, src_access_mask := image_access_masks(src_access)
+	dst_stage_mask, dst_access_mask := image_access_masks(dst_access)
 
-	new_layout := info.image.current_layout
-	if layout, ok := info.new_layout.?; ok {
-		new_layout = layout
+	target_layout := image.current_layout
+	if layout, ok := new_layout.?; ok {
+		target_layout = layout
 	}
 
-	mip_count := info.range.mip_count
+	mip_count := range.mip_count
 	if mip_count == 0 {
 		mip_count = vk.REMAINING_MIP_LEVELS
 	}
 
-	layer_count := info.range.layer_count
+	layer_count := range.layer_count
 	if layer_count == 0 {
 		layer_count = vk.REMAINING_ARRAY_LAYERS
 	}
 
-	if _, ok := info.new_layout.?; ok {
+	if _, ok := new_layout.?; ok {
 		assert(
-			info.range.base_mip_level == 0 &&
-				(info.range.mip_count == 0 || info.range.mip_count == info.image.mip_levels) &&
-				info.range.base_array_layer == 0 &&
-				(info.range.layer_count == 0 || info.range.layer_count == info.image.array_layers),
+			range.base_mip_level == 0 &&
+				(range.mip_count == 0 || range.mip_count == image.mip_levels) &&
+				range.base_array_layer == 0 &&
+				(range.layer_count == 0 || range.layer_count == image.array_layers),
 			"GPUImage only tracks whole-image layouts",
 		)
 	}
@@ -309,16 +308,16 @@ image_barrier :: proc(cmd: vk.CommandBuffer, info: ImageBarrierInfo) -> bool {
 		srcAccessMask       = src_access_mask,
 		dstStageMask        = dst_stage_mask,
 		dstAccessMask       = dst_access_mask,
-		oldLayout           = info.image.current_layout,
-		newLayout           = new_layout,
+		oldLayout           = image.current_layout,
+		newLayout           = target_layout,
 		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
 		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
-		image               = info.image.image,
+		image               = image.image,
 		subresourceRange    = {
-			aspectMask     = vk_aspect_of_format(info.image.format),
-			baseMipLevel   = info.range.base_mip_level,
+			aspectMask     = vk_aspect_of_format(image.format),
+			baseMipLevel   = range.base_mip_level,
 			levelCount     = mip_count,
-			baseArrayLayer = info.range.base_array_layer,
+			baseArrayLayer = range.base_array_layer,
 			layerCount     = layer_count,
 		},
 	}
@@ -332,8 +331,8 @@ image_barrier :: proc(cmd: vk.CommandBuffer, info: ImageBarrierInfo) -> bool {
 
 	vk.CmdPipelineBarrier2(cmd, &dep_info)
 
-	if _, ok := info.new_layout.?; ok {
-		info.image.current_layout = new_layout
+	if _, ok := new_layout.?; ok {
+		image.current_layout = target_layout
 	}
 
 	return true
@@ -372,12 +371,10 @@ transition_vk_image :: proc(cmd: vk.CommandBuffer, image: vk.Image, current_layo
 transition_image :: proc(cmd: vk.CommandBuffer, image: ^GPUImage, new_layout: vk.ImageLayout) -> bool {
 	return image_barrier(
 		cmd,
-		ImageBarrierInfo {
-			image      = image,
-			src_access = .AllWrites,
-			dst_access = .AllReadsWrites,
-			new_layout = new_layout,
-		},
+		image,
+		src_access = .AllWrites,
+		dst_access = .AllReadsWrites,
+		new_layout = new_layout,
 	)
 }
 

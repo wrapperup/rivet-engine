@@ -29,6 +29,95 @@ struct DDGIVolume {
   f32 edge_fade;
 };
 
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\entity_point_light.odin
+//
+struct PointLight {
+  Vec3 color;
+  f32 radius;
+  Vec3 world_pos;
+  f32 lumens;
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\entity_reflection_probe.odin
+//
+struct ReflectionProbe {
+  Vec3 center;
+  f32 blend_distance;
+  Vec3 half_extents;
+  f32 intensity;
+  ImageCube cube;
+  Sampler sampler;
+  u32 mip_count;
+  f32 priority;
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\gpu_types.odin
+//
+struct Vertex {
+  float3 position;
+  f32 uv_x;
+  float3 normal;
+  f32 uv_y;
+  float4 color;
+  float4 tangent;
+};
+
+struct SkeletonVertexAttribute {
+  u8 joints[4];
+  f32 weights[4];
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\renderer.odin
+//
+struct Material {
+  Image2D base_color_id;
+  Image2D normal_map_id;
+  Image2D ao_roughness_metallic_id;
+};
+
+struct Environment {
+  PointLight* point_lights;
+  u32 num_point_lights;
+  ImageCube env_map;
+  Image2D dfg;
+  Sampler env_sampler;
+};
+
+struct GlobalData {
+  Mat4x4 view_to_clip;
+  Mat4x4 world_to_view;
+  Mat4x4 clip_to_world;
+  Environment environment;
+  Mat4x4* cascade_world_to_shadows;
+  CascadeConfig* cascade_configs;
+  Vec3 sun_color;
+  Vec3 sky_color;
+  Vec3 camera_pos;
+  Vec3 sun_direction;
+  Sampler default_sampler;
+  DDGIVolume* ddgi_volumes;
+  u32 num_ddgi_volumes;
+  ReflectionProbe* reflection_probes;
+  u32 num_reflection_probes;
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_ddgi.odin
+//
 struct DDGITracePush {
   DDGIVolume* volume;
   Geometry* geometries;
@@ -69,31 +158,54 @@ struct DDGIProbePush {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\entity_point_light.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_debug.odin
 //
-struct PointLight {
-  Vec3 color;
-  f32 radius;
-  Vec3 world_pos;
-  f32 lumens;
+struct DebugRTPushConstants {
+  GlobalData* global;
+  Geometry* geometries;
+  Material* materials;
+  AccelerationStructure tlas;
+  RWImage2D out_image;
 };
 
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\entity_reflection_probe.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_geometry.odin
 //
-struct ReflectionProbe {
-  Vec3 center;
-  f32 blend_distance;
-  Vec3 half_extents;
-  f32 intensity;
-  ImageCube cube;
+struct DrawPushConstants {
+  GlobalData* global_data_buffer;
+  Vertex* vertex_buffer;
+  Mat4x4* model_matrices;
+  Material* materials;
+  u32 model_index;
+  MaterialId material_index;
+  u32 num_cascades;
+  Image2DArray<f32> shadow_depth;
+  SamplerComparison shadow_sampler;
+};
+
+struct SkyboxPushConstants {
+  Vertex* vertex_buffer;
+  GlobalData* global_data_buffer;
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_post.odin
+//
+struct PostProcessingPushConstants {
+  RWImage2D resolved_image;
+  Image3D<Vec3> tony_mc_mapface;
   Sampler sampler;
-  u32 mip_count;
-  f32 priority;
 };
 
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_reflections.odin
+//
 struct ReflectionCapturePush {
   GlobalData* global;
   Geometry* geometries;
@@ -125,39 +237,8 @@ struct ReflectionPrefilterPush {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\gpu_types.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_shadow.odin
 //
-struct Vertex {
-  float3 position;
-  f32 uv_x;
-  float3 normal;
-  f32 uv_y;
-  float4 color;
-  float4 tangent;
-};
-
-struct SkeletonVertexAttribute {
-  u8 joints[4];
-  f32 weights[4];
-};
-
-
-
-//
-// Generated from C:\Repos\odin\vulkan-playground\src\renderer.odin
-//
-struct DrawPushConstants {
-  GlobalData* global_data_buffer;
-  Vertex* vertex_buffer;
-  Mat4x4* model_matrices;
-  Material* materials;
-  u32 model_index;
-  MaterialId material_index;
-  u32 num_cascades;
-  Image2DArray<f32> shadow_depth;
-  SamplerComparison shadow_sampler;
-};
-
 struct DrawShadowDepthPushConstants {
   Vertex* vertex_buffer;
   Mat4x4* model_matrices;
@@ -166,69 +247,23 @@ struct DrawShadowDepthPushConstants {
   u32 cascade_index;
 };
 
-struct SkinningPushConstants {
-  Vertex* input_vertex_buffer;
-  Vertex* output_vertex_buffer;
-  Mat4x4* joint_matrices;
-  SkeletonVertexAttribute* attrs;
-  u32 vertex_count;
-};
-
-struct SkyboxPushConstants {
-  Vertex* vertex_buffer;
-  GlobalData* global_data_buffer;
-};
-
-struct DebugRTPushConstants {
-  GlobalData* global;
-  Geometry* geometries;
-  Material* materials;
-  AccelerationStructure tlas;
-  RWImage2D out_image;
-};
-
-struct PostProcessingPushConstants {
-  RWImage2D resolved_image;
-  Image3D<Vec3> tony_mc_mapface;
-  Sampler sampler;
-};
-
-struct Material {
-  Image2D base_color_id;
-  Image2D normal_map_id;
-  Image2D ao_roughness_metallic_id;
-};
-
-struct Environment {
-  PointLight* point_lights;
-  u32 num_point_lights;
-  ImageCube env_map;
-  Image2D dfg;
-  Sampler env_sampler;
-};
-
 struct CascadeConfig {
   f32 split_dist;
   f32 bias;
   f32 slope_bias;
 };
 
-struct GlobalData {
-  Mat4x4 view_to_clip;
-  Mat4x4 world_to_view;
-  Mat4x4 clip_to_world;
-  Environment environment;
-  Mat4x4* cascade_world_to_shadows;
-  CascadeConfig* cascade_configs;
-  Vec3 sun_color;
-  Vec3 sky_color;
-  Vec3 camera_pos;
-  Vec3 sun_direction;
-  Sampler default_sampler;
-  DDGIVolume* ddgi_volumes;
-  u32 num_ddgi_volumes;
-  ReflectionProbe* reflection_probes;
-  u32 num_reflection_probes;
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_skinning.odin
+//
+struct SkinningPushConstants {
+  Vertex* input_vertex_buffer;
+  Vertex* output_vertex_buffer;
+  Mat4x4* joint_matrices;
+  SkeletonVertexAttribute* attrs;
+  u32 vertex_count;
 };
 
 

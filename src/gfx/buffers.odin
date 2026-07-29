@@ -12,6 +12,22 @@ GPUBuffer :: struct($T: typeid) {
 	ptr:        GPUPtr(T),
 }
 
+BufferAccess :: enum {
+	None,
+	AllReads,
+	AllWrites,
+	AllReadsWrites,
+	ComputeShaderRead,
+	ComputeShaderWrite,
+	VertexShaderRead,
+	FragmentShaderRead,
+	TransferRead,
+	TransferWrite,
+	AccelerationStructureBuildRead,
+	AccelerationStructureBuildWrite,
+	AccelerationStructureRead,
+}
+
 // This is hopefully very common kinds of buffers
 // you may typically want to create. Uniform and Storage
 // buffers will always create a valid GPUPtr(T).
@@ -187,31 +203,79 @@ staging_write_buffer_slice :: proc(buffer: ^GPUBuffer($Z), in_data: []$T, offset
 	destroy_buffer(&staging)
 }
 
-transition_buffer :: proc(
+@(private)
+buffer_access_masks :: proc(access: BufferAccess) -> (vk.PipelineStageFlags2, vk.AccessFlags2) {
+	switch access {
+	case .None:
+		return {}, {}
+	case .AllReads:
+		return {.ALL_COMMANDS}, {.MEMORY_READ}
+	case .AllWrites:
+		return {.ALL_COMMANDS}, {.MEMORY_WRITE}
+	case .AllReadsWrites:
+		return {.ALL_COMMANDS}, {.MEMORY_READ, .MEMORY_WRITE}
+	case .ComputeShaderRead:
+		return {.COMPUTE_SHADER}, {.SHADER_READ}
+	case .ComputeShaderWrite:
+		return {.COMPUTE_SHADER}, {.SHADER_WRITE}
+	case .VertexShaderRead:
+		return {.VERTEX_SHADER}, {.SHADER_READ}
+	case .FragmentShaderRead:
+		return {.FRAGMENT_SHADER}, {.SHADER_READ}
+	case .TransferRead:
+		return {.ALL_TRANSFER}, {.TRANSFER_READ}
+	case .TransferWrite:
+		return {.ALL_TRANSFER}, {.TRANSFER_WRITE}
+	case .AccelerationStructureBuildRead:
+		return {.ACCELERATION_STRUCTURE_BUILD_KHR}, {.ACCELERATION_STRUCTURE_READ_KHR}
+	case .AccelerationStructureBuildWrite:
+		return {.ACCELERATION_STRUCTURE_BUILD_KHR}, {.ACCELERATION_STRUCTURE_WRITE_KHR}
+	case .AccelerationStructureRead:
+		return {.ALL_COMMANDS}, {.ACCELERATION_STRUCTURE_READ_KHR}
+	}
+
+	unreachable()
+}
+
+buffer_barrier :: proc(
 	cmd: vk.CommandBuffer,
 	buffer: GPUBuffer($T),
-	src_flags: vk.AccessFlags2,
-	dst_flags: vk.AccessFlags2,
-	queue_family_index: u32,
+	src_access: BufferAccess,
+	dst_access: BufferAccess,
+	offset: u64 = 0,
+	size: u64 = 0,
 ) {
-	buffer_memory_barrier := vk.BufferMemoryBarrier2 {
+	src_stage_mask, src_access_mask := buffer_access_masks(src_access)
+	dst_stage_mask, dst_access_mask := buffer_access_masks(dst_access)
+
+	buffer_size := u64(buffer.info.size)
+	assert(offset <= buffer_size, "Buffer barrier offset exceeds the buffer size")
+	assert(size == 0 || size <= buffer_size - offset, "Buffer barrier range exceeds the buffer size")
+
+	vk_size := vk.DeviceSize(size)
+	if vk_size == 0 {
+		vk_size = vk.DeviceSize(vk.WHOLE_SIZE)
+	}
+
+	barrier := vk.BufferMemoryBarrier2 {
 		sType               = .BUFFER_MEMORY_BARRIER_2,
 		pNext               = nil,
-		srcStageMask        = {.ALL_COMMANDS},
-		srcAccessMask       = src_flags,
-		dstStageMask        = {.ALL_COMMANDS},
-		dstAccessMask       = dst_flags,
+		srcStageMask        = src_stage_mask,
+		srcAccessMask       = src_access_mask,
+		dstStageMask        = dst_stage_mask,
+		dstAccessMask       = dst_access_mask,
+		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
+		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
 		buffer              = buffer.buffer,
-		size                = vk.DeviceSize(vk.WHOLE_SIZE),
-		srcQueueFamilyIndex = queue_family_index,
-		dstQueueFamilyIndex = queue_family_index,
+		offset              = vk.DeviceSize(offset),
+		size                = vk_size,
 	}
 
 	dep_info := vk.DependencyInfo {
 		sType                    = .DEPENDENCY_INFO,
 		pNext                    = nil,
 		bufferMemoryBarrierCount = 1,
-		pBufferMemoryBarriers    = &buffer_memory_barrier,
+		pBufferMemoryBarriers    = &barrier,
 	}
 
 	vk.CmdPipelineBarrier2(cmd, &dep_info)
