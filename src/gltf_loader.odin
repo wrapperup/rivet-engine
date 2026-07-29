@@ -138,7 +138,7 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 
     // assert(tangent_ok)
 
-	if false {
+	if tangent_ok {
         tangents := read_accessor(data, tangent_idx, [4]f32) or_return
         defer delete(tangents)
 
@@ -206,8 +206,6 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 
 		tangent_ok = mikk.generate_tangents(&ctx)
 	}
-
-	assert(tangent_ok)
 
 	ok = true
 
