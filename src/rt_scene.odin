@@ -26,7 +26,7 @@ GPUGeometry :: struct #max_field_align(16) {
 
 // Per-frame-slot raytraced scene: BLAS instances + the parallel geometry table.
 // draw_mesh appends instances inline (single source of truth with the raster draw
-// list), then rt_scene_build turns them into a TLAS once per frame.
+// list), then record_rt_scene_pass turns them into a TLAS once per frame.
 RaytracingScene :: struct {
 	// CPU staging, appended by rt_scene_add, cleared at end of frame. Parallel
 	// arrays: instances[i].instanceCustomIndex == i indexes geometries.
@@ -37,6 +37,12 @@ RaytracingScene :: struct {
 	instances_buffer:  gfx.GPUBuffer(vk.AccelerationStructureInstanceKHR),
 	geometries_buffer: gfx.GPUBuffer(GPUGeometry),
 	tlas:              gfx.Raytracing_Accel,
+}
+
+init_rt_scene_pass :: proc() {
+	for &frame in game.render_state.frame_data {
+		rt_scene_init(&frame.rt)
+	}
 }
 
 rt_scene_init :: proc(rt: ^RaytracingScene) {
@@ -71,29 +77,31 @@ rt_scene_add :: proc(rt: ^RaytracingScene, mesh: GPUMeshBuffers, material: Mater
 	)
 }
 
-// Rebuilds the scene TLAS from the instances collected this frame, recording the
-// build into `cmd`. Scratch + the previous TLAS for this frame slot are deferred
-// on the frame arena (freed once this slot's fence signals).
-rt_scene_build :: proc(rt: ^RaytracingScene, cmd: vk.CommandBuffer) {
-	gfx.defer_destroy_accel(&gfx.current_frame().arena, rt.tlas)
-	rt.tlas = {}
-
+rt_scene_prepare :: proc(rt: ^RaytracingScene) {
 	if len(rt.instances) == 0 do return
 
 	gfx.write_buffer_slice(&rt.instances_buffer, rt.instances[:])
 	gfx.write_buffer_slice(&rt.geometries_buffer, rt.geometries[:])
+}
+
+// Rebuilds the scene TLAS from the instance data uploaded by rt_scene_prepare.
+// Scratch + the previous TLAS for this frame slot are deferred on the frame arena.
+record_rt_scene_pass :: proc(cmd: vk.CommandBuffer, rt: ^RaytracingScene) {
+	gfx.defer_destroy_accel(&gfx.current_frame().arena, rt.tlas)
+	rt.tlas = {}
+
+	if len(rt.instances) == 0 do return
 
 	scratch: gfx.GPUBuffer(u8)
 	rt.tlas, scratch = gfx.build_tlas(cmd, rt.instances_buffer, u32(len(rt.instances)))
 	gfx.defer_destroy(&gfx.current_frame().arena, scratch)
 
 	// AS build write -> ray query read.
-	gfx.transition_buffer(
+	gfx.buffer_barrier(
 		cmd,
 		rt.tlas.buffer,
-		{.ACCELERATION_STRUCTURE_WRITE_KHR},
-		{.ACCELERATION_STRUCTURE_READ_KHR},
-		gfx.r_ctx.graphics_queue_family,
+		src_access = .AccelerationStructureBuildWrite,
+		dst_access = .AccelerationStructureRead,
 	)
 }
 

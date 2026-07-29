@@ -78,9 +78,30 @@ init_shadow_rp :: proc() {
 		)
 	},
 	)
+
+	for &frame in game.render_state.frame_data {
+		frame.cascade_matrices_buffer = gfx.create_buffer(Mat4x4, NUM_CASCADES, .DynUniform)
+		frame.cascade_configs_buffer = gfx.create_buffer(GPUCascadeConfig, NUM_CASCADES, .DynUniform)
+		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.cascade_matrices_buffer)
+		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.cascade_configs_buffer)
+	}
 }
 
-shadow_map_pass :: proc(cmd: vk.CommandBuffer, cascade: u32) {
+shadow_prepare :: proc() {
+	calculate_shadow_view_projection_matrices()
+	gfx.write_buffer_slice(&current_frame_game().cascade_matrices_buffer, game.render_state.shadow_rp.cascade_world_to_shadows[:])
+	gfx.write_buffer_slice(&current_frame_game().cascade_configs_buffer, game.render_state.shadow_rp.cascade_configs[:])
+}
+
+record_shadow_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
+	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
+	for cascade in u32(0) ..< NUM_CASCADES {
+		record_shadow_cascade(cmd, cascade, mesh_draws)
+	}
+}
+
+@(private = "file")
+record_shadow_cascade :: proc(cmd: vk.CommandBuffer, cascade: u32, mesh_draws: []MeshDraw) {
 	image_view := game.render_state.shadow_rp.shadow_depth_attach_image_views[cascade]
 	extent := game.render_state.shadow_rp.shadow_depth_image.extent
 
@@ -96,7 +117,7 @@ shadow_map_pass :: proc(cmd: vk.CommandBuffer, cascade: u32) {
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.shadow_rp.mesh_shadow_pipeline)
 
-	for mesh_draw in current_frame_game().mesh_draws {
+	for mesh_draw in mesh_draws {
 		gfx.cmd_bind_index_buffer(cmd, mesh_draw.index_buffer)
 
 		gfx.cmd_push_constants(

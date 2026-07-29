@@ -1,6 +1,7 @@
 package game
 
 import "core:math"
+import "core:slice"
 
 import vk "vendor:vulkan"
 
@@ -151,9 +152,53 @@ ddgi_init_debug_sphere :: proc() {
 	rp.probe_index_count = u32(len(indices))
 }
 
-// Overlay: draws an instanced sphere per probe into the HDR scene (after geometry_pass),
-// each shaded by its own irradiance. Depth-tested against the scene.
-ddgi_debug_probes_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
+ddgi_prepare :: proc(volumes: []DDGIVolume, advance_frame: bool) {
+	rp := &game.render_state.ddgi_rp
+	packed: [MAX_DDGI_VOLUMES]GPUDDGIVolume
+	count: u32
+
+	for &volume in volumes {
+		if advance_frame {
+			volume.gpu.frame_index += 1
+		}
+		gfx.write_buffer(&volume.config_buffer, &volume.gpu)
+		if int(count) < MAX_DDGI_VOLUMES {
+			packed[count] = volume.gpu
+			count += 1
+		}
+	}
+
+	slice.sort_by(packed[:count], proc(a, b: GPUDDGIVolume) -> bool {
+		return a.priority > b.priority
+	})
+	if count > 0 {
+		gfx.write_buffer_slice(&rp.volumes_buffer, packed[:count])
+	}
+
+	game.render_state.global_data.ddgi_volumes = rp.volumes_buffer.ptr
+	game.render_state.global_data.num_ddgi_volumes = count
+}
+
+record_ddgi_pass :: proc(cmd: vk.CommandBuffer, volumes: []DDGIVolume) {
+	if current_frame_game().rt.tlas.address == 0 || !game.state.update_ddgi do return
+
+	for &volume in volumes {
+		record_ddgi_volume(cmd, &volume.volume)
+	}
+}
+
+// Overlay: draws an instanced sphere per probe into the HDR scene, each shaded
+// by its own irradiance. Depth-tested against the scene.
+record_ddgi_debug_probes_pass :: proc(cmd: vk.CommandBuffer, volumes: []DDGIVolume) {
+	if !game.render_state.ddgi_rp.draw_probes do return
+
+	for &volume in volumes {
+		record_ddgi_debug_volume(cmd, &volume.volume)
+	}
+}
+
+@(private = "file")
+record_ddgi_debug_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
 	rp := &game.render_state.ddgi_rp
 	gfx.cmd_begin_rendering(
 		cmd,
@@ -179,13 +224,10 @@ ddgi_debug_probes_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resou
 }
 
 // Trace + update for the volume, recorded into `cmd`. Uses the per-frame scene TLAS.
-ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
+@(private = "file")
+record_ddgi_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
 	counts := volume.gpu.grid_counts
 	num_probes := counts[0] * counts[1] * counts[2]
-
-	// Advance the ray set and push the config.
-	volume.gpu.frame_index += 1
-	gfx.write_buffer(&volume.config_buffer, &volume.gpu)
 
 	update_push := GPUDDGIUpdatePush {
 		volume     = volume.config_buffer.ptr,
@@ -211,7 +253,12 @@ ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources
 	vk.CmdDispatch(cmd, num_probes, 1, 1)
 
 	// radiance write
-	gfx.transition_buffer(cmd, volume.radiance_buffer, {.SHADER_WRITE}, {.SHADER_READ}, gfx.r_ctx.graphics_queue_family)
+	gfx.buffer_barrier(
+		cmd,
+		volume.radiance_buffer,
+		src_access = .ComputeShaderWrite,
+		dst_access = .ComputeShaderRead,
+	)
 
 	init_iteration := volume.gpu.frame_index
 	if init_iteration >= 1 && init_iteration <= 6 {
@@ -229,11 +276,9 @@ ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources
 		vk.CmdDispatch(cmd, (num_probes + 63) / 64, 1, 1)
 		gfx.image_barrier(
 			cmd,
-			{
-				image      = &volume.offset,
-				src_access = .ComputeShaderWrite,
-				dst_access = .AllReadsWrites,
-			},
+			&volume.offset,
+			src_access = .ComputeShaderWrite,
+			dst_access = .AllReadsWrites,
 		)
 	}
 
@@ -241,55 +286,46 @@ ddgi_update_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources
 	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_rp.update_pipeline)
 	gfx.cmd_push_constants(cmd, update_push)
 	vk.CmdDispatch(cmd, num_probes, 1, DDGI_UPDATE_BLOCKS_PER_PROBE)
-
 	gfx.image_barrier(
 		cmd,
-		{
-			image      = &volume.irradiance,
-			src_access = .ComputeShaderWrite,
-			dst_access = .ComputeShaderRead,
-		},
+		&volume.irradiance,
+		src_access = .ComputeShaderWrite,
+		dst_access = .ComputeShaderRead,
 	)
 	gfx.image_barrier(
 		cmd,
-		{
-			image      = &volume.depth,
-			src_access = .ComputeShaderWrite,
-			dst_access = .ComputeShaderRead,
-		},
+		&volume.depth,
+		src_access = .ComputeShaderWrite,
+		dst_access = .ComputeShaderRead,
 	)
 
 	// border copy
 	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_rp.border_pipeline)
 	gfx.cmd_push_constants(cmd, update_push)
 	vk.CmdDispatch(cmd, num_probes, 1, 1)
+
 	gfx.image_barrier(
 		cmd,
-		{
-			image      = &volume.irradiance,
-			src_access = .ComputeShaderWrite,
-			dst_access = .AllShaderRead,
-		},
+		&volume.irradiance,
+		src_access = .ComputeShaderWrite,
+		dst_access = .AllShaderRead,
 	)
 	gfx.image_barrier(
 		cmd,
-		{
-			image      = &volume.depth,
-			src_access = .ComputeShaderWrite,
-			dst_access = .AllShaderRead,
-		},
+		&volume.depth,
+		src_access = .ComputeShaderWrite,
+		dst_access = .AllShaderRead,
 	)
 	gfx.image_barrier(
 		cmd,
-		{
-			image      = &volume.offset,
-			src_access = .ComputeShaderWrite,
-			dst_access = .AllShaderRead,
-		},
+		&volume.offset,
+		src_access = .ComputeShaderWrite,
+		dst_access = .AllShaderRead,
 	)
 }
 
-ddgi_debug_atlas_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
+record_ddgi_debug_atlas_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
+	gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_rp.debug_pipeline)
 	gfx.cmd_push_constants(
 		cmd,

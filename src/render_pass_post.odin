@@ -32,7 +32,8 @@ init_post_process_rp :: proc() {
 	)
 }
 
-post_processing_pass :: proc(cmd: vk.CommandBuffer) {
+record_post_process_pass :: proc(cmd: vk.CommandBuffer) {
+	gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.post_process_rp.tonemapper_pipeline)
 	gfx.cmd_push_constants(
 		cmd,

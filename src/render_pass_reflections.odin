@@ -1,5 +1,7 @@
 package game
 
+import "core:slice"
+
 import vk "vendor:vulkan"
 
 import "gfx"
@@ -46,6 +48,8 @@ GPUReflectionPrefilterPush :: struct #max_field_align(16) {
 	sample_count: u32,
 }
 
+REFLECTION_AUTO_CAPTURE_FRAME :: 200
+
 init_reflection_probe_rp :: proc() {
 	game.render_state.reflection_capture_pipeline = add_compute_shader(
 		"shaders/reflection_capture.slang",
@@ -80,7 +84,53 @@ init_reflection_probe_rp :: proc() {
 	)
 }
 
-reflection_probe_debug_spheres_pass :: proc(cmd: vk.CommandBuffer) {
+reflection_probe_prepare :: proc(probes: []ReflectionProbe) {
+	packed: [MAX_REFLECTION_PROBES]GPUReflectionProbe
+	count: u32
+
+	for &probe in probes {
+		reflection_probe_write_config(&probe)
+		if int(count) < MAX_REFLECTION_PROBES {
+			packed[count] = reflection_probe_to_gpu(&probe)
+			count += 1
+		}
+	}
+
+	slice.sort_by(packed[:count], proc(a, b: GPUReflectionProbe) -> bool {
+		return a.priority > b.priority
+	})
+	if count > 0 {
+		gfx.write_buffer_slice(&game.render_state.reflection_probes_buffer, packed[:count])
+	}
+
+	game.render_state.global_data.reflection_probes = game.render_state.reflection_probes_buffer.ptr
+	game.render_state.global_data.num_reflection_probes = count
+}
+
+record_reflection_probe_pass :: proc(cmd: vk.CommandBuffer, probes: []ReflectionProbe, volumes: []DDGIVolume) {
+	if current_frame_game().rt.tlas.address == 0 do return
+
+	converged := true
+	for &volume in volumes {
+		if volume.gpu.frame_index <= REFLECTION_AUTO_CAPTURE_FRAME {
+			converged = false
+			break
+		}
+	}
+
+	for &probe in probes {
+		auto := !probe.captured && converged
+		live := game.state.update_reflections && converged
+		if probe.wants_recapture || auto || live {
+			record_reflection_probe_capture(cmd, &probe)
+			probe.wants_recapture = false
+		}
+	}
+}
+
+record_reflection_probe_debug_pass :: proc(cmd: vk.CommandBuffer, probes: []ReflectionProbe) {
+	if !game.render_state.ddgi_rp.draw_reflection_probes do return
+
 	rp := &game.render_state.ddgi_rp
 	gfx.cmd_begin_rendering(
 		cmd,
@@ -92,7 +142,7 @@ reflection_probe_debug_spheres_pass :: proc(cmd: vk.CommandBuffer) {
 	gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_probe_debug_pipeline)
 	gfx.cmd_bind_index_buffer(cmd, rp.probe_ibuf.buffer)
 
-	for &probe in get_entities(ReflectionProbe) {
+	for &probe in probes {
 		gfx.cmd_push_constants(
 			cmd,
 			GPUReflectionProbeDebugPush {
@@ -127,10 +177,9 @@ reflection_probe_debug_draw_box :: proc(probe: ^ReflectionProbe) {
 	}
 }
 
-// Uses the per-frame scene TLAS, so call after rt_scene_build + DDGI update.
-reflection_probe_capture :: proc(cmd: vk.CommandBuffer, probe: ^ReflectionProbe) {
-	reflection_probe_write_config(probe)
-
+// Uses the per-frame scene TLAS, so call after record_rt_scene_pass + DDGI update.
+@(private = "file")
+record_reflection_probe_capture :: proc(cmd: vk.CommandBuffer, probe: ^ReflectionProbe) {
 	gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_capture_pipeline)
 	gfx.cmd_push_constants(
 		cmd,
@@ -150,11 +199,9 @@ reflection_probe_capture :: proc(cmd: vk.CommandBuffer, probe: ^ReflectionProbe)
 
 	gfx.image_barrier(
 		cmd,
-		{
-			image      = &probe.cube_image,
-			src_access = .ComputeShaderWrite,
-			dst_access = .ComputeShaderRead,
-		},
+		&probe.cube_image,
+		src_access = .ComputeShaderWrite,
+		dst_access = .ComputeShaderRead,
 	)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_prefilter_pipeline)
@@ -178,11 +225,9 @@ reflection_probe_capture :: proc(cmd: vk.CommandBuffer, probe: ^ReflectionProbe)
 
 	gfx.image_barrier(
 		cmd,
-		{
-			image      = &probe.cube_image,
-			src_access = .ComputeShaderWrite,
-			dst_access = .ComputeFragmentShaderRead,
-		},
+		&probe.cube_image,
+		src_access = .ComputeShaderWrite,
+		dst_access = .ComputeFragmentShaderRead,
 	)
 	probe.captured = true
 }

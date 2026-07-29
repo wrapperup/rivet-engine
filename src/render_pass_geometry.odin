@@ -60,6 +60,12 @@ init_geometry_rp :: proc() {
 			)
 		},
 	)
+
+	for &frame in game.render_state.frame_data {
+		frame.model_matrices_buffer = gfx.create_buffer(Mat4x4, 16_384, .DynUniform)
+		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.model_matrices_buffer)
+	}
+	reserve(&game.render_state.geometry_rp.model_matrices, 16_000)
 }
 
 init_skybox_rp :: proc() {
@@ -77,13 +83,33 @@ init_skybox_rp :: proc() {
 				push_constants = GPUSkyboxPushConstants,
 			)
 		})
+
+	mesh, ok := load_gpu_mesh_from_file(asset_path(.sm_skybox))
+	assert(ok)
+	defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, mesh)
+	game.render_state.skybox_mesh = mesh
 }
 
-geometry_pass :: proc(cmd: vk.CommandBuffer) {
+geometry_prepare :: proc() {
+	model_matrices := game.render_state.geometry_rp.model_matrices[:]
+	if len(model_matrices) > 0 {
+		gfx.write_buffer_slice(&current_frame_game().model_matrices_buffer, model_matrices)
+	}
+}
+
+record_geometry_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
+	gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .COLOR_ATTACHMENT_OPTIMAL)
+	gfx.transition_image(cmd, &gfx.r_ctx.depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
+	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_READ_ONLY_OPTIMAL)
+
+	if game.render_state.draw_skybox {
+		record_skybox_pass(cmd)
+	}
+
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = gfx.r_ctx.draw_extent,
-		color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .GENERAL},
+		color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .COLOR_ATTACHMENT_OPTIMAL},
 		depth_attachment = &{
 			view = gfx.r_ctx.depth_image.image_view,
 			clear_value = &{depthStencil = {depth = 1.0}},
@@ -94,7 +120,7 @@ geometry_pass :: proc(cmd: vk.CommandBuffer) {
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.geometry_rp.mesh_pipeline)
 
-	for mesh_draw in current_frame_game().mesh_draws {
+	for mesh_draw in mesh_draws {
 		gfx.cmd_bind_index_buffer(cmd, mesh_draw.index_buffer)
 		gfx.cmd_push_constants(
 			cmd,
@@ -117,7 +143,8 @@ geometry_pass :: proc(cmd: vk.CommandBuffer) {
 	gfx.cmd_end_rendering(cmd)
 }
 
-skybox_pass :: proc(cmd: vk.CommandBuffer) {
+@(private = "file")
+record_skybox_pass :: proc(cmd: vk.CommandBuffer) {
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = gfx.r_ctx.draw_extent,

@@ -2,7 +2,6 @@ package game
 
 import "core:log"
 import "core:math/linalg"
-import "core:slice"
 import "core:time"
 
 import im "deps:odin-imgui"
@@ -144,7 +143,7 @@ init_game_renderer :: proc() {
 	init_test_resources()
 	init_test_materials()
 	init_render_passes()
-	init_buffers()
+	init_shared_buffers()
 }
 
 init_imgui :: proc() {
@@ -221,37 +220,13 @@ init_render_passes :: proc() {
 	init_debug_rt_rp()
 	init_ddgi_rp()
 	init_reflection_probe_rp()
+	init_rt_scene_pass()
 }
 
-init_buffers :: proc() {
-	// Skybox
-	{
-		mesh, ok := load_gpu_mesh_from_file(asset_path(.sm_skybox))
-		assert(ok)
-		defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, mesh)
-		game.render_state.skybox_mesh = mesh
-	}
-
+init_shared_buffers :: proc() {
 	for &frame in game.render_state.frame_data {
-		// TODO: These don't make good use of being a uniform...
-		// They get used in BDA instead, which means they aren't uniformly accessed.
-
-		// Global uniform buffer
 		frame.global_buffer = gfx.create_buffer(GPUGlobalData, 1, .DynUniform)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.global_buffer)
-
-		// Model matrices
-		frame.model_matrices_buffer = gfx.create_buffer(Mat4x4, 16_384, .DynUniform)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.model_matrices_buffer)
-
-		// Raytraced scene (TLAS instances + geometry table, collected by draw_mesh)
-		rt_scene_init(&frame.rt)
-
-		frame.cascade_matrices_buffer = gfx.create_buffer(Mat4x4, NUM_CASCADES, .DynUniform)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.cascade_matrices_buffer)
-
-		frame.cascade_configs_buffer = gfx.create_buffer(GPUCascadeConfig, NUM_CASCADES, .DynUniform)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.cascade_configs_buffer)
 	}
 
 	environment := &game.render_state.global_data.environment
@@ -269,8 +244,6 @@ init_buffers :: proc() {
 		env_map          = game.render_state.temp_resources.env_id,
 		dfg              = game.render_state.temp_resources.dfg_id,
 	}
-
-	reserve(&game.render_state.geometry_rp.model_matrices, 16_000)
 }
 
 draw :: proc() {
@@ -336,86 +309,29 @@ draw :: proc() {
 	// 	fontstash.Reset(&font_state.font_ctx)
 	// }
 
+	frame := current_frame_game()
+	volumes := get_entities(DDGIVolume)
+	probes := get_entities(ReflectionProbe)
+
+	// CPU preparation and uploads happen before command recording.
+	geometry_prepare()
+	shadow_prepare()
+	skinning_prepare(frame.skel_instances[:])
+	rt_scene_prepare(&frame.rt)
+	ddgi_prepare(volumes, game.state.update_ddgi && len(frame.rt.instances) > 0)
+	reflection_probe_prepare(probes)
+	prepare_shared_frame_data()
+
 	cmd := gfx.begin_command_buffer()
 
-	update_buffers()
-
-	rt_scene_build(&current_frame_game().rt, cmd)
-
-	// DDGI: trace + update every volume's probe atlases (needs the scene TLAS).
-	// TODO: cadence knob (round-robin / nearest-first) once volume counts grow.
-	if current_frame_game().rt.tlas.address != 0 && game.state.update_ddgi {
-		for &volume in get_entities(DDGIVolume) {
-			ddgi_update_volume(cmd, &volume.volume)
-		}
-	}
-
-	// Reflection probes: RT-capture their cubemap once the TLAS is ready AND every DDGI atlas
-	// has had time to converge (else the captured indirect bounce is near-black). Recapture
-	// (imgui) re-triggers anytime. Capture after DDGI so it reflects the current probe field.
-	REFLECTION_AUTO_CAPTURE_FRAME :: 200
-	if current_frame_game().rt.tlas.address != 0 {
-		converged := true // no volumes -> nothing to wait for
-		for &volume in get_entities(DDGIVolume) {
-			if volume.gpu.frame_index <= REFLECTION_AUTO_CAPTURE_FRAME {
-				converged = false
-				break
-			}
-		}
-		for &probe in get_entities(ReflectionProbe) {
-			auto := !probe.captured && converged
-			live := game.state.update_reflections && converged // recapture every frame (imgui toggle)
-			if probe.wants_recapture || auto || live {
-				reflection_probe_capture(cmd, &probe)
-				probe.wants_recapture = false
-			}
-		}
-	}
-
-	// Begin Skinning pass
-	for instance in current_frame_game().skel_instances {
-		gfx.transition_buffer(
-			cmd,
-			instance.preskinned_vertex_buffers[gfx.current_frame_index()],
-			{.MEMORY_READ},
-			{.MEMORY_WRITE},
-			gfx.r_ctx.graphics_queue_family,
-		)
-		skinning_pass(cmd, instance)
-		gfx.transition_buffer(
-			cmd,
-			instance.preskinned_vertex_buffers[gfx.current_frame_index()],
-			{.MEMORY_WRITE},
-			{.MEMORY_READ},
-			gfx.r_ctx.graphics_queue_family,
-		)
-	}
-	// End skinning pass
-
-	// Begin shadow pass
-	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
-	for i in 0 ..< len(game.render_state.shadow_rp.shadow_depth_attach_image_views) {
-		shadow_map_pass(cmd, u32(i))
-	}
-	// End shadow pass
-
-	// Begin mesh pass
-	gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .COLOR_ATTACHMENT_OPTIMAL)
-	gfx.transition_image(cmd, &gfx.r_ctx.depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
-	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_READ_ONLY_OPTIMAL)
-	if game.render_state.draw_skybox {
-		skybox_pass(cmd)
-	}
-	geometry_pass(cmd)
-	if game.render_state.ddgi_rp.draw_probes {
-		for &volume in get_entities(DDGIVolume) {
-			ddgi_debug_probes_pass(cmd, &volume.volume)
-		}
-	}
-	if game.render_state.ddgi_rp.draw_reflection_probes {
-		reflection_probe_debug_spheres_pass(cmd)
-	}
-	// End mesh pass
+	record_rt_scene_pass(cmd, &frame.rt)
+	record_ddgi_pass(cmd, volumes)
+	record_reflection_probe_pass(cmd, probes, volumes)
+	record_skinning_pass(cmd, frame.skel_instances[:])
+	record_shadow_pass(cmd, frame.mesh_draws[:])
+	record_geometry_pass(cmd, frame.mesh_draws[:])
+	record_ddgi_debug_probes_pass(cmd, volumes)
+	record_reflection_probe_debug_pass(cmd, probes)
 
 	// Finalize ImGui draw data for this frame; gfx_imgui_render consumes it below.
 	im.Render()
@@ -429,16 +345,13 @@ draw :: proc() {
 		gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .TRANSFER_SRC_OPTIMAL)
 		final_image = game.render_state.shadow_rp.shadow_depth_image.image
 	case .Raytracing:
-		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
-		debug_rt_pass(cmd)
+		record_debug_rt_pass(cmd)
 		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
 		final_image = gfx.r_ctx.resolve_image.image
 	case .DDGIAtlas:
-		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
-		volumes := get_entities(DDGIVolume)
 		if len(volumes) > 0 {
 			idx := clamp(int(game.render_state.ddgi_rp.debug_volume), 0, len(volumes) - 1)
-			ddgi_debug_atlas_pass(cmd, &volumes[idx].volume)
+			record_ddgi_debug_atlas_pass(cmd, &volumes[idx].volume)
 		}
 		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
 		final_image = gfx.r_ctx.resolve_image.image
@@ -469,14 +382,13 @@ draw :: proc() {
 				&resolve_region,
 			)
 
-			gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
-			post_processing_pass(cmd)
+			record_post_process_pass(cmd)
 
 			// Prepare swapchain image
 			gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
 			final_image = gfx.r_ctx.resolve_image.image
 		} else {
-			post_processing_pass(cmd)
+			record_post_process_pass(cmd)
 
 			// Prepare swapchain image
 			gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .TRANSFER_SRC_OPTIMAL)
@@ -565,7 +477,16 @@ draw_skeletal_mesh :: proc(
 	append(&game.render_state.geometry_rp.model_matrices, linalg.matrix4_from_trs_f32(translation, rotation, scale))
 }
 
-update_buffers :: proc() {
+prepare_shared_frame_data :: proc() {
+	for &point_light, i in get_entities(PointLight) {
+		if i >= len(game.render_state.scene_resources.point_lights) do break
+		game.render_state.scene_resources.point_lights[i] = point_light_to_gpu(point_light)
+	}
+	gfx.staging_write_buffer_slice(
+		&game.render_state.scene_resources.point_light_buffer,
+		game.render_state.scene_resources.point_lights[:],
+	)
+
 	global_data := &game.render_state.global_data
 	player := get_entity(game.state.player_id)
 
@@ -585,67 +506,7 @@ update_buffers :: proc() {
 	global_data.cascade_configs = current_frame_game().cascade_configs_buffer.ptr
 	global_data.default_sampler = game.render_state.temp_resources.default_sampler_id
 
-	// DDGI volumes: pack every volume into the array the lighting/trace/capture passes budget-fill
-	// over. Sorted priority-desc so leading volumes claim coverage first (same as reflection probes).
-	{
-		packed: [MAX_DDGI_VOLUMES]GPUDDGIVolume
-		count: u32 = 0
-		for &volume in get_entities(DDGIVolume) {
-			if int(count) >= MAX_DDGI_VOLUMES do break
-			packed[count] = volume.gpu
-			count += 1
-		}
-		slice.sort_by(packed[:count], proc(a, b: GPUDDGIVolume) -> bool {
-			return a.priority > b.priority
-		})
-		if count > 0 {
-			gfx.write_buffer_slice(&game.render_state.ddgi_rp.volumes_buffer, packed[:count])
-		}
-		global_data.ddgi_volumes = game.render_state.ddgi_rp.volumes_buffer.ptr
-		global_data.num_ddgi_volumes = count
-	}
-
-	// Reflection probes: write each probe's own config (debug passes) and pack them all into
-	// the array buffer the lighting pass loops over.
-	{
-		packed: [MAX_REFLECTION_PROBES]GPUReflectionProbe
-		count: u32 = 0
-		for &probe in get_entities(ReflectionProbe) {
-			if int(count) >= MAX_REFLECTION_PROBES do break
-			reflection_probe_write_config(&probe) // push live imgui edits
-			packed[count] = reflection_probe_to_gpu(&probe)
-			count += 1
-		}
-		// Higher priority first. The shader fills coverage in array order (budget fill), so
-		// leading probes win in overlaps — deterministic, unlike get_entities order which
-		// reshuffles on removal/reload.
-		slice.sort_by(packed[:count], proc(a, b: GPUReflectionProbe) -> bool {
-			return a.priority > b.priority
-		})
-		if count > 0 {
-			gfx.write_buffer_slice(&game.render_state.reflection_probes_buffer, packed[:count])
-		}
-		global_data.reflection_probes = game.render_state.reflection_probes_buffer.ptr
-		global_data.num_reflection_probes = count
-	}
-
-	gfx.write_buffer_slice(&current_frame_game().cascade_matrices_buffer, game.render_state.shadow_rp.cascade_world_to_shadows[:])
-	gfx.write_buffer_slice(&current_frame_game().cascade_configs_buffer, game.render_state.shadow_rp.cascade_configs[:])
 	gfx.write_buffer(&current_frame_game().global_buffer, global_data)
-
-	gfx.write_buffer_slice(&current_frame_game().model_matrices_buffer, game.render_state.geometry_rp.model_matrices[:])
-
-	for &point_light, i in get_entities(PointLight) {
-		if i >= len(game.render_state.scene_resources.point_lights) do break
-		game.render_state.scene_resources.point_lights[i] = point_light_to_gpu(point_light)
-	}
-
-	gfx.staging_write_buffer_slice(
-		&game.render_state.scene_resources.point_light_buffer,
-		game.render_state.scene_resources.point_lights[:],
-	)
-
-	calculate_shadow_view_projection_matrices()
 }
 
 renderer_shutdown :: proc() {

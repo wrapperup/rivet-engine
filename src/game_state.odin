@@ -27,24 +27,14 @@ SkeletalMeshInstance :: struct {
 	preskinned_vertex_buffers: [gfx.FRAME_OVERLAP]gfx.GPUBuffer(Vertex),
 	joint_matrices_buffers:    [gfx.FRAME_OVERLAP]gfx.GPUBuffer(Mat4x4),
 	skel:                      ^Skeleton,
+	animator:                  SkeletonAnimator,
 }
 
 init_skeletal_mesh_instance :: proc(skel: ^Skeleton, anim: ^SkeletalAnimation) -> SkeletalMeshInstance {
 	instance := SkeletalMeshInstance {
 		skel = skel,
 	}
-
-	for i in 0 ..< gfx.FRAME_OVERLAP {
-		instance.joint_matrices_buffers[i] = gfx.create_buffer(
-			Mat4x4,
-			instance.skel.joint_count,
-			.DynUniform, // TODO: This doesn't make any sense. We use this buffer through BDA...
-		)
-		instance.preskinned_vertex_buffers[i] = gfx.create_buffer(Vertex, instance.skel.buffers.vertex_count, .DynUniform)
-
-		gfx.defer_destroy_buffer(&gfx.r_ctx.global_arena, instance.joint_matrices_buffers[i])
-		gfx.defer_destroy_buffer(&gfx.r_ctx.global_arena, instance.preskinned_vertex_buffers[i])
-	}
+	init_skinning_instance(&instance, anim)
 
 	return instance
 }

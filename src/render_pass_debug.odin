@@ -31,7 +31,8 @@ init_debug_rt_rp :: proc() {
 
 // Debug visualization: one ray per pixel against the per-frame scene TLAS, written
 // into resolve_image. Proves the whole RT chain before DDGI is built on top.
-debug_rt_pass :: proc(cmd: vk.CommandBuffer) {
+record_debug_rt_pass :: proc(cmd: vk.CommandBuffer) {
+	gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.debug_rt_pipeline)
 	gfx.cmd_push_constants(
 		cmd,
