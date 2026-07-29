@@ -196,13 +196,16 @@ get_type_string :: proc(expr: ^ast.Expr, file: ^ast.File) -> (type_name: string,
 		return map_type_to_slang(ty.name, &ty.node, file), ""
 	case ^ast.Call_Expr:
 		if len(ty.args) == 1 {
-			ptr_name: string
-			ptr_name, _ = get_type_string(ty.expr, file)
+			generic_name, _ := get_type_string(ty.expr, file)
+			inner_name, inner_array_name := get_type_string(ty.args[0], file)
 
-			if ptr_name == "GPUPtr" {
-				inner_name: string
-				inner_name, array_name = get_type_string(ty.args[0], file)
+			if generic_name == "GPUPtr" {
+				array_name = inner_array_name
 				fmt.sbprint(&builder, inner_name, "*", sep = "")
+				break
+			} else if generic_name == "Slice" {
+				assert(inner_array_name == "", "GPU slices cannot contain fixed-size array elements.")
+				fmt.sbprint(&builder, "Slice<", inner_name, ">", sep = "")
 				break
 			}
 		}

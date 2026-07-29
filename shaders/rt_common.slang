@@ -131,7 +131,7 @@ f32 rt_shadow_ray(RaytracingAccelerationStructure tlas, Vec3 origin, Vec3 dir, f
 Vec3 rt_point_lights(GlobalData* g, Vec3 pos_ws, Vec3 N) {
   Vec3 sum = Vec3(0.0);
   let env = g.environment;
-  for (uint i = 0; i < env.num_point_lights; i++) {
+  for (uint i = 0; i < env.point_lights.count; i++) {
     let light = env.point_lights[i];
     let to_light = light.world_pos - pos_ws;
     let dist = length(to_light);

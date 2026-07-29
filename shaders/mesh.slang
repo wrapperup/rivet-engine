@@ -151,7 +151,7 @@ FragmentOutput fragment_main(FragmentInput in) {
   frag_color = saturate( (min(sun_NoL, min(shadow, ao)) * pc.global_data_buffer.sun_color) *
       standard_bsdf(diffuse, proughness, v, l, n, f0, sun_NoL));
 
-  for (uint i = 0; i < pc.global_data_buffer.environment.num_point_lights; i++) {
+  for (uint i = 0; i < pc.global_data_buffer.environment.point_lights.count; i++) {
     let point_light = pc.global_data_buffer.environment.point_lights[i];
 
     let light_pos_ws = point_light.world_pos;
@@ -180,8 +180,7 @@ FragmentOutput fragment_main(FragmentInput in) {
   // priority-sorted volume array; per-volume intensity is applied inside. camera_pos drives
   // the view-aware surface bias (kills Chebyshev self-shadow splotches at grazing angles).
   frag_color += diffuse * ao *
-                ddgi_sample_volumes(pc.global_data_buffer.ddgi_volumes,
-                                    pc.global_data_buffer.num_ddgi_volumes, pos_ws, n,
+                ddgi_sample_volumes(pc.global_data_buffer.ddgi_volumes, pos_ws, n,
                                     pc.global_data_buffer.camera_pos);
 
   // Specular reflections. The split-sum BRDF (DFG) weighting is shared; the reflected

@@ -60,7 +60,7 @@ void compute_main(uint3 group_id: SV_GroupID, uint3 thread_id: SV_GroupThreadID)
     hit_t = s.hit_t;
 
     // Multiple bounces: shade the hit with the probes' own irradiance ([2019] §5.3).
-    let indirect = ddgi_sample_irradiance(pc.global.ddgi_volumes, pc.global.num_ddgi_volumes, s.pos_ws, s.normal, s.normal) * ddgi_volume.feedback;
+    let indirect = ddgi_sample_irradiance(pc.global.ddgi_volumes, s.pos_ws, s.normal, s.normal) * ddgi_volume.feedback;
 
     let direct = rt_direct_lighting(pc.tlas.get(), pc.global, s.pos_ws, s.normal, s.hit_t, /*sun_shadow*/ true);
     radiance = s.albedo * (direct + indirect);

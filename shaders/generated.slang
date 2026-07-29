@@ -88,8 +88,7 @@ struct Material {
 };
 
 struct Environment {
-  PointLight* point_lights;
-  u32 num_point_lights;
+  Slice<PointLight> point_lights;
   ImageCube env_map;
   Image2D dfg;
   Sampler env_sampler;
@@ -107,10 +106,8 @@ struct GlobalData {
   Vec3 camera_pos;
   Vec3 sun_direction;
   Sampler default_sampler;
-  DDGIVolume* ddgi_volumes;
-  u32 num_ddgi_volumes;
-  ReflectionProbe* reflection_probes;
-  u32 num_reflection_probes;
+  Slice<DDGIVolume> ddgi_volumes;
+  Slice<ReflectionProbe> reflection_probes;
 };
 
 
@@ -259,11 +256,10 @@ struct CascadeConfig {
 // Generated from C:\Repos\odin\vulkan-playground\src\render_pass_skinning.odin
 //
 struct SkinningPushConstants {
-  Vertex* input_vertex_buffer;
-  Vertex* output_vertex_buffer;
-  Mat4x4* joint_matrices;
-  SkeletonVertexAttribute* attrs;
-  u32 vertex_count;
+  Slice<Vertex> input_vertices;
+  Slice<Vertex> output_vertices;
+  Slice<Mat4x4> joint_matrices;
+  Slice<SkeletonVertexAttribute> attrs;
 };
 
 

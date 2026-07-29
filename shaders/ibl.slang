@@ -59,8 +59,7 @@ Vec3 sample_reflection_probes(GlobalData* gd, Vec3 pos_ws, Vec3 r, f32 p_roughne
     Vec3 probe_sum = Vec3(0.0);
     float probe_wsum = 0.0;
 
-    let probe_count = gd.num_reflection_probes;
-    for (uint pi = 0; pi < probe_count; pi++) {
+    for (uint pi = 0; pi < gd.reflection_probes.count; pi++) {
         let probe = gd.reflection_probes[pi];
 
         let w = reflection_probe_weight(probe, pos_ws);

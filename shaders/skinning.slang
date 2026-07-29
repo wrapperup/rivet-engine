@@ -14,11 +14,11 @@ SkinningPushConstants pc;
 void compute_main(uint3 dispatch_thread_id: SV_DispatchThreadID) {
   let vertex_index = dispatch_thread_id.x;
   
-  if (vertex_index >= pc.vertex_count) {
+  if (vertex_index >= pc.output_vertices.count) {
       return;
   }
 
-  let in_vertex = pc.input_vertex_buffer[vertex_index];
+  let in_vertex = pc.input_vertices[vertex_index];
   let attrs = pc.attrs[vertex_index];
 
   let skin_mat = attrs.weights[0] * pc.joint_matrices[attrs.joints[0]] +
@@ -35,5 +35,6 @@ void compute_main(uint3 dispatch_thread_id: SV_DispatchThreadID) {
   v.uv_x =        in_vertex.uv_x;
   v.uv_y =        in_vertex.uv_y;
 
-  pc.output_vertex_buffer[vertex_index] = v;
+  var output_vertices = pc.output_vertices;
+  output_vertices[vertex_index] = v;
 }

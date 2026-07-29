@@ -366,16 +366,16 @@ Vec4 ddgi_sample_one_ddgi_volume(
 }
 
 // DDGIVolume.glsl: sampleIrradiance ([2021] §7.4)
-// Deviations: volumes come from a pointer and count (sorted by priority, highest first) instead of a fixed-size array,
+// Deviations: volumes come from a Slice (sorted by priority, highest first) instead of a fixed-size array,
 // and there are no camera-locked volumes (so no cameraPos) or debug parameters.
 Vec3 ddgi_sample_irradiance(
-    DDGIVolume* ddgi_volume_array,
-    u32 num_ddgi_volumes,
+    Slice<DDGIVolume> ddgi_volume_array,
     Vec3 ws_position,
     Vec3 offset_pos,
     Vec3 sample_direction) {
 
   Vec4 sum = Vec4(0);
+  u32 num_ddgi_volumes = u32(ddgi_volume_array.count);
 
   // Sample until we have "100%" weight covered, and then *stop* looking at lower-resolution
   // volumes because they aren't needed.
@@ -401,7 +401,7 @@ Vec3 ddgi_sample_irradiance(
 //------------------------------------------------------------------------
 
 // [2021] GIRenderer/GIRenderer_deferredShade.pix: computeScatteredIndirect
-Vec3 ddgi_sample_volumes(DDGIVolume* volumes, u32 num_volumes, Vec3 pos, Vec3 n, Vec3 camera_pos) {
+Vec3 ddgi_sample_volumes(Slice<DDGIVolume> volumes, Vec3 pos, Vec3 n, Vec3 camera_pos) {
   Vec3 w_o = normalize(camera_pos - pos);
-  return ddgi_sample_irradiance(volumes, num_volumes, pos, n * 0.2 + w_o * 0.8, n);
+  return ddgi_sample_irradiance(volumes, pos, n * 0.2 + w_o * 0.8, n);
 }

@@ -178,8 +178,10 @@ ddgi_prepare :: proc(volumes: []DDGIVolume, advance_frame: bool) {
 		gfx.write_buffer_slice(&rp.volumes_buffers[frame_index], packed[:count])
 	}
 
-	game.render_state.global_data.ddgi_volumes = rp.volumes_buffers[frame_index].ptr
-	game.render_state.global_data.num_ddgi_volumes = count
+	game.render_state.global_data.ddgi_volumes = gfx.gpu_slice(
+		rp.volumes_buffers[frame_index],
+		count = count,
+	)
 }
 
 @(private = "file")

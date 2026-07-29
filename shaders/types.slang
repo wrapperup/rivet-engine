@@ -29,6 +29,21 @@ typedef float16_t f16;
 typedef float32_t f32;
 typedef float64_t f64;
 
+// Non-owning view of a contiguous device-addressable buffer range.
+// This deliberately carries no allocation or lifetime behavior.
+struct Slice<T> {
+    T* data;
+    u32 count;
+    // Keep the ABI at 16 bytes. Without this, scalar layout lets a following
+    // u32 reuse the tail padding that Odin includes in GPUSlice<T>.
+    u32 _padding;
+
+    __subscript(u32 index) -> T {
+        get { return data[index]; }
+        set { data[index] = newValue; }
+    }
+};
+
 TYPEDEF_VECTORS(u8);
 TYPEDEF_VECTORS(u16);
 TYPEDEF_VECTORS(u32);

@@ -33,12 +33,16 @@ GPUMaterial :: struct #max_field_align(16) {
 
 @(shader_shared)
 GPUEnvironment :: struct #max_field_align(16) {
-	point_lights:     GPUPtr(GPUPointLight),
-	num_point_lights: u32,
-	env_map:          ImageId `ImageCube`,
-	dfg:              ImageId `Image2D`,
-	env_sampler:      SamplerId `Sampler`,
+	point_lights: gfx.GPUSlice(GPUPointLight),
+	env_map:      ImageId `ImageCube`,
+	dfg:          ImageId `Image2D`,
+	env_sampler:  SamplerId `Sampler`,
 }
+
+#assert(offset_of(GPUEnvironment, point_lights) == 0)
+#assert(offset_of(GPUEnvironment, env_map) == 16)
+#assert(offset_of(GPUEnvironment, dfg) == 20)
+#assert(offset_of(GPUEnvironment, env_sampler) == 24)
 
 @(shader_shared)
 GPUGlobalData :: struct #max_field_align(16) {
@@ -53,11 +57,20 @@ GPUGlobalData :: struct #max_field_align(16) {
 	camera_pos:               Vec3,
 	sun_direction:            Vec3,
 	default_sampler:          SamplerId `Sampler`,
-	ddgi_volumes:             GPUPtr(GPUDDGIVolume),
-	num_ddgi_volumes:         u32,
-	reflection_probes:        GPUPtr(GPUReflectionProbe),
-	num_reflection_probes:    u32,
+	ddgi_volumes:             gfx.GPUSlice(GPUDDGIVolume),
+	reflection_probes:        gfx.GPUSlice(GPUReflectionProbe),
 }
+
+#assert(offset_of(GPUGlobalData, environment) == 192)
+#assert(offset_of(GPUGlobalData, cascade_world_to_shadows) == 224)
+#assert(offset_of(GPUGlobalData, cascade_configs) == 232)
+#assert(offset_of(GPUGlobalData, sun_color) == 240)
+#assert(offset_of(GPUGlobalData, sky_color) == 252)
+#assert(offset_of(GPUGlobalData, camera_pos) == 264)
+#assert(offset_of(GPUGlobalData, sun_direction) == 276)
+#assert(offset_of(GPUGlobalData, default_sampler) == 288)
+#assert(offset_of(GPUGlobalData, ddgi_volumes) == 296)
+#assert(offset_of(GPUGlobalData, reflection_probes) == 312)
 
 RenderState :: struct {
 	frame_data:                      [gfx.FRAME_OVERLAP]GameFrameData,
@@ -235,11 +248,13 @@ init_shared_buffers :: proc() {
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.scene_resources.point_light_buffer)
 
 	environment^ = {
-		point_lights     = game.render_state.scene_resources.point_light_buffer.ptr,
-		num_point_lights = u32(len(game.render_state.scene_resources.point_lights)),
-		env_sampler      = game.render_state.temp_resources.env_sampler_id,
-		env_map          = game.render_state.temp_resources.env_id,
-		dfg              = game.render_state.temp_resources.dfg_id,
+		point_lights = gfx.gpu_slice(
+			game.render_state.scene_resources.point_light_buffer,
+			count = 0,
+		),
+		env_sampler = game.render_state.temp_resources.env_sampler_id,
+		env_map     = game.render_state.temp_resources.env_id,
+		dfg         = game.render_state.temp_resources.dfg_id,
 	}
 }
 
@@ -459,7 +474,14 @@ prepare_shared_frame_data :: proc() {
 	global_data.camera_pos = player != nil ? player.eye_pos : {0, 0, 0} // must match the render view (eye, not feet)
 	global_data.sun_direction = game.state.environment.sun_direction
 
-	global_data.environment.num_point_lights = auto_cast len_entities(PointLight)
+	point_light_count := min(
+		len_entities(PointLight),
+		len(game.render_state.scene_resources.point_lights),
+	)
+	global_data.environment.point_lights = gfx.gpu_slice(
+		game.render_state.scene_resources.point_light_buffer,
+		count = u32(point_light_count),
+	)
 
 	global_data.cascade_world_to_shadows = current_frame_game().cascade_matrices_buffer.ptr
 	global_data.cascade_configs = current_frame_game().cascade_configs_buffer.ptr

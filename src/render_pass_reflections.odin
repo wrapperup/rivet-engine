@@ -106,8 +106,10 @@ reflection_probe_prepare :: proc(probes: []ReflectionProbe) {
 		gfx.write_buffer_slice(&game.render_state.reflection_probes_buffers[frame_index], packed[:count])
 	}
 
-	game.render_state.global_data.reflection_probes = game.render_state.reflection_probes_buffers[frame_index].ptr
-	game.render_state.global_data.num_reflection_probes = count
+	game.render_state.global_data.reflection_probes = gfx.gpu_slice(
+		game.render_state.reflection_probes_buffers[frame_index],
+		count = count,
+	)
 }
 
 record_reflection_probe_pass :: proc(cmd: vk.CommandBuffer, probes: []ReflectionProbe, volumes: []DDGIVolume) {
