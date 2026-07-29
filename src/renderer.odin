@@ -1,7 +1,6 @@
 package game
 
 import "core:log"
-import "core:math"
 import "core:math/linalg"
 import "core:slice"
 import "core:time"
@@ -27,59 +26,6 @@ ImageId :: gfx.ImageId
 SamplerId :: gfx.SamplerId
 
 @(shader_shared)
-GPUDrawPushConstants :: struct #max_field_align(16) {
-	global_data_buffer: GPUPtr(GPUGlobalData),
-	vertex_buffer:      GPUPtr(Vertex),
-	model_matrices:     GPUPtr(Mat4x4),
-	materials:          GPUPtr(GPUMaterial),
-	model_index:        u32,
-	material_index:     MaterialId,
-	num_cascades:       u32,
-	shadow_depth:       ImageId `Image2DArray<f32>`,
-	shadow_sampler:     gfx.SamplerId `SamplerComparison`,
-}
-
-@(shader_shared)
-GPUDrawShadowDepthPushConstants :: struct #max_field_align(16) {
-	vertex_buffer:  GPUPtr(Vertex),
-	model_matrices: GPUPtr(Mat4x4),
-	global_data:    GPUPtr(GPUGlobalData),
-	model_index:    u32,
-	cascade_index:  u32,
-}
-
-@(shader_shared)
-GPUSkinningPushConstants :: struct #max_field_align(16) {
-	input_vertex_buffer:  GPUPtr(Vertex),
-	output_vertex_buffer: GPUPtr(Vertex),
-	joint_matrices:       GPUPtr(Mat4x4),
-	attrs:                GPUPtr(SkeletonVertexAttribute),
-	vertex_count:         u32,
-}
-
-@(shader_shared)
-GPUSkyboxPushConstants :: struct #max_field_align(16) {
-	vertex_buffer:      GPUPtr(Vertex),
-	global_data_buffer: GPUPtr(GPUGlobalData),
-}
-
-@(shader_shared)
-GPUDebugRTPushConstants :: struct #max_field_align(16) {
-	global:     GPUPtr(GPUGlobalData),
-	geometries: GPUPtr(GPUGeometry),
-	materials:  GPUPtr(GPUMaterial),
-	tlas:       vk.DeviceAddress `AccelerationStructure`,
-	out_image:  ImageId `RWImage2D`,
-}
-
-@(shader_shared)
-GPUPostProcessingPushConstants :: struct #max_field_align(16) {
-	resolved_image:  ImageId `RWImage2D`,
-	tony_mc_mapface: ImageId `Image3D<Vec3>`,
-	sampler:         SamplerId `Sampler`,
-}
-
-@(shader_shared)
 GPUMaterial :: struct #max_field_align(16) {
 	base_color_id:            ImageId `Image2D`,
 	normal_map_id:            ImageId `Image2D`,
@@ -93,13 +39,6 @@ GPUEnvironment :: struct #max_field_align(16) {
 	env_map:          ImageId `ImageCube`,
 	dfg:              ImageId `Image2D`,
 	env_sampler:      SamplerId `Sampler`,
-}
-
-@(shader_shared)
-GPUCascadeConfig :: struct #max_field_align(16) {
-	split_dist: f32,
-	bias:       f32,
-	slope_bias: f32,
 }
 
 @(shader_shared)
@@ -119,45 +58,6 @@ GPUGlobalData :: struct #max_field_align(16) {
 	num_ddgi_volumes:         u32,
 	reflection_probes:        GPUPtr(GPUReflectionProbe),
 	num_reflection_probes:    u32,
-}
-
-GeometryRenderPass :: struct {
-	mesh_pipeline:  ^gfx.GraphicsPipeline,
-	model_matrices: [dynamic]Mat4x4,
-}
-
-SkinningRenderPass :: struct {
-	skinning_pipeline: ^gfx.ComputePipeline,
-}
-
-ShadowRenderPass :: struct {
-	mesh_shadow_pipeline:            ^gfx.GraphicsPipeline,
-	shadow_depth_image:              gfx.GPUImage,
-	shadow_depth_image_id:           ImageId,
-	shadow_depth_attach_image_views: [NUM_CASCADES]vk.ImageView,
-	cascade_world_to_shadows:        [NUM_CASCADES]Mat4x4,
-	cascade_configs:                 [NUM_CASCADES]GPUCascadeConfig,
-}
-
-PostProcessingRenderPass :: struct {
-	tony_mc_mapface_id:  ImageId,
-	tonemapper_pipeline: ^gfx.ComputePipeline,
-}
-
-DDGIRenderPass :: struct {
-	trace_pipeline:         ^gfx.ComputePipeline,
-	update_pipeline:        ^gfx.ComputePipeline,
-	border_pipeline:        ^gfx.ComputePipeline,
-	relocate_pipeline:      ^gfx.ComputePipeline,
-	debug_pipeline:         ^gfx.ComputePipeline,
-	probe_pipeline:         ^gfx.GraphicsPipeline,
-	volumes_buffer:         gfx.GPUBuffer(GPUDDGIVolume),
-	debug_volume:           i32,
-	probe_vbuf:             gfx.GPUBuffer(Vertex),
-	probe_ibuf:             gfx.GPUBuffer(u32),
-	probe_index_count:      u32,
-	draw_probes:            bool,
-	draw_reflection_probes: bool,
 }
 
 RenderState :: struct {
@@ -187,8 +87,6 @@ RenderState :: struct {
 	shadow_rp:                       ShadowRenderPass,
 	post_process_rp:                 PostProcessingRenderPass,
 
-	// DDGI pipelines
-
 	// Reflection probe pipelines
 	reflection_capture_pipeline:     ^gfx.ComputePipeline,
 	reflection_prefilter_pipeline:   ^gfx.ComputePipeline,
@@ -205,8 +103,6 @@ RenderState :: struct {
 
 	// Imgui
 	imgui_ctx:                       ^im.Context,
-
-	// DDGI (volumes are DDGIVolume entities; this is the shared packed array + debug state)
 }
 
 GameFrameData :: struct {
@@ -258,29 +154,6 @@ init_imgui :: proc() {
 	im_glfw.InitForVulkan(game.window, true)
 
 	im_gfx.gfx_imgui_init()
-}
-
-init_shadow_maps :: proc() {
-	extent := vk.Extent3D{game.config.shadow_map_size, game.config.shadow_map_size, 1}
-
-	shadow_rp := &game.render_state.shadow_rp
-
-	shadow_rp.shadow_depth_image = gfx.create_image(
-		.D32_SFLOAT,
-		extent,
-		{.DEPTH_STENCIL_ATTACHMENT, .SAMPLED},
-		array_layers = NUM_CASCADES,
-	)
-
-	shadow_rp.shadow_depth_image_id = gfx.add_image(shadow_rp.shadow_depth_image)
-
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image.image_view)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image.image, shadow_rp.shadow_depth_image.allocation)
-
-	for &view, i in shadow_rp.shadow_depth_attach_image_views {
-		view = gfx.create_image_view(shadow_rp.shadow_depth_image.image, shadow_rp.shadow_depth_image.format, .D2, 0, 1, i, 1)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, view)
-	}
 }
 
 init_test_resources :: proc() {
@@ -341,162 +214,13 @@ init_render_passes :: proc() {
 	assert(sp.createGlobalSession(sp.API_VERSION, &game.render_state.global_session) == sp.OK)
 
 	init_geometry_rp()
+	init_shadow_rp()
 	init_skinning_rp()
 	init_skybox_rp()
 	init_post_process_rp()
 	init_debug_rt_rp()
 	init_ddgi_rp()
-}
-
-init_ddgi_rp :: proc() {
-	ddgi_rp := &game.render_state.ddgi_rp
-
-	ddgi_rp.trace_pipeline = add_compute_shader("shaders/ddgi_trace.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("DDGI_Trace", module, GPUDDGITracePush)
-	})
-	ddgi_rp.update_pipeline = add_compute_shader("shaders/ddgi_update.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("DDGI_Update", module, GPUDDGIUpdatePush)
-	})
-	ddgi_rp.border_pipeline = add_compute_shader("shaders/ddgi_border.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("DDGI_Border", module, GPUDDGIUpdatePush)
-	})
-	ddgi_rp.relocate_pipeline = add_compute_shader("shaders/ddgi_relocate.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("DDGI_Relocate", module, GPUDDGIRelocatePush)
-	})
-	ddgi_rp.debug_pipeline = add_compute_shader("shaders/ddgi_debug_atlas.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("DDGI_Debug_Atlas", module, GPUDDGIDebugAtlasPush)
-	})
-	ddgi_rp.probe_pipeline = add_graphics_shader("shaders/ddgi_debug_probes.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-		return gfx.create_graphics_pipeline(
-			name = "DDGI_Debug_Probes",
-			shader = module,
-			input_topology = .TRIANGLE_LIST,
-			polygon_mode = .FILL,
-			cull_mode = {},
-			front_face = .COUNTER_CLOCKWISE,
-			depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-			color_format = gfx.r_ctx.draw_image.format,
-			multisampling_samples = gfx.msaa_samples(),
-			push_constants = GPUDDGIProbePush,
-		)
-	})
-	game.render_state.reflection_capture_pipeline = add_compute_shader(
-		"shaders/reflection_capture.slang",
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Reflection_Capture", module, GPUReflectionCapturePush)
-		},
-	)
-	game.render_state.reflection_prefilter_pipeline = add_compute_shader(
-		"shaders/reflection_prefilter.slang",
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Reflection_Prefilter", module, GPUReflectionPrefilterPush)
-		},
-	)
-	game.render_state.reflection_probes_buffer = gfx.create_buffer(GPUReflectionProbe, MAX_REFLECTION_PROBES, .DynUniform)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.reflection_probes_buffer)
-	ddgi_rp.volumes_buffer = gfx.create_buffer(GPUDDGIVolume, MAX_DDGI_VOLUMES, .DynUniform)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, ddgi_rp.volumes_buffer)
-	game.render_state.reflection_probe_debug_pipeline = add_graphics_shader(
-		"shaders/reflection_probe_debug.slang",
-		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-			return gfx.create_graphics_pipeline(
-				name = "Reflection_Probe_Debug",
-				shader = module,
-				input_topology = .TRIANGLE_LIST,
-				polygon_mode = .FILL,
-				cull_mode = {},
-				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-				color_format = gfx.r_ctx.draw_image.format,
-				multisampling_samples = gfx.msaa_samples(),
-				push_constants = GPUReflectionProbeDebugPush,
-			)
-		},
-	)
-	ddgi_init_debug_sphere()
-}
-
-init_debug_rt_rp :: proc() {
-	game.render_state.debug_rt_pipeline = add_compute_shader(
-		"shaders/debug_rt.slang",
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Debug_RT_Pipeline", module, GPUDebugRTPushConstants)
-		},
-	)
-}
-
-// TODO: Shadow RP is coupled in here. They should be split.
-init_geometry_rp :: proc() {
-	game.render_state.geometry_rp.mesh_pipeline = add_graphics_shader(
-		"shaders/mesh.slang",
-		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-			return gfx.create_graphics_pipeline(
-				name = "Basic_Mesh_Pipeline",
-				shader = module,
-				input_topology = .TRIANGLE_LIST,
-				polygon_mode = .FILL,
-				cull_mode = {.BACK},
-				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-				color_format = gfx.r_ctx.draw_image.format,
-				multisampling_samples = gfx.msaa_samples(),
-				push_constants = GPUDrawPushConstants,
-			)
-		},
-	)
-
-	game.render_state.shadow_rp.mesh_shadow_pipeline = add_graphics_shader(
-		"shaders/shadow_depth.slang",
-		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-			return gfx.create_graphics_pipeline(
-				name = "Shadow_Depth_Pipeline",
-				shader = module,
-				vertex_entry = "vertex_main",
-				fragment_entry = nil, // TODO: Only need vertex depth currently for shadow maps.
-				input_topology = .TRIANGLE_LIST,
-				polygon_mode = .FILL,
-				cull_mode = {},
-				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-				push_constants = GPUDrawPushConstants,
-			)
-		},
-	)
-}
-
-init_skinning_rp :: proc() {
-	game.render_state.skinning_rp.skinning_pipeline = add_compute_shader(
-		"shaders/skinning.slang",
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Skinning", module, GPUSkinningPushConstants)
-		},
-	)
-}
-
-init_skybox_rp :: proc() {
-	game.render_state.skybox_pipeline = add_graphics_shader("shaders/skybox.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-		return gfx.create_graphics_pipeline(
-			name = "Skybox_Pipeline",
-			shader = module,
-			input_topology = .TRIANGLE_LIST,
-			polygon_mode = .FILL,
-			cull_mode = {.BACK},
-			front_face = .COUNTER_CLOCKWISE,
-			depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-			color_format = gfx.r_ctx.draw_image.format,
-			multisampling_samples = gfx.msaa_samples(),
-			push_constants = GPUSkyboxPushConstants,
-		)
-	})
-}
-
-init_post_process_rp :: proc() {
-	game.render_state.post_process_rp.tonemapper_pipeline = add_compute_shader(
-		"shaders/tonemapping.slang",
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Tonemapper_Pipeline", module, GPUPostProcessingPushConstants)
-		},
-	)
+	init_reflection_probe_rp()
 }
 
 init_buffers :: proc() {
@@ -795,32 +519,6 @@ draw :: proc() {
 	clear(&game.render_state.geometry_rp.model_matrices)
 }
 
-skinning_pass :: proc(cmd: vk.CommandBuffer, instance: ^SkeletalMeshInstance) {
-	gfx.cmd_bind_pipeline(cmd, game.render_state.skinning_rp.skinning_pipeline)
-
-	gfx.cmd_push_constants(
-		cmd,
-		GPUSkinningPushConstants {
-			input_vertex_buffer = instance.skel.buffers.vertex_buffer.ptr,
-			output_vertex_buffer = instance.preskinned_vertex_buffers[gfx.current_frame_index()].ptr,
-			attrs = instance.skel.buffers.skel_vert_attrs_buffer.ptr,
-			joint_matrices = instance.joint_matrices_buffers[gfx.current_frame_index()].ptr,
-			vertex_count = instance.skel.buffers.vertex_count,
-		},
-	)
-
-	gfx.cmd_dispatch(cmd, u32(math.ceil(f32(instance.skel.buffers.vertex_count) / 64.0)))
-}
-
-// TODO: Encode this as indirect draw args instead.
-MeshDraw :: struct {
-	vertex_buffer:  GPUPtr(Vertex),
-	index_buffer:   vk.Buffer,
-	index_count:    u32,
-	model_index:    u32,
-	material_index: MaterialId,
-}
-
 draw_mesh :: proc(mesh: GPUMeshBuffers, material: MaterialId, translation: Vec3, rotation: quaternion128, scale: [3]f32, include_in_raytracing := true) {
 	model_index := len(game.render_state.geometry_rp.model_matrices)
 	model := linalg.matrix4_from_trs_f32(translation, rotation, scale)
@@ -865,253 +563,6 @@ draw_skeletal_mesh :: proc(
 	)
 
 	append(&game.render_state.geometry_rp.model_matrices, linalg.matrix4_from_trs_f32(translation, rotation, scale))
-}
-
-shadow_map_pass :: proc(cmd: vk.CommandBuffer, cascade: u32) {
-	image_view := game.render_state.shadow_rp.shadow_depth_attach_image_views[cascade]
-	extent := game.render_state.shadow_rp.shadow_depth_image.extent
-
-	width := extent.width
-	height := extent.height
-
-	gfx.cmd_begin_rendering(
-		cmd,
-		area = {width, height},
-		depth_attachment = &{view = image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL, clear_value = &{depthStencil = {depth = 1.0}}},
-	)
-	gfx.set_viewport_and_scissor(cmd, game.render_state.shadow_rp.shadow_depth_image.extent)
-
-	gfx.cmd_bind_pipeline(cmd, game.render_state.shadow_rp.mesh_shadow_pipeline)
-
-	for mesh_draw in current_frame_game().mesh_draws {
-		gfx.cmd_bind_index_buffer(cmd, mesh_draw.index_buffer)
-
-		gfx.cmd_push_constants(
-			cmd,
-			GPUDrawShadowDepthPushConstants {
-				vertex_buffer = mesh_draw.vertex_buffer,
-				model_matrices = current_frame_game().model_matrices_buffer.ptr,
-				global_data = current_frame_game().global_buffer.ptr,
-				model_index = mesh_draw.model_index,
-				cascade_index = cascade,
-			},
-		)
-
-		gfx.cmd_draw_indexed(cmd, mesh_draw.index_count)
-	}
-
-	gfx.cmd_end_rendering(cmd)
-}
-
-geometry_pass :: proc(cmd: vk.CommandBuffer) {
-	gfx.cmd_begin_rendering(
-		cmd,
-		area = gfx.r_ctx.draw_extent,
-		color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .GENERAL},
-		depth_attachment = &{
-			view = gfx.r_ctx.depth_image.image_view,
-			clear_value = &{depthStencil = {depth = 1.0}},
-			layout = .DEPTH_ATTACHMENT_OPTIMAL,
-		},
-	)
-	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
-
-	gfx.cmd_bind_pipeline(cmd, game.render_state.geometry_rp.mesh_pipeline)
-
-	for mesh_draw in current_frame_game().mesh_draws {
-		gfx.cmd_bind_index_buffer(cmd, mesh_draw.index_buffer)
-		gfx.cmd_push_constants(
-			cmd,
-			GPUDrawPushConstants {
-				global_data_buffer = current_frame_game().global_buffer.ptr,
-				vertex_buffer = mesh_draw.vertex_buffer,
-				model_matrices = current_frame_game().model_matrices_buffer.ptr,
-				materials = game.render_state.scene_resources.materials_buffer.ptr,
-				model_index = mesh_draw.model_index,
-				material_index = mesh_draw.material_index,
-				num_cascades = NUM_CASCADES,
-				shadow_depth = game.render_state.shadow_rp.shadow_depth_image_id,
-				shadow_sampler = game.render_state.temp_resources.shadow_depth_sampler_id,
-			},
-		)
-
-		gfx.cmd_draw_indexed(cmd, mesh_draw.index_count)
-	}
-
-	gfx.cmd_end_rendering(cmd)
-}
-
-skybox_pass :: proc(cmd: vk.CommandBuffer) {
-	gfx.cmd_begin_rendering(
-		cmd,
-		area = gfx.r_ctx.draw_extent,
-		color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .COLOR_ATTACHMENT_OPTIMAL},
-		depth_attachment = &{
-			view = gfx.r_ctx.depth_image.image_view,
-			clear_value = &{depthStencil = {depth = 1.0}},
-			layout = .DEPTH_ATTACHMENT_OPTIMAL,
-		},
-	)
-	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
-
-	gfx.cmd_bind_pipeline(cmd, game.render_state.skybox_pipeline)
-	gfx.cmd_bind_index_buffer(cmd, game.render_state.skybox_mesh.index_buffer.buffer)
-	gfx.cmd_push_constants(
-		cmd,
-		GPUSkyboxPushConstants {
-			vertex_buffer = game.render_state.skybox_mesh.vertex_buffer.ptr,
-			global_data_buffer = current_frame_game().global_buffer.ptr,
-		},
-	)
-
-	gfx.cmd_draw_indexed(cmd, game.render_state.skybox_mesh.index_count)
-	gfx.cmd_end_rendering(cmd)
-}
-
-// Debug visualization: one ray per pixel against the per-frame scene TLAS, written
-// into resolve_image. Proves the whole RT chain before DDGI is built on top.
-debug_rt_pass :: proc(cmd: vk.CommandBuffer) {
-	gfx.cmd_bind_pipeline(cmd, game.render_state.debug_rt_pipeline)
-	gfx.cmd_push_constants(
-		cmd,
-		GPUDebugRTPushConstants {
-			global = current_frame_game().global_buffer.ptr,
-			geometries = current_frame_game().rt.geometries_buffer.ptr,
-			materials = game.render_state.scene_resources.materials_buffer.ptr,
-			tlas = current_frame_game().rt.tlas.address,
-			out_image = game.render_state.temp_resources.resolved_image_id,
-		},
-	)
-
-	vk.CmdDispatch(
-		cmd,
-		u32(math.ceil(f32(gfx.r_ctx.draw_extent.width) / 16.0)),
-		u32(math.ceil(f32(gfx.r_ctx.draw_extent.height) / 16.0)),
-		1,
-	)
-}
-
-post_processing_pass :: proc(cmd: vk.CommandBuffer) {
-	gfx.cmd_bind_pipeline(cmd, game.render_state.post_process_rp.tonemapper_pipeline)
-	gfx.cmd_push_constants(
-		cmd,
-		GPUPostProcessingPushConstants {
-			resolved_image = game.render_state.temp_resources.resolved_image_id,
-			tony_mc_mapface = game.render_state.post_process_rp.tony_mc_mapface_id,
-			sampler = game.render_state.temp_resources.default_sampler_id,
-		},
-	)
-
-	vk.CmdDispatch(
-		cmd,
-		u32(math.ceil(f32(gfx.r_ctx.draw_extent.width) / 16.0)),
-		u32(math.ceil(f32(gfx.r_ctx.draw_extent.height) / 16.0)),
-		1,
-	)
-}
-
-calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 300) {
-	cascade_split_lambda := game.config.shadow_cascade_split_lambda
-
-	cascade_splits: [NUM_CASCADES]f32
-
-	clip_range := far - near
-	ratio := far / near
-
-	// Calculate split depths based on view camera frustum
-	// Based on method presented in https://developer.nvidia.com/gpugems/GPUGems3/gpugems3_ch10.html
-	for i in 0 ..< NUM_CASCADES {
-		p := (f32(i) + 1) / f32(NUM_CASCADES)
-		log := near * math.pow(ratio, p)
-		uniform := near + clip_range * p
-		d := cascade_split_lambda * (log - uniform) + uniform
-		cascade_splits[i] = (d - near) / clip_range
-	}
-
-	last_near := near
-	for i in 0 ..< NUM_CASCADES {
-		split_dist := cascade_splits[i]
-
-		test_far := near + split_dist * clip_range
-
-		world_to_clip := get_current_projection_matrix_clipped(near = last_near, far = test_far) * get_current_view_matrix()
-		clip_to_world := linalg.inverse(world_to_clip)
-
-		CORNERS_NDC :: [8]Vec4 {
-			{-1.0, -1.0, -1.0, 1.0},
-			{-1.0, -1.0, 1.0, 1.0},
-			{-1.0, 1.0, -1.0, 1.0},
-			{-1.0, 1.0, 1.0, 1.0},
-			{1.0, -1.0, -1.0, 1.0},
-			{1.0, -1.0, 1.0, 1.0},
-			{1.0, 1.0, -1.0, 1.0},
-			{1.0, 1.0, 1.0, 1.0},
-		}
-
-		corners_ws: [8]Vec4
-		for pos_fs, j in CORNERS_NDC {
-			pos_ws := clip_to_world * pos_fs
-			corners_ws[j] = pos_ws / pos_ws.w
-
-			if i == 1 {
-				debug_draw_dot(corners_ws[j].xyz)
-			}
-		}
-
-		center_ws: Vec3
-		for corner_ws in corners_ws {
-			center_ws += corner_ws.xyz
-		}
-		center_ws /= len(corners_ws)
-
-		sun_dir := game.state.environment.sun_direction
-
-		radius: f32
-		for corner in corners_ws {
-			// distance := linalg.length(corner - center_ws)
-			// radius = max(radius, distance)
-
-			distance_x := math.abs(corner.x - center_ws.x)
-			distance_y := math.abs(corner.y - center_ws.y)
-			distance_z := math.abs(corner.z - center_ws.z)
-			radius = max(radius, distance_x, distance_y, distance_z)
-		}
-
-		aabb: Aabb
-		aabb.min = -radius
-		aabb.max = radius
-
-		cascade_world_to_view := linalg.matrix4_look_at_f32(center_ws, center_ws + sun_dir, {0.0, 1.0, 0.0})
-		cascade_view_to_clip := gfx.matrix_ortho3d_z0_f32(aabb.min.x, aabb.max.x, aabb.min.y, aabb.max.y, aabb.max.z * 10, aabb.min.z)
-		cascade_view_to_clip[1][1] *= -1.0
-
-		if game.config.use_stable_shadow_maps {
-			sMapSize := f32(game.config.shadow_map_size)
-
-			shadowMatrix := cascade_view_to_clip * cascade_world_to_view
-			shadowOrigin := Vec4{0, 0, 0, 1}
-			shadowOrigin = shadowMatrix * shadowOrigin
-			shadowOrigin *= sMapSize / 2.0
-
-			roundedOrigin := linalg.round(shadowOrigin)
-			roundOffset := roundedOrigin - shadowOrigin
-			roundOffset *= 2.0 / sMapSize
-			roundOffset.zw = 0.0
-
-			shadowProj := cascade_view_to_clip
-			shadowProj[3] += roundOffset
-			cascade_view_to_clip = shadowProj
-		}
-
-		game.render_state.shadow_rp.cascade_world_to_shadows[i] = cascade_view_to_clip * cascade_world_to_view
-		game.render_state.shadow_rp.cascade_configs[i] = {
-			split_dist = test_far,
-			bias       = game.config.shadow_map_biases[i],
-			slope_bias = game.config.shadow_map_slope_biases[i],
-		}
-
-		last_near = test_far
-	}
 }
 
 update_buffers :: proc() {
