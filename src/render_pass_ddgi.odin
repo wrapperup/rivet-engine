@@ -180,7 +180,7 @@ ddgi_prepare :: proc(volumes: []DDGIVolume, advance_frame: bool) {
 
 	game.render_state.global_data.ddgi_volumes = gfx.gpu_slice(
 		rp.volumes_buffers[frame_index],
-		count = count,
+		count = u64(count),
 	)
 }
 

@@ -480,7 +480,7 @@ prepare_shared_frame_data :: proc() {
 	)
 	global_data.environment.point_lights = gfx.gpu_slice(
 		game.render_state.scene_resources.point_light_buffer,
-		count = u32(point_light_count),
+		count = u64(point_light_count),
 	)
 
 	global_data.cascade_world_to_shadows = current_frame_game().cascade_matrices_buffer.ptr

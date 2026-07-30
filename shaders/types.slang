@@ -33,10 +33,7 @@ typedef float64_t f64;
 // This deliberately carries no allocation or lifetime behavior.
 struct Slice<T> {
     T* data;
-    u32 count;
-    // Keep the ABI at 16 bytes. Without this, scalar layout lets a following
-    // u32 reuse the tail padding that Odin includes in GPUSlice<T>.
-    u32 _padding;
+    u64 count;
 
     __subscript(u32 index) -> T {
         get { return data[index]; }

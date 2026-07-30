@@ -10,7 +10,7 @@ GPUBuffer :: struct($T: typeid) {
 	allocation: vma.Allocation,
 	info:       vma.AllocationInfo,
 	ptr:        GPUPtr(T),
-	count:      u32,
+	count:      u64,
 }
 
 BufferAccess :: enum {
@@ -82,7 +82,6 @@ create_buffer :: proc(
 	name: cstring = nil,
 	loc := #caller_location,
 ) -> GPUBuffer(T) {
-	assert(size <= vk.DeviceSize(max(u32)), "GPU buffer element count exceeds GPUSlice capacity", loc)
 	alloc_size := cast(vk.DeviceSize)(size_of(T) * size)
 
 	vk_usage_flags, vma_create_flags := vk_buffer_flags(kind)
@@ -99,7 +98,7 @@ create_buffer :: proc(
 	}
 
 	new_buffer: GPUBuffer(T)
-	new_buffer.count = u32(size)
+	new_buffer.count = u64(size)
 	vk_check(
 		vma.CreateBuffer(r_ctx.allocator, &buffer_info, &vma_alloc_info, &new_buffer.buffer, &new_buffer.allocation, &new_buffer.info),
 		loc,
@@ -132,31 +131,30 @@ GPUPtr :: struct($T: typeid) {
 
 // GPU-side array view.
 GPUSlice :: struct($T: typeid) {
-	data:     GPUPtr(T),
-	count:    u32,
-	_padding: u32,
+	data:  GPUPtr(T),
+	count: u64,
 }
 
 #assert(size_of(GPUSlice(u32)) == 16)
 #assert(offset_of(GPUSlice(u32), data) == 0)
 #assert(offset_of(GPUSlice(u32), count) == 8)
 
-gpu_slice_from_ptr :: proc(data: GPUPtr($T), count: u32) -> GPUSlice(T) {
+gpu_slice_from_ptr :: proc(data: GPUPtr($T), count: u64) -> GPUSlice(T) {
 	return {data = data, count = count}
 }
 
 gpu_slice_from_buffer :: proc(
 	buffer: GPUBuffer($T),
-	first: u32 = 0,
-	count: Maybe(u32) = nil,
+	first: u64 = 0,
+	count: Maybe(u64) = nil,
 ) -> GPUSlice(T) {
 	assert(buffer.ptr.address != 0, "GPU slices require a device-addressable buffer")
-	total_count := u64(buffer.count)
-	assert(u64(first) <= total_count, "GPU slice starts outside its buffer")
+	total_count := buffer.count
+	assert(first <= total_count, "GPU slice starts outside its buffer")
 
-	slice_count := u32(total_count - u64(first))
+	slice_count := total_count - first
 	if requested_count, ok := count.?; ok {
-		assert(u64(requested_count) <= total_count - u64(first), "GPU slice extends outside its buffer")
+		assert(requested_count <= total_count - first, "GPU slice extends outside its buffer")
 		slice_count = requested_count
 	}
 

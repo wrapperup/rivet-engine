@@ -108,7 +108,7 @@ reflection_probe_prepare :: proc(probes: []ReflectionProbe) {
 
 	game.render_state.global_data.reflection_probes = gfx.gpu_slice(
 		game.render_state.reflection_probes_buffers[frame_index],
-		count = count,
+		count = u64(count),
 	)
 }
 
