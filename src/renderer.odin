@@ -18,8 +18,6 @@ MaterialId :: u32
 NUM_CASCADES: u32 : 3
 
 @(private = "file")
-GPUPtr :: gfx.GPUPtr
-@(private = "file")
 ImageId :: gfx.ImageId
 @(private = "file")
 SamplerId :: gfx.SamplerId
@@ -33,7 +31,7 @@ GPUMaterial :: struct #max_field_align(16) {
 
 @(shader_shared)
 GPUEnvironment :: struct #max_field_align(16) {
-	point_lights: gfx.GPUSlice(GPUPointLight),
+	point_lights: gfx.Slice(GPUPointLight),
 	env_map:      ImageId `ImageCube`,
 	dfg:          ImageId `Image2D`,
 	env_sampler:  SamplerId `Sampler`,
@@ -50,15 +48,15 @@ GPUGlobalData :: struct #max_field_align(16) {
 	world_to_view:            Mat4x4,
 	clip_to_world:            Mat4x4,
 	environment:              GPUEnvironment,
-	cascade_world_to_shadows: GPUPtr(Mat4x4),
-	cascade_configs:          GPUPtr(GPUCascadeConfig),
+	cascade_world_to_shadows: gfx.Ptr(Mat4x4),
+	cascade_configs:          gfx.Ptr(GPUCascadeConfig),
 	sun_color:                Vec3,
 	sky_color:                Vec3,
 	camera_pos:               Vec3,
 	sun_direction:            Vec3,
 	default_sampler:          SamplerId `Sampler`,
-	ddgi_volumes:             gfx.GPUSlice(GPUDDGIVolume),
-	reflection_probes:        gfx.GPUSlice(GPUReflectionProbe),
+	ddgi_volumes:             gfx.Slice(GPUDDGIVolume),
+	reflection_probes:        gfx.Slice(GPUReflectionProbe),
 }
 
 #assert(offset_of(GPUGlobalData, environment) == 192)
@@ -79,9 +77,9 @@ RenderState :: struct {
 	global_data:                     GPUGlobalData,
 	scene_resources:                 struct {
 		materials:          [dynamic]GPUMaterial,
-		materials_buffer:   gfx.GPUBuffer(GPUMaterial),
+		materials_buffer:   gfx.Buffer(GPUMaterial),
 		point_lights:       [256]GPUPointLight,
-		point_light_buffer: gfx.GPUBuffer(GPUPointLight),
+		point_light_buffer: gfx.Buffer(GPUPointLight),
 	},
 	temp_resources:                  struct {
 		dfg_id:                  ImageId,
@@ -103,7 +101,7 @@ RenderState :: struct {
 	reflection_capture_pipeline:     ^gfx.ComputePipeline,
 	reflection_prefilter_pipeline:   ^gfx.ComputePipeline,
 	reflection_probe_debug_pipeline: ^gfx.GraphicsPipeline,
-	reflection_probes_buffers:       [gfx.FRAME_OVERLAP]gfx.GPUBuffer(GPUReflectionProbe),
+	reflection_probes_buffers:       [gfx.FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
 
 	// Skybox pipelines
 	skybox_pipeline:                 ^gfx.GraphicsPipeline,
@@ -118,10 +116,10 @@ RenderState :: struct {
 }
 
 GameFrameData :: struct {
-	global_buffer:           gfx.GPUBuffer(GPUGlobalData),
-	model_matrices_buffer:   gfx.GPUBuffer(Mat4x4),
-	cascade_matrices_buffer: gfx.GPUBuffer(Mat4x4),
-	cascade_configs_buffer:  gfx.GPUBuffer(GPUCascadeConfig),
+	global_buffer:           gfx.Buffer(GPUGlobalData),
+	model_matrices_buffer:   gfx.Buffer(Mat4x4),
+	cascade_matrices_buffer: gfx.Buffer(Mat4x4),
+	cascade_configs_buffer:  gfx.Buffer(GPUCascadeConfig),
 	mesh_draws:              [dynamic]MeshDraw,
 	skel_instances:          [dynamic]^SkeletalMeshInstance,
 	rt:                      RaytracingScene,
@@ -248,7 +246,7 @@ init_shared_buffers :: proc() {
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.scene_resources.point_light_buffer)
 
 	environment^ = {
-		point_lights = gfx.gpu_slice(
+		point_lights = gfx.slice(
 			game.render_state.scene_resources.point_light_buffer,
 			count = 0,
 		),
@@ -478,7 +476,7 @@ prepare_shared_frame_data :: proc() {
 		len_entities(PointLight),
 		len(game.render_state.scene_resources.point_lights),
 	)
-	global_data.environment.point_lights = gfx.gpu_slice(
+	global_data.environment.point_lights = gfx.slice(
 		game.render_state.scene_resources.point_light_buffer,
 		count = u64(point_light_count),
 	)

@@ -18,7 +18,7 @@ BindlessSystem :: struct {
 	descriptor_set:    vk.DescriptorSet,
 
 	// Storage
-	images:            [dynamic]GPUImage,
+	images:            [dynamic]Image,
 	samplers:          [dynamic]vk.Sampler,
 
 	free_images:       [dynamic]ImageId,
@@ -46,7 +46,7 @@ init_bindless_descriptors :: proc() {
 	)
 }
 
-add_gpu_image :: proc(image: GPUImage) -> ImageId {
+add_image_impl :: proc(image: Image) -> ImageId {
 	bindless_system := &r_ctx.bindless_system
 
 	assert(.STORAGE in image.usage || .SAMPLED in image.usage)
@@ -94,15 +94,15 @@ add_gpu_image :: proc(image: GPUImage) -> ImageId {
 	return image_id
 }
 
-add_gpu_image_with_view :: proc(image: GPUImage, view: vk.ImageView) -> ImageId {
+add_image_with_view :: proc(image: Image, view: vk.ImageView) -> ImageId {
     image := image
     image.image_view = view
-    return add_gpu_image(image)
+    return add_image_impl(image)
 }
 
 add_image :: proc {
-    add_gpu_image,
-    add_gpu_image_with_view
+    add_image_impl,
+    add_image_with_view
 }
 
 add_sampler :: proc(sampler: vk.Sampler) -> SamplerId {
@@ -137,7 +137,7 @@ remove_sampler :: proc(id: SamplerId) {
 }
 
 // // Writes a image to the bindless ID and updates the descriptor.
-// set_image :: proc(image: GPUImage, image_id: ImageId) -> (resized: bool) {
+// set_image :: proc(image: Image, image_id: ImageId) -> (resized: bool) {
 // 	bindless_system := &r_ctx.bindless_system
 //
 // 	// Ensure our image id can fit

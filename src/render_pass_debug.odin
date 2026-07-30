@@ -7,15 +7,13 @@ import vk "vendor:vulkan"
 import "gfx"
 
 @(private = "file")
-GPUPtr :: gfx.GPUPtr
-@(private = "file")
 ImageId :: gfx.ImageId
 
 @(shader_shared)
 GPUDebugRTPushConstants :: struct #max_field_align(16) {
-	global:     GPUPtr(GPUGlobalData),
-	geometries: GPUPtr(GPUGeometry),
-	materials:  GPUPtr(GPUMaterial),
+	global:     gfx.Ptr(GPUGlobalData),
+	geometries: gfx.Ptr(GPUGeometry),
+	materials:  gfx.Ptr(GPUMaterial),
 	tlas:       vk.DeviceAddress `AccelerationStructure`,
 	out_image:  ImageId `RWImage2D`,
 }

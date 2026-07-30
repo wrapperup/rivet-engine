@@ -21,11 +21,11 @@ PrefilteredCubeMapPass :: struct {
 	pipeline:                      gfx.ComputePipeline,
 
 	// Resources
-	cube_image:                    gfx.GPUImage,
+	cube_image:                    gfx.Image,
 	cube_sampler:                  vk.Sampler,
-	prefilter_image:               gfx.GPUImage,
+	prefilter_image:               gfx.Image,
 	prefilter_image_views:         [MAX_ROUGHNESS_LEVELS]vk.ImageView,
-	prefilter_image_mapped_buffer: gfx.GPUBuffer(u8),
+	prefilter_image_mapped_buffer: gfx.Buffer(u8),
 	width:                         u32,
 	height:                        u32,
 }

@@ -8,7 +8,7 @@ import vk "vendor:vulkan"
 import ktx "deps:odin-libktx"
 import vma "deps:odin-vma"
 
-GPUImage :: struct {
+Image :: struct {
 	image:          vk.Image,
 	image_view:     vk.ImageView,
 	allocation:     vma.Allocation,
@@ -59,7 +59,7 @@ create_image :: proc(
 	usage: vma.MemoryUsage = .GPU_ONLY,
 	debug_name: cstring = nil,
 	loc := #caller_location,
-) -> GPUImage {
+) -> Image {
 	img_alloc_info := vma.AllocationCreateInfo {
 		usage         = usage,
 		requiredFlags = {.DEVICE_LOCAL},
@@ -78,7 +78,7 @@ create_image :: proc(
 		tiling,
 	)
 
-	image := GPUImage {
+	image := Image {
 		extent       = extent,
 		format       = format,
 		mip_levels   = mip_levels,
@@ -268,7 +268,7 @@ image_access_masks :: proc(access: ImageAccess) -> (vk.PipelineStageFlags2, vk.A
 
 image_barrier :: proc(
 	cmd: vk.CommandBuffer,
-	image: ^GPUImage,
+	image: ^Image,
 	src_access: ImageAccess,
 	dst_access: ImageAccess,
 	new_layout: Maybe(vk.ImageLayout) = nil,
@@ -300,7 +300,7 @@ image_barrier :: proc(
 				(range.mip_count == 0 || range.mip_count == image.mip_levels) &&
 				range.base_array_layer == 0 &&
 				(range.layer_count == 0 || range.layer_count == image.array_layers),
-			"GPUImage only tracks whole-image layouts",
+			"Image only tracks whole-image layouts",
 		)
 	}
 
@@ -371,7 +371,7 @@ transition_vk_image :: proc(cmd: vk.CommandBuffer, image: vk.Image, current_layo
 	vk.CmdPipelineBarrier2(cmd, &dep_info)
 }
 
-transition_image :: proc(cmd: vk.CommandBuffer, image: ^GPUImage, new_layout: vk.ImageLayout) -> bool {
+transition_image :: proc(cmd: vk.CommandBuffer, image: ^Image, new_layout: vk.ImageLayout) -> bool {
 	return image_barrier(
 		cmd,
 		image,
@@ -420,7 +420,7 @@ copy_image_to_image :: proc(cmd: vk.CommandBuffer, source: vk.Image, destination
 	vk.CmdBlitImage2(cmd, &blit_info)
 }
 
-destroy_gpu_image :: proc(gpu_image: GPUImage) {
+destroy_image :: proc(gpu_image: Image) {
 	vk.DestroyImageView(r_ctx.device, gpu_image.image_view, nil)
 	vma.DestroyImage(r_ctx.allocator, gpu_image.image, gpu_image.allocation)
 }
@@ -432,7 +432,7 @@ load_image_from_file :: proc(
 	out_width: ^u32 = nil,
 	out_height: ^u32 = nil,
 	out_depth: ^u32 = nil,
-) -> GPUImage {
+) -> Image {
 	ktx_texture: ^ktx.Texture2
 	ktx_result := ktx.Texture2_CreateFromNamedFile(filename, {.TEXTURE_CREATE_LOAD_IMAGE_DATA}, &ktx_texture)
 
@@ -449,7 +449,7 @@ load_image_from_memory :: proc(
 	out_height: ^u32 = nil,
 	out_depth: ^u32 = nil,
 	loc := #caller_location,
-) -> GPUImage {
+) -> Image {
 	ktx_texture: ^ktx.Texture2
 	ktx_result := ktx.Texture2_CreateFromMemory(raw_data(mem), len(mem), {.TEXTURE_CREATE_LOAD_IMAGE_DATA}, &ktx_texture)
 
@@ -466,7 +466,7 @@ load_image_from_ktx_texture :: proc(
 	out_height: ^u32 = nil,
 	out_depth: ^u32 = nil,
     loc := #caller_location,
-) -> GPUImage {
+) -> Image {
 	num_faces := ktx_texture.numFaces // Faces (cubemap)
 	num_levels := ktx_texture.numLevels // Mip levels
 	num_layers := ktx_texture.numLayers // Array levels
@@ -555,8 +555,8 @@ load_image_from_ktx_texture :: proc(
 }
 
 // Uploads the data via a staging buffer. This is useful if your buffer is GPU only.
-staging_write_image :: proc(gpu_image: ^GPUImage, in_data: ^$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
-	assert(gpu_image.image_view != 0, "GPUImage is missing a valid image view.")
+staging_write_image :: proc(gpu_image: ^Image, in_data: ^$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
+	assert(gpu_image.image_view != 0, "Image is missing a valid image view.")
 
 	size := size_of(T)
 	gpu_size := gpu_image.extent.width * gpu_image.extent.height * gpu_image.extent.depth * size_of(T) // TODO: Validate this.
@@ -585,8 +585,8 @@ staging_write_image :: proc(gpu_image: ^GPUImage, in_data: ^$T, offset: vk.Devic
 }
 
 // Uploads the data via a staging buffer. This is useful if your buffer is GPU only.
-staging_write_image_slice :: proc(gpu_image: ^GPUImage, in_data: []$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
-	assert(gpu_image.image_view != 0, "GPUImage is missing a valid image view.")
+staging_write_image_slice :: proc(gpu_image: ^Image, in_data: []$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
+	assert(gpu_image.image_view != 0, "Image is missing a valid image view.")
 
 	size := size_of(T) * len(in_data)
 	gpu_size := gpu_image.extent.width * gpu_image.extent.height * gpu_image.extent.depth * size_of(T) // TODO: Validate this.
@@ -616,7 +616,7 @@ staging_write_image_slice :: proc(gpu_image: ^GPUImage, in_data: []$T, offset: v
 
 write_buffer_to_ktx_file :: proc(
 	filename: cstring,
-	buffer: ^GPUBuffer($T),
+	buffer: ^Buffer($T),
 	extent: vk.Extent3D,
 	format: vk.Format,
 	format_size: u32,

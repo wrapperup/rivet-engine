@@ -8,10 +8,10 @@ import "gfx"
 
 @(shader_shared)
 GPUSkinningPushConstants :: struct #max_field_align(16) {
-	input_vertices:  gfx.GPUSlice(Vertex),
-	output_vertices: gfx.GPUSlice(Vertex),
-	joint_matrices:  gfx.GPUSlice(Mat4x4),
-	attrs:           gfx.GPUSlice(SkeletonVertexAttribute),
+	input_vertices:  gfx.Slice(Vertex),
+	output_vertices: gfx.Slice(Vertex),
+	joint_matrices:  gfx.Slice(Mat4x4),
+	attrs:           gfx.Slice(SkeletonVertexAttribute),
 }
 
 #assert(offset_of(GPUSkinningPushConstants, input_vertices) == 0)
@@ -75,10 +75,10 @@ record_skinning_pass :: proc(cmd: vk.CommandBuffer, instances: []^SkeletalMeshIn
 		gfx.cmd_push_constants(
 			cmd,
 			GPUSkinningPushConstants {
-				input_vertices  = gfx.gpu_slice(instance.skel.buffers.vertex_buffer),
-				output_vertices = gfx.gpu_slice(output),
-				attrs           = gfx.gpu_slice(instance.skel.buffers.skel_vert_attrs_buffer),
-				joint_matrices  = gfx.gpu_slice(instance.joint_matrices_buffers[frame_index]),
+				input_vertices  = gfx.slice(instance.skel.buffers.vertex_buffer),
+				output_vertices = gfx.slice(output),
+				attrs           = gfx.slice(instance.skel.buffers.skel_vert_attrs_buffer),
+				joint_matrices  = gfx.slice(instance.joint_matrices_buffers[frame_index]),
 			},
 		)
 

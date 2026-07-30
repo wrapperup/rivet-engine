@@ -29,11 +29,11 @@ ReflectionProbe :: struct {
 	mip_count:            u32,
 
 	// GPU resources
-	cube_image:           gfx.GPUImage,
+	cube_image:           gfx.Image,
 	cube_sampled_id:      gfx.ImageId, // CUBE view  (read in lighting / prefilter source)
 	cube_mip_storage_ids: [MAX_REFLECTION_MIPS]gfx.ImageId,
 	gpu_sampler_id:       gfx.SamplerId,
-	configs:              [gfx.FRAME_OVERLAP]gfx.GPUBuffer(GPUReflectionProbe),
+	configs:              [gfx.FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
 	captured:             bool,
 	wants_recapture:      bool,
 }

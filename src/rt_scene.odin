@@ -6,11 +6,6 @@ import vk "vendor:vulkan"
 
 import "gfx"
 
-// File-private alias mirrors renderer.odin so the @shader_shared bindgen sees the
-// bare name (GPUPtr).
-@(private = "file")
-GPUPtr :: gfx.GPUPtr
-
 RT_MAX_INSTANCES :: 16_384
 
 // Per-instance indirection for ray-hit shading: a ray hit gives instance/primitive
@@ -18,8 +13,8 @@ RT_MAX_INSTANCES :: 16_384
 // back at the mesh's buffers + material. Plain BDA buffer, not a bindless descriptor.
 @(shader_shared)
 GPUGeometry :: struct #max_field_align(16) {
-	vertex_buffer:  GPUPtr(Vertex),
-	index_buffer:   GPUPtr(u32),
+	vertex_buffer:  gfx.Ptr(Vertex),
+	index_buffer:   gfx.Ptr(u32),
 	material_index: MaterialId,
 	_pad:           [3]u32,
 }
@@ -34,8 +29,8 @@ RaytracingScene :: struct {
 	geometries:        [dynamic]GPUGeometry,
 
 	// GPU side, created once per frame slot.
-	instances_buffer:  gfx.GPUBuffer(vk.AccelerationStructureInstanceKHR),
-	geometries_buffer: gfx.GPUBuffer(GPUGeometry),
+	instances_buffer:  gfx.Buffer(vk.AccelerationStructureInstanceKHR),
+	geometries_buffer: gfx.Buffer(GPUGeometry),
 	tlas:              gfx.Raytracing_Accel,
 }
 
@@ -92,7 +87,7 @@ record_rt_scene_pass :: proc(cmd: vk.CommandBuffer, rt: ^RaytracingScene) {
 
 	if len(rt.instances) == 0 do return
 
-	scratch: gfx.GPUBuffer(u8)
+	scratch: gfx.Buffer(u8)
 	rt.tlas, scratch = gfx.build_tlas(cmd, rt.instances_buffer, u32(len(rt.instances)))
 	gfx.defer_destroy(&gfx.current_frame().arena, scratch)
 

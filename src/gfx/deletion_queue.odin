@@ -176,16 +176,16 @@ defer_destroy_resource :: proc(
 
 defer_destroy_buffer :: proc(
 	arena: ^ResourceArena,
-	buffer: GPUBuffer($T),
+	buffer: Buffer($T),
 	debug: string = "UNKNOWN",
 	loc := #caller_location,
 ) {
 	defer_destroy_resource(arena, transmute(u64)buffer.buffer, .VmaBuffer, buffer.allocation);
 }
 
-defer_destroy_gpu_image :: proc(
+defer_destroy_image :: proc(
 	arena: ^ResourceArena,
-	image: GPUImage,
+	image: Image,
 	debug: string = "UNKNOWN",
 	loc := #caller_location,
 ) {
@@ -309,7 +309,7 @@ defer_destroy_vk_sampler :: proc(
 
 defer_destroy :: proc {
     defer_destroy_buffer,
-    defer_destroy_gpu_image,
+    defer_destroy_image,
     defer_destroy_graphics_pipeline,
     defer_destroy_compute_pipeline,
 

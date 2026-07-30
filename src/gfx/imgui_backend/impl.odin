@@ -8,7 +8,7 @@ import vk "vendor:vulkan"
 import gfx "../"
 
 PushConstants :: struct #max_field_align(16) {
-	vertex_buffer: gfx.GPUPtr(im.DrawVert),
+	vertex_buffer: gfx.Ptr(im.DrawVert),
 	scale:         [2]f32,
 	translate:     [2]f32,
 	texture:       gfx.ImageId,
@@ -17,11 +17,11 @@ PushConstants :: struct #max_field_align(16) {
 
 GfxImgui :: struct {
 	pipeline:      gfx.GraphicsPipeline,
-	vbuffers:      [gfx.FRAME_OVERLAP]gfx.GPUBuffer(im.DrawVert),
-	ibuffers:      [gfx.FRAME_OVERLAP]gfx.GPUBuffer(im.DrawIdx),
+	vbuffers:      [gfx.FRAME_OVERLAP]gfx.Buffer(im.DrawVert),
+	ibuffers:      [gfx.FRAME_OVERLAP]gfx.Buffer(im.DrawIdx),
 	vbuffer_sizes: [gfx.FRAME_OVERLAP]int,
 	ibuffer_sizes: [gfx.FRAME_OVERLAP]int,
-	font_image:    gfx.GPUImage,
+	font_image:    gfx.Image,
 	font_sheet:    gfx.ImageId,
 	font_sampler:  gfx.SamplerId,
 }

@@ -5,11 +5,11 @@ import "core:mem"
 import vma "deps:odin-vma"
 import vk "vendor:vulkan"
 
-GPUBuffer :: struct($T: typeid) {
+Buffer :: struct($T: typeid) {
 	buffer:     vk.Buffer,
 	allocation: vma.Allocation,
 	info:       vma.AllocationInfo,
-	ptr:        GPUPtr(T),
+	ptr:        Ptr(T),
 	count:      u64,
 }
 
@@ -31,7 +31,7 @@ BufferAccess :: enum {
 
 // This is hopefully very common kinds of buffers
 // you may typically want to create. Uniform and Storage
-// buffers will always create a valid GPUPtr(T).
+// buffers will always create a valid Ptr(T).
 BufferKind :: enum {
 	Storage, // Includes ptr
     Index,
@@ -81,7 +81,7 @@ create_buffer :: proc(
 	kind: BufferKind = .Storage,
 	name: cstring = nil,
 	loc := #caller_location,
-) -> GPUBuffer(T) {
+) -> Buffer(T) {
 	alloc_size := cast(vk.DeviceSize)(size_of(T) * size)
 
 	vk_usage_flags, vma_create_flags := vk_buffer_flags(kind)
@@ -97,7 +97,7 @@ create_buffer :: proc(
 		flags = vma_create_flags,
 	}
 
-	new_buffer: GPUBuffer(T)
+	new_buffer: Buffer(T)
 	new_buffer.count = u64(size)
 	vk_check(
 		vma.CreateBuffer(r_ctx.allocator, &buffer_info, &vma_alloc_info, &new_buffer.buffer, &new_buffer.allocation, &new_buffer.info),
@@ -119,35 +119,35 @@ create_buffer :: proc(
 	return new_buffer
 }
 
-destroy_buffer :: proc(allocated_buffer: ^GPUBuffer($T)) {
+destroy_buffer :: proc(allocated_buffer: ^Buffer($T)) {
 	vma.DestroyBuffer(r_ctx.allocator, allocated_buffer.buffer, allocated_buffer.allocation)
 }
 
 
 // Only purpose of this is to be captured during bindgen.
-GPUPtr :: struct($T: typeid) {
+Ptr :: struct($T: typeid) {
 	address: vk.DeviceAddress,
 }
 
 // GPU-side array view.
-GPUSlice :: struct($T: typeid) {
-	data:  GPUPtr(T),
+Slice :: struct($T: typeid) {
+	data:  Ptr(T),
 	count: u64,
 }
 
-#assert(size_of(GPUSlice(u32)) == 16)
-#assert(offset_of(GPUSlice(u32), data) == 0)
-#assert(offset_of(GPUSlice(u32), count) == 8)
+#assert(size_of(Slice(u32)) == 16)
+#assert(offset_of(Slice(u32), data) == 0)
+#assert(offset_of(Slice(u32), count) == 8)
 
-gpu_slice_from_ptr :: proc(data: GPUPtr($T), count: u64) -> GPUSlice(T) {
+slice_from_ptr :: proc(data: Ptr($T), count: u64) -> Slice(T) {
 	return {data = data, count = count}
 }
 
-gpu_slice_from_buffer :: proc(
-	buffer: GPUBuffer($T),
+slice_from_buffer :: proc(
+	buffer: Buffer($T),
 	first: u64 = 0,
 	count: Maybe(u64) = nil,
-) -> GPUSlice(T) {
+) -> Slice(T) {
 	assert(buffer.ptr.address != 0, "GPU slices require a device-addressable buffer")
 	total_count := buffer.count
 	assert(first <= total_count, "GPU slice starts outside its buffer")
@@ -167,12 +167,12 @@ gpu_slice_from_buffer :: proc(
 	}
 }
 
-gpu_slice :: proc {
-	gpu_slice_from_ptr,
-	gpu_slice_from_buffer,
+slice :: proc {
+	slice_from_ptr,
+	slice_from_buffer,
 }
 
-get_buffer_device_address :: proc(buffer: GPUBuffer($T)) -> vk.DeviceAddress {
+get_buffer_device_address :: proc(buffer: Buffer($T)) -> vk.DeviceAddress {
 	device_address_info := vk.BufferDeviceAddressInfo {
 		sType  = .BUFFER_DEVICE_ADDRESS_INFO,
 		buffer = buffer.buffer,
@@ -182,7 +182,7 @@ get_buffer_device_address :: proc(buffer: GPUBuffer($T)) -> vk.DeviceAddress {
 }
 
 // Writes to the buffer with the input data at offset.
-write_buffer :: proc(buffer: ^GPUBuffer($Z), in_data: ^$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
+write_buffer :: proc(buffer: ^Buffer($Z), in_data: ^$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
 	size := size_of(T)
 	assert(buffer.info.size >= vk.DeviceSize(u64(size) + u64(offset)), "The size of the data and offset is larger than the buffer", loc)
 
@@ -194,7 +194,7 @@ write_buffer :: proc(buffer: ^GPUBuffer($Z), in_data: ^$T, offset: vk.DeviceSize
 }
 
 // Writes to the buffer with the input slice at offset.
-write_buffer_slice :: proc(buffer: ^GPUBuffer($Z), in_data: []$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
+write_buffer_slice :: proc(buffer: ^Buffer($Z), in_data: []$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
 	size := size_of(T) * len(in_data)
 	assert(buffer.info.size >= vk.DeviceSize(u64(size) + u64(offset)), "The size of the slice and offset is larger than the buffer", loc)
 
@@ -207,7 +207,7 @@ write_buffer_slice :: proc(buffer: ^GPUBuffer($Z), in_data: []$T, offset: vk.Dev
 }
 
 // Uploads the data via a staging buffer. This is useful if your buffer is GPU only.
-staging_write_buffer :: proc(buffer: ^GPUBuffer($Z), in_data: ^$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
+staging_write_buffer :: proc(buffer: ^Buffer($Z), in_data: ^$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
 	size := size_of(T)
 	assert(buffer.info.size >= vk.DeviceSize(u64(size) + u64(offset)), "The size of the data and offset is larger than the buffer", loc)
 
@@ -228,7 +228,7 @@ staging_write_buffer :: proc(buffer: ^GPUBuffer($Z), in_data: ^$T, offset: vk.De
 }
 
 // Uploads the data via a staging buffer. This is useful if your buffer is GPU only.
-staging_write_buffer_slice :: proc(buffer: ^GPUBuffer($Z), in_data: []$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
+staging_write_buffer_slice :: proc(buffer: ^Buffer($Z), in_data: []$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
 	size := size_of(T) * len(in_data)
 	assert(buffer.info.size >= vk.DeviceSize(u64(size) + u64(offset)), "The size of the slice and offset is larger than the buffer", loc)
 
@@ -284,7 +284,7 @@ buffer_access_masks :: proc(access: BufferAccess) -> (vk.PipelineStageFlags2, vk
 
 buffer_barrier :: proc(
 	cmd: vk.CommandBuffer,
-	buffer: GPUBuffer($T),
+	buffer: Buffer($T),
 	src_access: BufferAccess,
 	dst_access: BufferAccess,
 	offset: u64 = 0,
@@ -329,6 +329,6 @@ buffer_barrier :: proc(
 // TODO: Do we need this? It would be useful I think at some point.
 // It's specific push/pop functions will update a buffer automatically,
 // and maps to an Odin dynamic array.
-//GPUDynamicArray :: struct {
-//	using _: GPUBuffer,
+//DynamicArray :: struct {
+//	using _: Buffer,
 //}

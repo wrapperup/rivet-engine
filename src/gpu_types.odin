@@ -21,9 +21,9 @@ SkeletonVertexAttribute :: struct #max_field_align(16) {
 }
 
 GPUMeshBuffers :: struct {
-	index_buffer:  gfx.GPUBuffer(u32),
+	index_buffer:  gfx.Buffer(u32),
 	index_count:   u32,
-	vertex_buffer: gfx.GPUBuffer(Vertex),
+	vertex_buffer: gfx.Buffer(Vertex),
 	vertex_count:  u32,
 	blas:          gfx.Raytracing_Accel,
 }
@@ -32,6 +32,6 @@ GPUSkelMeshBuffers :: struct {
 	using mesh_buffers:     GPUMeshBuffers,
 
 	// Array of SkeletonVertexAttribute
-	skel_vert_attrs_buffer: gfx.GPUBuffer(SkeletonVertexAttribute),
+	skel_vert_attrs_buffer: gfx.Buffer(SkeletonVertexAttribute),
 	attrs_count:            u32,
 }

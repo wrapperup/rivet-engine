@@ -5,16 +5,14 @@ import vk "vendor:vulkan"
 import "gfx"
 
 @(private = "file")
-GPUPtr :: gfx.GPUPtr
-@(private = "file")
 ImageId :: gfx.ImageId
 
 @(shader_shared)
 GPUDrawPushConstants :: struct #max_field_align(16) {
-	global_data_buffer: GPUPtr(GPUGlobalData),
-	vertex_buffer:      GPUPtr(Vertex),
-	model_matrices:     GPUPtr(Mat4x4),
-	materials:          GPUPtr(GPUMaterial),
+	global_data_buffer: gfx.Ptr(GPUGlobalData),
+	vertex_buffer:      gfx.Ptr(Vertex),
+	model_matrices:     gfx.Ptr(Mat4x4),
+	materials:          gfx.Ptr(GPUMaterial),
 	model_index:        u32,
 	material_index:     MaterialId,
 	num_cascades:       u32,
@@ -24,8 +22,8 @@ GPUDrawPushConstants :: struct #max_field_align(16) {
 
 @(shader_shared)
 GPUSkyboxPushConstants :: struct #max_field_align(16) {
-	vertex_buffer:      GPUPtr(Vertex),
-	global_data_buffer: GPUPtr(GPUGlobalData),
+	vertex_buffer:      gfx.Ptr(Vertex),
+	global_data_buffer: gfx.Ptr(GPUGlobalData),
 }
 
 GeometryRenderPass :: struct {
@@ -35,7 +33,7 @@ GeometryRenderPass :: struct {
 
 // TODO: Encode this as indirect draw args instead.
 MeshDraw :: struct {
-	vertex_buffer:  GPUPtr(Vertex),
+	vertex_buffer:  gfx.Ptr(Vertex),
 	index_buffer:   vk.Buffer,
 	index_count:    u32,
 	model_index:    u32,

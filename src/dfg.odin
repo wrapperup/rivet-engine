@@ -14,9 +14,9 @@ DfgGeneratePass :: struct {
 	pipeline:                gfx.ComputePipeline,
 
 	// Resources
-	image:                   gfx.GPUImage, // backing image (tool needs it for layout transitions/readback)
+	image:                   gfx.Image, // backing image (tool needs it for layout transitions/readback)
 	dfg_image:               gfx.ImageId,
-	dfg_image_mapped_buffer: gfx.GPUBuffer(f32),
+	dfg_image_mapped_buffer: gfx.Buffer(f32),
 	width, height:           u32,
 }
 

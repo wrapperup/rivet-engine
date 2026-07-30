@@ -68,9 +68,9 @@ Renderer :: struct {
 	allocator:                   vma.Allocator,
 
 	// Draw resources
-	draw_image:                  GPUImage,
-	resolve_image:               GPUImage,
-	depth_image:                 GPUImage,
+	draw_image:                  Image,
+	resolve_image:               Image,
+	depth_image:                 Image,
 	draw_extent:                 vk.Extent2D,
 	msaa_samples:                vk.SampleCountFlag,
 

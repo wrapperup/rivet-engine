@@ -7,8 +7,6 @@ import vk "vendor:vulkan"
 import "gfx"
 
 @(private = "file")
-GPUPtr :: gfx.GPUPtr
-@(private = "file")
 ImageId :: gfx.ImageId
 @(private = "file")
 SamplerId :: gfx.SamplerId
@@ -17,9 +15,9 @@ SamplerId :: gfx.SamplerId
 // comes from the packed volume array in global (world-space select), not a single volume pointer.
 @(shader_shared)
 GPUReflectionCapturePush :: struct #max_field_align(16) {
-	global:     GPUPtr(GPUGlobalData),
-	geometries: GPUPtr(GPUGeometry),
-	materials:  GPUPtr(GPUMaterial),
+	global:     gfx.Ptr(GPUGlobalData),
+	geometries: gfx.Ptr(GPUGeometry),
+	materials:  gfx.Ptr(GPUMaterial),
 	tlas:       vk.DeviceAddress `AccelerationStructure`,
 	out_cube:   ImageId `RWImage2DArray`,
 	center:     Vec3,
@@ -30,9 +28,9 @@ GPUReflectionCapturePush :: struct #max_field_align(16) {
 // Push for the debug mirror-ball gizmo (shaders/reflection_probe_debug.slang).
 @(shader_shared)
 GPUReflectionProbeDebugPush :: struct #max_field_align(16) {
-	global:        GPUPtr(GPUGlobalData),
-	probe:         GPUPtr(GPUReflectionProbe),
-	vertex_buffer: GPUPtr(Vertex),
+	global:        gfx.Ptr(GPUGlobalData),
+	probe:         gfx.Ptr(GPUReflectionProbe),
+	vertex_buffer: gfx.Ptr(Vertex),
 	center:        Vec3,
 	radius:        f32,
 }
@@ -106,7 +104,7 @@ reflection_probe_prepare :: proc(probes: []ReflectionProbe) {
 		gfx.write_buffer_slice(&game.render_state.reflection_probes_buffers[frame_index], packed[:count])
 	}
 
-	game.render_state.global_data.reflection_probes = gfx.gpu_slice(
+	game.render_state.global_data.reflection_probes = gfx.slice(
 		game.render_state.reflection_probes_buffers[frame_index],
 		count = u64(count),
 	)

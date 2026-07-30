@@ -5,7 +5,7 @@ import vk "vendor:vulkan"
 
 Raytracing_Accel :: struct {
     accel:   vk.AccelerationStructureKHR,
-    buffer:  GPUBuffer(u8), // .AccelStorage backing
+    buffer:  Buffer(u8), // .AccelStorage backing
     address: vk.DeviceAddress,
     type:    vk.AccelerationStructureTypeKHR,
 }
@@ -41,7 +41,7 @@ _build_accel :: proc(
     geometry:        ^vk.AccelerationStructureGeometryKHR,
     primitive_count: u32,
     loc := #caller_location,
-) -> (accel: Raytracing_Accel, scratch: GPUBuffer(u8)) {
+) -> (accel: Raytracing_Accel, scratch: Buffer(u8)) {
     accel.type = type
 
     build_info := vk.AccelerationStructureBuildGeometryInfoKHR {
@@ -122,7 +122,7 @@ build_blas :: proc(
         flags        = {.OPAQUE},
     }
 
-    scratch: GPUBuffer(u8)
+    scratch: Buffer(u8)
     if cmd, ok := immediate_submit(); ok {
         blas, scratch = _build_accel(cmd, .BOTTOM_LEVEL, &geo, index_count / 3)
     }
@@ -132,9 +132,9 @@ build_blas :: proc(
 
 build_tlas :: proc(
     cmd:       vk.CommandBuffer,
-    instances: GPUBuffer(vk.AccelerationStructureInstanceKHR),
+    instances: Buffer(vk.AccelerationStructureInstanceKHR),
     count:     u32,
-) -> (tlas: Raytracing_Accel, scratch: GPUBuffer(u8)) {
+) -> (tlas: Raytracing_Accel, scratch: Buffer(u8)) {
     geo := vk.AccelerationStructureGeometryKHR {
         sType        = .ACCELERATION_STRUCTURE_GEOMETRY_KHR,
         geometryType = .INSTANCES,
@@ -162,7 +162,7 @@ defer_destroy_accel :: proc(arena: ^ResourceArena, accel: Raytracing_Accel, loc 
     defer_destroy_resource(arena, transmute(u64)accel.accel, .AccelerationStructure, loc = loc)
 }
 
-_create_scratch_buffer :: proc(size: vk.DeviceSize, loc := #caller_location) -> GPUBuffer(u8) {
+_create_scratch_buffer :: proc(size: vk.DeviceSize, loc := #caller_location) -> Buffer(u8) {
     if r_rt_props.scratch_align == 0 {
         r_rt_props = query_raytracing_props()
     }
@@ -176,7 +176,7 @@ _create_scratch_buffer :: proc(size: vk.DeviceSize, loc := #caller_location) -> 
         usage = .AUTO,
     }
 
-    out_buffer: GPUBuffer(u8)
+    out_buffer: Buffer(u8)
     vk_check(
         vma.CreateBufferWithAlignment(
             r_ctx.allocator,

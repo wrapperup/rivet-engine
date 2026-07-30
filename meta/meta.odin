@@ -1,4 +1,4 @@
-package game
+package meta
 
 import "base:intrinsics"
 import "base:runtime"
@@ -107,10 +107,6 @@ map_type_to_slang :: proc(ty: string, node: ^ast.Node, file: ^ast.File) -> strin
 }
 
 strip_gpu_name :: proc(s: string) -> string {
-	if s == "GPUPtr" {
-		return s
-	}
-
 	if strings.has_prefix(s, "GPU_") {
 		return s[4:]
 	} else if strings.has_prefix(s, "GPU") {
@@ -183,6 +179,24 @@ collect_files :: proc(path: string, allocator: runtime.Allocator) -> (ast_files:
 	return
 }
 
+get_named_type_reference :: proc(expr: ^ast.Expr) -> (
+	package_name: string,
+	type_name: string,
+	ok: bool,
+) {
+	#partial switch ty in expr.derived {
+	case ^ast.Ident:
+		return "", ty.name, true
+	case ^ast.Selector_Expr:
+		package_ident, package_ok := ty.expr.derived.(^ast.Ident)
+		if !package_ok {
+			return
+		}
+		return package_ident.name, ty.field.name, true
+	}
+	return
+}
+
 get_type_string :: proc(expr: ^ast.Expr, file: ^ast.File) -> (type_name: string, array_name: string) {
 	builder: strings.Builder
 	arr_builder: strings.Builder
@@ -196,18 +210,34 @@ get_type_string :: proc(expr: ^ast.Expr, file: ^ast.File) -> (type_name: string,
 		return map_type_to_slang(ty.name, &ty.node, file), ""
 	case ^ast.Call_Expr:
 		if len(ty.args) == 1 {
-			generic_name, _ := get_type_string(ty.expr, file)
+			package_name, generic_name, named_type_ok := get_named_type_reference(ty.expr)
+			if !named_type_ok {
+				report_error(
+					"Parametric shader field type must be a named type.",
+					&ty.node,
+					file,
+				)
+				break
+			}
+
 			inner_name, inner_array_name := get_type_string(ty.args[0], file)
 
-			if generic_name == "GPUPtr" {
+			if package_name == "gfx" && generic_name == "Ptr" {
 				array_name = inner_array_name
 				fmt.sbprint(&builder, inner_name, "*", sep = "")
 				break
-			} else if generic_name == "Slice" {
+			} else if package_name == "gfx" && generic_name == "Slice" {
 				assert(inner_array_name == "", "GPU slices cannot contain fixed-size array elements.")
 				fmt.sbprint(&builder, "Slice<", inner_name, ">", sep = "")
 				break
 			}
+
+			report_error(
+				"Parametric shader field type is not supported.",
+				&ty.node,
+				file,
+				"Use gfx.Ptr(T) or gfx.Slice(T).",
+			)
 		}
 	case ^ast.Array_Type:
 		assert(ty.len != nil, "Arrays must be fixed length.")
@@ -371,8 +401,9 @@ ShaderDecl :: struct {
 	src_file: ^ast.File,
 }
 
-main :: proc() {
+generate :: proc() -> bool {
 	start_time := time.now()
+	error_reported = false
 
 	files, ok := collect_files("./src", context.allocator)
 	assert(ok)
@@ -382,7 +413,13 @@ main :: proc() {
 
 	if !error_reported {
 		fmt.println("Parsed and generated code in", time.since(start_time))
-	} else {
+		return true
+	}
+	return false
+}
+
+main :: proc() {
+	if !generate() {
 		os.exit(1)
 	}
 }
@@ -468,8 +505,8 @@ append_layout_asserts :: proc(b: ^strings.Builder, files: []^ast.File) {
 							// Scalar offset = the previous field's end, rounded up to a matrix's
 							// scalar alignment (4 for an f32 matrix). `size_of(type_of(S{}.field))`
 							// sizes the previous field WITHOUT naming its type, so file-private
-							// aliases (GPUPtr, ImageId, ...) that aren't in scope in this generated
-							// file don't matter — only struct/field names are referenced. The `{}`
+							// field types (gfx.Ptr, ImageId, ...) that aren't in scope in this
+							// generated file don't matter — only struct/field names are referenced. The `{}`
 							// is written literally (fmt treats it as a format verb otherwise).
 							fmt.sbprintf(b, "#assert(offset_of(%s, %s) == (offset_of(%s, %s) + size_of(type_of(", name, fname, name, prev_name)
 							strings.write_string(b, name)

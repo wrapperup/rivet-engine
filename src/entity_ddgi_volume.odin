@@ -43,11 +43,11 @@ MAX_DDGI_VOLUMES :: 8
 
 DDGI_Volume_Resources :: struct {
 	gpu:             GPUDDGIVolume,
-	config_buffers:  [gfx.FRAME_OVERLAP]gfx.GPUBuffer(GPUDDGIVolume),
-	radiance_buffer: gfx.GPUBuffer(Vec4), // rays_per_probe * num_probes
-	irradiance:      gfx.GPUImage,
-	depth:           gfx.GPUImage,
-	offset:          gfx.GPUImage,
+	config_buffers:  [gfx.FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume),
+	radiance_buffer: gfx.Buffer(Vec4), // rays_per_probe * num_probes
+	irradiance:      gfx.Image,
+	depth:           gfx.Image,
+	offset:          gfx.Image,
 }
 
 @(entity)
