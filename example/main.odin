@@ -51,7 +51,7 @@ main :: proc() {
 	assert(ok)
 
     TrianglePushConstant :: struct {
-        vertices: gfx.GPUPtr([3]Vertex)
+        vertices: gfx.Ptr([3]Vertex)
     }
 
 	triangle_pipeline := gfx.create_graphics_pipeline(
