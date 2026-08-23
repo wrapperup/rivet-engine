@@ -280,6 +280,10 @@ draw :: proc() {
 		draw_mesh(static_mesh.mesh, static_mesh.material, static_mesh.translation, static_mesh.rotation, 1)
 	}
 
+	for terrain in get_entities(Terrain) {
+		draw_mesh(terrain.mesh, terrain.material, terrain.translation, terrain.rotation, 1)
+	}
+
 	frame := current_frame_game()
 	volumes := get_entities(DDGIVolume)
 	probes := get_entities(ReflectionProbe)

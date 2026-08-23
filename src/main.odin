@@ -133,6 +133,7 @@ game_init :: proc() {
     // TODO: TEMP: Register entity types automatically from metaprogram.
     {
         register_entity_subtype(StaticMesh, static_mesh_destroy)
+        register_entity_subtype(Terrain, terrain_destroy)
         register_entity_subtype(ReflectionProbe, reflection_probe_destroy)
         register_entity_subtype(DDGIVolume, ddgi_volume_destroy)
         register_entity_subtype(SoundSource, destroy_sound_source)

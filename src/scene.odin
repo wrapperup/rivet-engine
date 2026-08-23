@@ -158,6 +158,20 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 			sm := new_entity(StaticMesh)
 			init_static_mesh(sm, asset, material, &scene.gpu_arena, node.translation, node.rotation)
 			append(&scene.entities, sm.id)
-		}
+		case "heightfield":
+			asset, has_asset := object["heightfield_asset"].(json.String)
+			if !has_asset || asset == "" {
+				log.warn("heightfield node missing generated asset, skipping:", node.name.? or_else "<unnamed>")
+				continue
+			}
+			material := MaterialId(json_f32(object["material"], 0))
+			uv_scale := json_f32(object["uv_scale"], 1.0)
+			terrain := new_entity(Terrain)
+			if !init_terrain(terrain, asset, material, uv_scale, &scene.gpu_arena, node.translation, node.rotation) {
+				destroy_entity(terrain.id)
+				log.warn("failed to initialize heightfield:", asset)
+				continue
+			}
+			append(&scene.entities, terrain.id)		}
 	}
 }
