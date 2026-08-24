@@ -277,7 +277,7 @@ draw :: proc() {
 	}
 
 	for static_mesh in get_entities(StaticMesh) {
-		draw_mesh(static_mesh.mesh, static_mesh.material, static_mesh.translation, static_mesh.rotation, 1)
+		draw_mesh(static_mesh.mesh, static_mesh.material, static_mesh.translation, static_mesh.rotation, static_mesh.scale)
 	}
 
 	for terrain in get_entities(Terrain) {

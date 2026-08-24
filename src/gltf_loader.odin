@@ -1,7 +1,7 @@
 package game
 
-import "core:fmt"
 import "base:intrinsics"
+import "core:fmt"
 
 import "deps:gltf2"
 import vk "vendor:vulkan"
@@ -64,9 +64,17 @@ staging_write_mesh_buffers :: proc(buffers: ^GPUMeshBuffers, mesh: Mesh, loc := 
 }
 
 // Allocates two slices if successful. Make sure to free them when you're done.
-parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int, allocator := context.allocator) -> (mesh: Mesh, ok: bool) {
+parse_gltf_mesh_into_mesh :: proc(
+	data: ^gltf2.Data,
+	mesh_idx: int,
+	primitive_idx: int = 0,
+	allocator := context.allocator,
+) -> (
+	mesh: Mesh,
+	ok: bool,
+) {
 	gltf_mesh := &data.meshes[mesh_idx]
-	primitive := &gltf_mesh.primitives[0]
+	primitive := &gltf_mesh.primitives[primitive_idx]
 
 	if (mesh_idx < len(data.skins)) {
 		skin := &data.skins[mesh_idx]
@@ -83,12 +91,9 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int, allocator :=
 	tangent_idx, tangent_ok := primitive.attributes["TANGENT"]
 
 	{
-        indices_buf := gltf2.buffer_slice(data, indices_idx).([]u16)
-		mesh.indices = make([]u32, len(indices_buf), allocator)
-
-        for index, i in indices_buf {
-            mesh.indices[i] = cast(u32)index
-        }
+		indices, indices_ok := read_accessor(data, indices_idx, u32, allocator)
+		if !indices_ok do return
+		mesh.indices = indices
 	}
 
 	{
@@ -391,9 +396,51 @@ load_mesh_from_file :: proc(path: string, allocator := context.allocator, loc :=
     // if there are no errors we want to free memory when we are done with processing gltf/glb file.
     defer gltf2.unload(data)
 
-	mesh, ok := parse_gltf_mesh_into_mesh(data, 0, allocator)
+	// Scene-local exports bake transforms into the vertices. Flatten all primitives,
+	// including separate meshes produced by Geometry Nodes.
+	parts := make([dynamic]Mesh, 0, len(data.meshes), allocator)
+	defer {
+		for part in parts {
+			delete(part.indices, allocator)
+			delete(part.vertices, allocator)
+		}
+		delete(parts)
+	}
 
-    return mesh, ok
+	total_indices := 0
+	total_vertices := 0
+	for gltf_mesh, mesh_idx in data.meshes {
+		for _, primitive_idx in gltf_mesh.primitives {
+			part, ok := parse_gltf_mesh_into_mesh(data, mesh_idx, primitive_idx, allocator)
+			if !ok {
+				return {}, false
+			}
+			append(&parts, part)
+			total_indices += len(part.indices)
+			total_vertices += len(part.vertices)
+		}
+	}
+
+	if total_indices == 0 || total_vertices == 0 {
+		return {}, false
+	}
+
+	mesh := Mesh {
+		indices  = make([]u32, total_indices, allocator),
+		vertices = make([]Vertex, total_vertices, allocator),
+	}
+	index_offset := 0
+	vertex_offset := 0
+	for part in parts {
+		copy(mesh.vertices[vertex_offset:], part.vertices)
+		for index, i in part.indices {
+			mesh.indices[index_offset + i] = index + u32(vertex_offset)
+		}
+		index_offset += len(part.indices)
+		vertex_offset += len(part.vertices)
+	}
+
+	return mesh, true
 }
 
 load_gpu_mesh_from_file :: proc(path: string, allocator := context.allocator, loc := #caller_location) -> (gpu_mesh: GPUMeshBuffers, ok: bool) {

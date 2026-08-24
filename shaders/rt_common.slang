@@ -77,7 +77,7 @@ RTSurface _rt_trace_surface(bool detailed, RaytracingAccelerationStructure tlas,
   let bary = Vec3(1.0 - bc.x - bc.y, bc.x, bc.y);
   let o2w = (Mat3x3)q.CommittedObjectToWorld3x4();
   let n_interp = v0.normal * bary.x + v1.normal * bary.y + v2.normal * bary.z;
-  s.normal = normalize(mul(o2w, n_interp));
+  s.normal = normalize(mul(n_interp,(Mat3x3)q.CommittedWorldToObject3x4()));
   s.normal_mapped = s.normal;
   s.material_index = geo.material_index;
 
@@ -86,7 +86,7 @@ RTSurface _rt_trace_surface(bool detailed, RaytracingAccelerationStructure tlas,
   let material = materials[geo.material_index];
 
   if (detailed) {
-    let n_raster = normalize(mul(o2w, -n_interp));
+    let n_raster = -s.normal;
     var tangent = v0.tangent * bary.x + v1.tangent * bary.y + v2.tangent * bary.z;
     if (geo.material_index == 0) {
       tangent = get_world_space_tangent(n_raster);

@@ -9,6 +9,7 @@ StaticMesh :: struct {
 	using entity: ^Entity,
 	mesh:         GPUMeshBuffers,
 	material:     MaterialId,
+	scale:        Vec3,
 	body:         b3.BodyId,
 	mesh_data:    ^b3.MeshData,
 }
@@ -20,6 +21,7 @@ init_static_mesh :: proc(
 	gpu_arena: ^gfx.ResourceArena,
 	translation: Vec3 = {0, 0, 0},
 	rotation: Quat = Quat(1),
+	scale: Vec3 = {1, 1, 1},
 ) {
 	mesh, ok := load_mesh_from_file(path, context.temp_allocator)
 	assert(ok)
@@ -60,10 +62,11 @@ init_static_mesh :: proc(
 
 	shape_def := b3.DefaultShapeDef()
 	shape_def.baseMaterial = phys_default_material()
-	_ = b3.CreateMeshShape(static_mesh.body, shape_def, static_mesh.mesh_data, {1, 1, 1})
+	_ = b3.CreateMeshShape(static_mesh.body, shape_def, static_mesh.mesh_data, transmute(b3.Vec3)scale)
 
 	static_mesh.translation = translation
 	static_mesh.rotation = rotation
+	static_mesh.scale = scale
 	static_mesh.mesh = gpu_mesh
 	static_mesh.material = material
 }
