@@ -151,7 +151,21 @@ parse_gltf_mesh_into_mesh :: proc(
             mesh.vertices[i].tangent = val
 		}
 	} else if uv_ok && norm_ok {
-		// Generate tangents if we have normals + uv and no tangents are included.
+		// MikkTSpace returns per-corner tangents. Expand shared vertices so UV seams
+		// retain distinct frames; meshes with authored tangents stay indexed.
+		expanded_vertices := make([]Vertex, len(mesh.indices), allocator)
+		for source_index, corner_index in mesh.indices {
+			if int(source_index) >= len(mesh.vertices) {
+				delete(expanded_vertices, allocator)
+				return mesh, false
+			}
+			expanded_vertices[corner_index] = mesh.vertices[source_index]
+			mesh.indices[corner_index] = u32(corner_index)
+		}
+		delete(mesh.vertices, allocator)
+		mesh.vertices = expanded_vertices
+
+		// Generate tangents if we have normals + UVs and no tangents are included.
 		get_vertex_index :: proc(pContext: ^mikk.Context, iFace: int, iVert: int) -> int {
 			gltf_mesh := cast(^Mesh)pContext.user_data
 
