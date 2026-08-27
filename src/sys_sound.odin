@@ -18,6 +18,12 @@ init_sound_system :: proc() {
 	game.sound_system.initialized = true
 }
 
+shutdown_sound_system :: proc() {
+	if !game.sound_system.initialized do return
+	ma.engine_uninit(&game.sound_system.sound_engine)
+	game.sound_system = {}
+}
+
 play_sound :: proc(asset_name: Asset_Name) {
 	assert(game.sound_system.initialized)
     path_c := strings.clone_to_cstring(asset_path(asset_name))
@@ -26,14 +32,17 @@ play_sound :: proc(asset_name: Asset_Name) {
 	ma.engine_play_sound(&game.sound_system.sound_engine, path_c, nil)
 }
 
-play_sound_3d :: proc(path: cstring, position: Vec3) {
+// The caller owns `sound` and must call ma.sound_uninit when it is finished.
+play_sound_3d :: proc(sound: ^ma.sound, path: cstring, position: Vec3) -> bool {
 	assert(game.sound_system.initialized)
 
-	sound := new(ma.sound)
-	ma.sound_init_from_file(&game.sound_system.sound_engine, path, {.DECODE}, nil, nil, sound)
+	if ma.sound_init_from_file(&game.sound_system.sound_engine, path, {.DECODE}, nil, nil, sound) != .SUCCESS {
+		return false
+	}
 	ma.sound_set_position(sound, position.x, position.y, position.z)
 	ma.sound_set_looping(sound, true)
 	ma.sound_start(sound)
+	return true
 }
 
 set_listener_position :: proc(position: Vec3, forward: Vec3) {

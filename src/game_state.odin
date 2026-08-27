@@ -40,6 +40,7 @@ init_skeletal_mesh_instance :: proc(skel: ^Skeleton, anim: ^SkeletalAnimation) -
 }
 
 Game :: struct {
+	initialized:        bool,
 	window:             glfw.WindowHandle,
 	window_state:       struct {
 		is_fullscreen: bool,
@@ -55,7 +56,7 @@ Game :: struct {
 	entity_system:      EntitySystem,
 	input_system:       InputSystem,
 	sound_system:       SoundSystem,
-	//asset_system:       AssetSystem,
+	asset_system:       AssetSystem,
 	view_state:         ViewState,
 	render_state:       RenderState,
 

@@ -64,7 +64,7 @@ staging_write_mesh_buffers :: proc(buffers: ^GPUMeshBuffers, mesh: Mesh, loc := 
 }
 
 // Allocates two slices if successful. Make sure to free them when you're done.
-parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Mesh, ok: bool) {
+parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int, allocator := context.allocator) -> (mesh: Mesh, ok: bool) {
 	gltf_mesh := &data.meshes[mesh_idx]
 	primitive := &gltf_mesh.primitives[0]
 
@@ -84,7 +84,7 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 
 	{
         indices_buf := gltf2.buffer_slice(data, indices_idx).([]u16)
-		mesh.indices = make([]u32, len(indices_buf))
+		mesh.indices = make([]u32, len(indices_buf), allocator)
 
         for index, i in indices_buf {
             mesh.indices[i] = cast(u32)index
@@ -92,10 +92,10 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 	}
 
 	{
-        positions := read_accessor(data, pos_idx, [3]f32) or_return
-        defer delete(positions)
+		positions := read_accessor(data, pos_idx, [3]f32, allocator) or_return
+		defer delete(positions, allocator)
 
-		mesh.vertices = make([]Vertex, len(positions))
+		mesh.vertices = make([]Vertex, len(positions), allocator)
 
 		for val, i in positions {
 			mesh.vertices[i].position = val
@@ -103,8 +103,8 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 	}
 
 	if norm_ok {
-        normals := read_accessor(data, norm_idx, [3]f32) or_return
-        defer delete(normals)
+		normals := read_accessor(data, norm_idx, [3]f32, allocator) or_return
+		defer delete(normals, allocator)
 
 		for val, i in normals {
 			mesh.vertices[i].normal = val
@@ -112,8 +112,8 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 	}
 
 	if color_ok {
-        colors := read_accessor(data, color_idx, [3]f32) or_return
-        defer delete(colors)
+		colors := read_accessor(data, color_idx, [3]f32, allocator) or_return
+		defer delete(colors, allocator)
 
 		for val, i in colors {
 			mesh.vertices[i].color.xyz = val
@@ -127,8 +127,8 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
 	}
 
 	if uv_ok {
-        uvs := read_accessor(data, uv_idx, [2]f32) or_return
-        defer delete(uvs)
+		uvs := read_accessor(data, uv_idx, [2]f32, allocator) or_return
+		defer delete(uvs, allocator)
 
 		for val, i in uvs {
 			mesh.vertices[i].uv_x  = val.x
@@ -139,8 +139,8 @@ parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int) -> (mesh: Me
     // assert(tangent_ok)
 
 	if tangent_ok {
-        tangents := read_accessor(data, tangent_idx, [4]f32) or_return
-        defer delete(tangents)
+		tangents := read_accessor(data, tangent_idx, [4]f32, allocator) or_return
+		defer delete(tangents, allocator)
 
 		for val, i in tangents {
             mesh.vertices[i].tangent = val
@@ -384,20 +384,20 @@ SkeletalMesh :: struct {
 }
 
 
-load_mesh_from_file :: proc(path: string, loc := #caller_location) -> (Mesh, bool) {
+load_mesh_from_file :: proc(path: string, allocator := context.allocator, loc := #caller_location) -> (Mesh, bool) {
     data, error := gltf2.load_from_file(path)
     assert(error == nil, "Couldn't load mesh.", loc = loc)
 
     // if there are no errors we want to free memory when we are done with processing gltf/glb file.
     defer gltf2.unload(data)
 
-    mesh, ok := parse_gltf_mesh_into_mesh(data, 0)
+	mesh, ok := parse_gltf_mesh_into_mesh(data, 0, allocator)
 
     return mesh, ok
 }
 
-load_gpu_mesh_from_file :: proc(path: string, loc := #caller_location) -> (gpu_mesh: GPUMeshBuffers, ok: bool) {
-    mesh := load_mesh_from_file(path, loc = loc) or_return
+load_gpu_mesh_from_file :: proc(path: string, allocator := context.allocator, loc := #caller_location) -> (gpu_mesh: GPUMeshBuffers, ok: bool) {
+	mesh := load_mesh_from_file(path, allocator, loc = loc) or_return
 	return upload_mesh_to_gpu(mesh, loc = loc), true
 }
 

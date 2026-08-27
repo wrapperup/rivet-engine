@@ -39,6 +39,7 @@ ResourceType :: enum {
 	PipelineLayout,
 	Sampler,
 	AccelerationStructure,
+	Swapchain,
 }
 
 destroy_resource :: proc(
@@ -76,6 +77,8 @@ destroy_resource :: proc(
 		vk.DestroySampler(r_ctx.device, cast(vk.Sampler)resource.handle, nil)
 	case .AccelerationStructure:
 		vk.DestroyAccelerationStructureKHR(r_ctx.device, cast(vk.AccelerationStructureKHR)resource.handle, nil)
+	case .Swapchain:
+		vk.DestroySwapchainKHR(r_ctx.device, cast(vk.SwapchainKHR)resource.handle, nil)
 	}
 }
 
@@ -111,6 +114,8 @@ vk_destroy_resource_by_handle :: proc(resource: ResourceHandle) {
 		vk.DestroySampler(r_ctx.device, cast(vk.Sampler)resource.handle, nil)
 	case .AccelerationStructure:
 		vk.DestroyAccelerationStructureKHR(r_ctx.device, cast(vk.AccelerationStructureKHR)resource.handle, nil)
+	case .Swapchain:
+		vk.DestroySwapchainKHR(r_ctx.device, cast(vk.SwapchainKHR)resource.handle, nil)
 	}
 }
 
@@ -128,6 +133,7 @@ resource_type_of_handle :: proc($T: typeid) -> ResourceType {
 		.PipelineLayout when T == vk.PipelineLayout else
 		.Sampler when T == vk.Sampler else
 		.AccelerationStructure when T == vk.AccelerationStructureKHR else
+		.Swapchain when T == vk.SwapchainKHR else
 		#panic("Handle type is not a valid resource")
 	//odinfmt: enable
 }
@@ -307,6 +313,15 @@ defer_destroy_vk_sampler :: proc(
     defer_destroy_resource(arena, transmute(u64)handle, .Sampler, nil, debug, loc)
 }
 
+defer_destroy_vk_swapchain :: proc(
+	arena: ^ResourceArena,
+	handle: vk.SwapchainKHR,
+	debug := "",
+	loc := #caller_location,
+) {
+	defer_destroy_resource(arena, transmute(u64)handle, .Swapchain, nil, debug, loc)
+}
+
 defer_destroy :: proc {
     defer_destroy_buffer,
     defer_destroy_image,
@@ -324,6 +339,7 @@ defer_destroy :: proc {
     defer_destroy_vk_pipeline,
     defer_destroy_vk_pipeline_layout,
     defer_destroy_vk_sampler,
+	defer_destroy_vk_swapchain,
 }
 
 flush_vk_arena :: proc(arena: ^ResourceArena) {

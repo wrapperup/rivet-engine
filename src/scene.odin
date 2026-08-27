@@ -18,9 +18,23 @@ Scene :: struct {
 	arena:           virtual.Arena,
 	gpu_arena:       gfx.ResourceArena,
 	entities:        [dynamic]EntityId,
+	initialized:     bool,
+}
+
+scene_init :: proc(scene: ^Scene) -> bool {
+	if scene.initialized do return true
+	if virtual.arena_init_growing(&scene.arena) != nil {
+		return false
+	}
+	scene.entities = make([dynamic]EntityId, virtual.arena_allocator(&scene.arena))
+	scene.initialized = true
+	return true
 }
 
 load_scene_from_file :: proc(scene: ^Scene, path: string) -> bool {
+	if !scene_init(scene) {
+		return false
+	}
 	data, error := gltf2.load_from_file(path)
 	if error != nil {
 		return false
@@ -55,13 +69,32 @@ check_scene_hotreload :: proc(scene: ^Scene) {
 reload_scene :: proc(scene: ^Scene) {
 	vk.DeviceWaitIdle(gfx.r_ctx.device)
 
-	gfx.flush_vk_arena(&scene.gpu_arena)
 	for id in scene.entities {
 		destroy_entity(id)
 	}
-	clear(&scene.entities)
+	gfx.flush_vk_arena(&scene.gpu_arena)
+	gfx.delete_vk_arena(scene.gpu_arena)
+	scene.gpu_arena = {}
 
-	load_scene_from_file(scene, scene.source)
+	source := scene.source
+	virtual.arena_free_all(&scene.arena)
+	scene.entities = make([dynamic]EntityId, virtual.arena_allocator(&scene.arena))
+
+	if !load_scene_from_file(scene, source) {
+		log.error("Failed to reload scene:", source)
+	}
+}
+
+scene_shutdown :: proc(scene: ^Scene) {
+	if !scene.initialized do return
+
+	for id in scene.entities {
+		destroy_entity(id)
+	}
+	gfx.flush_vk_arena(&scene.gpu_arena)
+	gfx.delete_vk_arena(scene.gpu_arena)
+	virtual.arena_destroy(&scene.arena)
+	scene^ = {}
 }
 
 json_f32 :: proc(v: json.Value, default: f32) -> f32 {
@@ -123,7 +156,7 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 			}
 			material := MaterialId(json_f32(object["material"], 0))
 			sm := new_entity(StaticMesh)
-			init_static_mesh(sm, asset, material, node.translation, node.rotation)
+			init_static_mesh(sm, asset, material, &scene.gpu_arena, node.translation, node.rotation)
 			append(&scene.entities, sm.id)
 		}
 	}

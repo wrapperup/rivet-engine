@@ -46,6 +46,14 @@ init_bindless_descriptors :: proc() {
 	)
 }
 
+shutdown_bindless_descriptors :: proc() {
+	delete(r_ctx.bindless_system.images)
+	delete(r_ctx.bindless_system.samplers)
+	delete(r_ctx.bindless_system.free_images)
+	delete(r_ctx.bindless_system.free_samplers)
+	r_ctx.bindless_system = {}
+}
+
 add_image_impl :: proc(image: Image) -> ImageId {
 	bindless_system := &r_ctx.bindless_system
 

@@ -82,7 +82,7 @@ init_skybox_rp :: proc() {
 			)
 		})
 
-	mesh, ok := load_gpu_mesh_from_file(asset_path(.sm_skybox))
+	mesh, ok := load_gpu_mesh_from_file(asset_path(.sm_skybox), context.temp_allocator)
 	assert(ok)
 	defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, mesh)
 	game.render_state.skybox_mesh = mesh

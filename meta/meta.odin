@@ -571,15 +571,13 @@ generate_assets :: proc(files: []^ast.File) {
 	}
 	bpln(&b, "}")
 	bpln(&b, "")
-	bpln(&b, "asset_map: [Asset_Name]Asset")
-	bpln(&b, "")
 	bpln(&b, "load_generated_assets :: proc() -> bool {")
 	for file in asset_files {
 		base := filepath.stem(file.name)
 		rel_path, k := filepath.rel(working_directory, file.fullpath)
 		assert(k == nil, "Couldn't get relative path")
 		fixed_path, ok := strings.replace_all(rel_path, "\\", "/")
-		bpln(&b, "    asset_map[.", base, "] = load_asset(\"", fixed_path, "\") or_return", sep = "")
+		bpln(&b, "    game.asset_system.assets[.", base, "] = load_asset(\"", fixed_path, "\") or_return", sep = "")
 	}
 	bpln(&b, "    return true")
 	bpln(&b, "}")

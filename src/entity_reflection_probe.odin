@@ -93,6 +93,7 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe, position: Vec3, half_exte
 			base_array_layer = 0,
 			array_layers = 6,
 		)
+		gfx.defer_destroy(arena, mip_view)
 		storage := probe.cube_image
 		storage.usage = {.STORAGE}
 		probe.cube_mip_storage_ids[mip] = gfx.add_image(storage, mip_view)

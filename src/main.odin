@@ -11,6 +11,7 @@ import "core:time"
 
 import glfw "vendor:glfw"
 import ma "vendor:miniaudio"
+import vk "vendor:vulkan"
 
 import im "deps:odin-imgui"
 import im_glfw "deps:odin-imgui/imgui_impl_glfw"
@@ -48,11 +49,23 @@ game_init :: proc() {
 	physical, logical, ok := info.cpu_core_count()
 	worker_threads := math.max(physical - reserved_threads, 1)
 
-	if !load_generated_assets() {
+	game = new(Game)
+	game.config = default_game_config()
+
+	if !init_asset_system() {
 		fmt.eprintln("Failed to load assets!")
+		free(game)
+		game = nil
+		return
 	}
 
-	glfw.Init()
+	if !glfw.Init() {
+		log.error("GLFW could not be initialized.")
+		shutdown_asset_system()
+		free(game)
+		game = nil
+		return
+	}
 
 	glfw.WindowHint(glfw.CLIENT_API, glfw.NO_API)
 	glfw.WindowHint(glfw.RESIZABLE, glfw.TRUE)
@@ -60,10 +73,14 @@ game_init :: proc() {
 	glfw.SwapInterval(1)
 
 	window := glfw.CreateWindow(1920, 1080, "Vulkan", nil, nil)
-
-	game = new(Game)
-	game.config = default_game_config()
-	glfw.Init()
+	if window == nil {
+		log.error("The game window could not be created.")
+		glfw.Terminate()
+		shutdown_asset_system()
+		free(game)
+		game = nil
+		return
+	}
 
 	game.window = window
 
@@ -143,7 +160,7 @@ game_init :: proc() {
 			update_ddgi = true, // DDGI must run for reflection capture (and GI) to populate
 		}
 
-        game.ball_mesh, _ = load_gpu_mesh_from_file(asset_path(.demo_ball))
+		game.ball_mesh, _ = load_gpu_mesh_from_file(asset_path(.demo_ball), context.temp_allocator)
 
         for i in 0 ..< 256 {
 		ball := new_entity(Ball)
@@ -160,6 +177,7 @@ game_init :: proc() {
 	}
 
 	game.frame_time_start = time.tick_now()
+	game.initialized = true
 
 	glfw.ShowWindow(window)
 }
@@ -171,7 +189,7 @@ game_memory :: proc() -> rawptr {
 
 @(export)
 game_memory_size :: proc() -> int {
-	return size_of(game)
+	return size_of(Game)
 }
 
 @(export)
@@ -195,6 +213,9 @@ game_hot_reloaded :: proc(mem: rawptr) {
 
 @(export)
 game_update :: proc() -> bool {
+	if game == nil || !game.initialized {
+		return false
+	}
 	scope_stat_time(.Total)
 
 	if glfw.GetWindowAttrib(game.window, glfw.FOCUSED) > 0 {
@@ -223,6 +244,9 @@ game_update :: proc() -> bool {
 	}
 
 	simulate_input()
+	if action_just_pressed(.ExitGame) {
+		return false
+	}
 
 	if action_just_pressed(.ReloadScene) {
         reload_scene(&game.state.current_scene)
@@ -292,7 +316,29 @@ game_update :: proc() -> bool {
 
 @(export)
 game_shutdown :: proc() {
-	physics_shutdown()
+	if game == nil do return
 
-	renderer_shutdown()
+	if game.renderer != nil {
+		gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
+		scene_shutdown(&game.state.current_scene)
+	}
+
+	shutdown_entity_system()
+	physics_shutdown()
+	shutdown_sound_system()
+
+	if game.renderer != nil {
+		renderer_shutdown()
+		gfx.shutdown()
+		game.renderer = nil
+	}
+
+	shutdown_asset_system()
+	if game.window != nil {
+		glfw.DestroyWindow(game.window)
+	}
+	glfw.Terminate()
+
+	free(game)
+	game = nil
 }

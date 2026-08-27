@@ -17,14 +17,15 @@ init_static_mesh :: proc(
 	static_mesh: ^StaticMesh,
 	path: string,
 	material: MaterialId,
+	gpu_arena: ^gfx.ResourceArena,
 	translation: Vec3 = {0, 0, 0},
 	rotation: Quat = Quat(1),
 ) {
-	mesh, ok := load_mesh_from_file(path)
+	mesh, ok := load_mesh_from_file(path, context.temp_allocator)
 	assert(ok)
 
 	gpu_mesh := upload_mesh_to_gpu(mesh)
-	defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, gpu_mesh)
+	defer_destroy_gpu_mesh(gpu_arena, gpu_mesh)
 
 	// Bake the triangle soup into a Box3D collision mesh (this is the "cook" step).
 	points := make([]b3.Vec3, len(mesh.vertices))

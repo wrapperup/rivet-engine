@@ -111,6 +111,7 @@ SubtypeStorage :: struct {
 	ptr:       ^RawSparseSet,
 	type_info: runtime.Type_Info,
 	destroy:   DestroyProc,
+	shutdown:  proc(storage: rawptr, destroy: DestroyProc),
 }
 
 register_entity_subtype_no_destroy :: proc($T: typeid) -> ^SparseSet(T) {
@@ -130,6 +131,17 @@ register_entity_subtype_with_destroy :: proc($T: typeid, destroy_proc: proc(_: ^
 		ptr       = cast(^RawSparseSet)sparse_set,
 		type_info = type_info_of(T)^,
 		destroy   = cast(DestroyProc)destroy_proc,
+		shutdown  = proc(storage_raw: rawptr, destroy: DestroyProc) {
+			storage := cast(^SparseSet(T))storage_raw
+			if destroy != nil {
+				for &entity in storage.dense {
+					destroy(&entity)
+				}
+			}
+			delete(storage.sparse)
+			delete(storage.dense)
+			free(storage)
+		},
 	}
 
 	subtype_storage.ptr.sparse_map_info = runtime.map_info(type_of(sparse_set.sparse))^
@@ -380,4 +392,12 @@ parallel_for_entities_no_data :: proc(procedure: proc(entity: ^$T, index: int)) 
 parallel_for_entities :: proc {
 	parallel_for_entities_data,
 	parallel_for_entities_no_data,
+}
+
+shutdown_entity_system :: proc() {
+	for _, storage in game.entity_system.subtype_storage {
+		storage.shutdown(storage.ptr, storage.destroy)
+	}
+	delete(game.entity_system.subtype_storage)
+	game.entity_system = {}
 }

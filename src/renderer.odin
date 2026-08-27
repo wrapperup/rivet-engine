@@ -285,7 +285,14 @@ draw :: proc() {
 	probes := get_entities(ReflectionProbe)
 
 	// Wait for this frame slot before writing any of its CPU-visible buffers.
-	cmd := gfx.begin_command_buffer()
+	cmd, frame_ready, swapchain_resized := gfx.begin_command_buffer()
+	if swapchain_resized {
+		refresh_resolved_image_descriptor()
+	}
+	if !frame_ready {
+		clear_frame_submission_data()
+		return
+	}
 
 	// CPU preparation and uploads happen before command recording.
 	geometry_prepare()
@@ -380,23 +387,33 @@ draw :: proc() {
 	// transitions to PRESENT, so hand it back in that layout.
 	gfx.transition_vk_image(cmd, sc_image, .COLOR_ATTACHMENT_OPTIMAL, .TRANSFER_DST_OPTIMAL)
 
-	swapchain_resized := gfx.submit(cmd)
+	swapchain_resized = gfx.submit(cmd)
 
 	if swapchain_resized {
-		gfx.write_descriptor_set(
-			gfx.r_ctx.bindless_system.descriptor_set,
-			{
-				{
-					binding = gfx.BINDLESS_STORAGE_IMAGES,
-					type = .STORAGE_IMAGE,
-					image_view = gfx.r_ctx.resolve_image.image_view,
-					image_layout = .GENERAL,
-					array_index = u32(game.render_state.temp_resources.resolved_image_id),
-				},
-			},
-		)
+		refresh_resolved_image_descriptor()
 	}
 
+	clear_frame_submission_data()
+}
+
+refresh_resolved_image_descriptor :: proc() {
+	resolved_id := game.render_state.temp_resources.resolved_image_id
+	gfx.r_ctx.bindless_system.images[resolved_id] = gfx.r_ctx.resolve_image
+	gfx.write_descriptor_set(
+		gfx.r_ctx.bindless_system.descriptor_set,
+		{
+			{
+				binding = gfx.BINDLESS_STORAGE_IMAGES,
+				type = .STORAGE_IMAGE,
+				image_view = gfx.r_ctx.resolve_image.image_view,
+				image_layout = .GENERAL,
+				array_index = u32(resolved_id),
+			},
+		},
+	)
+}
+
+clear_frame_submission_data :: proc() {
 	clear(&current_frame_game().mesh_draws)
 	clear(&current_frame_game().skel_instances)
 	rt_scene_reset(&current_frame_game().rt)
@@ -493,4 +510,17 @@ renderer_shutdown :: proc() {
 	// imgui buffers referenced by the last in-flight command buffer).
 	gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
 	im_gfx.gfx_imgui_destroy()
+	im_glfw.Shutdown()
+	im.DestroyContext(game.render_state.imgui_ctx)
+	game.render_state.imgui_ctx = nil
+	shutdown_shader_manager()
+
+	for &frame in game.render_state.frame_data {
+		delete(frame.mesh_draws)
+		delete(frame.skel_instances)
+		delete(frame.rt.instances)
+		delete(frame.rt.geometries)
+	}
+	delete(game.render_state.scene_resources.materials)
+	delete(game.render_state.geometry_rp.model_matrices)
 }

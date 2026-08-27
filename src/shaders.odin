@@ -198,6 +198,7 @@ reload_shader_pipeline :: proc(shader: ^Shader($T)) -> bool {
 			log.warn("Warning: Shader couldn't be cached.", err, cached_path)
 		}
 	}
+	defer delete(code)
 
 	shader_module, f_ok := gfx.load_shader_module_from_bytes(code)
 	assert(f_ok, "Failed to load shaders.")
@@ -313,6 +314,40 @@ init_slang_session :: proc() -> ^sp.ISession {
 safe_release :: proc(unknown: ^sp.IUnknown) {
 	if unknown != nil {
 		unknown->release()
+	}
+}
+
+shutdown_shader :: proc(shader: ^Shader($T)) {
+	if shader.pipeline != nil {
+		if shader.pipeline.pipeline != 0 {
+			vk.DestroyPipeline(gfx.r_ctx.device, shader.pipeline.pipeline, nil)
+		}
+		if shader.pipeline.layout != 0 {
+			vk.DestroyPipelineLayout(gfx.r_ctx.device, shader.pipeline.layout, nil)
+		}
+		free(shader.pipeline)
+	}
+	for path in shader.extra_files {
+		delete(path)
+	}
+	delete(shader.extra_files)
+	shader^ = {}
+}
+
+shutdown_shader_manager :: proc() {
+	for &shader in game.render_state.shader_manager.graphics_shaders {
+		shutdown_shader(&shader)
+	}
+	for &shader in game.render_state.shader_manager.compute_shaders {
+		shutdown_shader(&shader)
+	}
+	delete(game.render_state.shader_manager.graphics_shaders)
+	delete(game.render_state.shader_manager.compute_shaders)
+	game.render_state.shader_manager = {}
+
+	if game.render_state.global_session != nil {
+		safe_release(game.render_state.global_session)
+		game.render_state.global_session = nil
 	}
 }
 

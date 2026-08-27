@@ -22,7 +22,8 @@ init_sound_source :: proc(
     path := strings.clone_to_cstring(asset_path(asset_name))
     defer delete(path)
 
-	ma.sound_init_from_file(&game.sound_system.sound_engine, strings.clone_to_cstring(asset_path(asset_name)), {.DECODE} + extra_flags, nil, nil, &source.sound)
+	result := ma.sound_init_from_file(&game.sound_system.sound_engine, path, {.DECODE} + extra_flags, nil, nil, &source.sound)
+	assert(result == .SUCCESS)
 	ma.sound_set_looping(&source.sound, loop)
 	ma.sound_set_rolloff(&source.sound, rolloff)
 	ma.sound_set_volume(&source.sound, volume)

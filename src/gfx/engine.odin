@@ -60,6 +60,7 @@ Renderer :: struct {
 
 	// Swapchain
 	swapchain:                   Swapchain,
+	swapchain_suboptimal:        bool,
 
 	// Command Pool/Buffer
 	frames:                      [FRAME_OVERLAP]FrameData,
@@ -97,9 +98,10 @@ Swapchain :: struct {
 	swapchain_image_views:  []vk.ImageView,
 	swapchain_image_format: vk.Format,
 	swapchain_extent:       vk.Extent2D,
+	arena:                  ResourceArena,
 }
 
-create_swapchain :: proc() {
+create_swapchain :: proc(old_swapchain: vk.SwapchainKHR = 0) {
 	capabilities: vk.SurfaceCapabilitiesKHR
 	vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(r_ctx.physical_device, r_ctx.surface, &capabilities)
 
@@ -135,8 +137,6 @@ create_swapchain :: proc() {
 		image_count = capabilities.maxImageCount
 	}
 
-	old_swapchain := r_ctx.swapchain.swapchain
-
 	create_info := vk.SwapchainCreateInfoKHR {
 		sType                 = .SWAPCHAIN_CREATE_INFO_KHR,
 		surface               = r_ctx.surface,
@@ -161,6 +161,7 @@ create_swapchain :: proc() {
 	swapchain := &r_ctx.swapchain
 
 	vk_check(vk.CreateSwapchainKHR(r_ctx.device, &create_info, nil, &swapchain.swapchain))
+	defer_destroy(&swapchain.arena, swapchain.swapchain)
 
 	vk.GetSwapchainImagesKHR(r_ctx.device, swapchain.swapchain, &image_count, nil)
 	swapchain.swapchain_images = make([]vk.Image, image_count)
@@ -182,44 +183,48 @@ create_swapchain :: proc() {
 		}
 
 		vk_check(vk.CreateImageView(r_ctx.device, &create_info, nil, &swapchain.swapchain_image_views[i]))
+		defer_destroy(&swapchain.arena, swapchain.swapchain_image_views[i])
 	}
 
-	x, y := glfw.GetWindowSize(r_ctx.window)
-
 	draw_image_format: vk.Format = .R32G32B32A32_SFLOAT
-	draw_image_extent := vk.Extent3D{u32(x), u32(y), 1}
+	draw_image_extent := vk.Extent3D{extent.width, extent.height, 1}
 	draw_image_usages := vk.ImageUsageFlags{.TRANSFER_SRC, .TRANSFER_DST, .STORAGE, .COLOR_ATTACHMENT}
 
 	r_ctx.draw_image = create_image(draw_image_format, draw_image_extent, draw_image_usages, msaa_samples = r_ctx.msaa_samples)
-	defer_destroy(&r_ctx.global_arena, r_ctx.draw_image)
+	defer_destroy(&swapchain.arena, r_ctx.draw_image)
 
 	// Used for MSAA resolution
 	r_ctx.resolve_image = create_image(draw_image_format, draw_image_extent, draw_image_usages, msaa_samples = ._1)
-	defer_destroy(&r_ctx.global_arena, r_ctx.resolve_image)
+	defer_destroy(&swapchain.arena, r_ctx.resolve_image)
 
 	r_ctx.depth_image = create_image(.D32_SFLOAT, draw_image_extent, {.DEPTH_STENCIL_ATTACHMENT}, msaa_samples = r_ctx.msaa_samples)
-	defer_destroy(&r_ctx.global_arena, r_ctx.depth_image)
+	defer_destroy(&swapchain.arena, r_ctx.depth_image)
 
 	r_ctx.draw_extent.width = r_ctx.draw_image.extent.width
 	r_ctx.draw_extent.height = r_ctx.draw_image.extent.height
 }
 
-destroy_swapchain_resources :: proc() {
-	// We don't need to delete the images, it was created by the driver
-	// However, we did create the views, so we will destroy those now.
-	for image_view in r_ctx.swapchain.swapchain_image_views {
-		vk.DestroyImageView(r_ctx.device, image_view, nil)
-	}
-
-	delete(r_ctx.swapchain.swapchain_image_views)
-	delete(r_ctx.swapchain.swapchain_images)
+destroy_swapchain_resources :: proc(swapchain: ^Swapchain) {
+	flush_vk_arena(&swapchain.arena)
+	delete_vk_arena(swapchain.arena)
+	delete(swapchain.swapchain_image_views)
+	delete(swapchain.swapchain_images)
+	swapchain^ = {}
 }
 
-resize_swapchain :: proc() {
+resize_swapchain :: proc() -> bool {
+	width, height := glfw.GetFramebufferSize(r_ctx.window)
+	if width <= 0 || height <= 0 {
+		return false
+	}
+
 	vk.DeviceWaitIdle(r_ctx.device)
 
-	destroy_swapchain_resources()
-	create_swapchain()
+	old_swapchain := r_ctx.swapchain
+	r_ctx.swapchain = {}
+	create_swapchain(old_swapchain.swapchain)
+	destroy_swapchain_resources(&old_swapchain)
+	return true
 }
 
 FrameData :: struct {
@@ -558,6 +563,7 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 
 cleanup_vulkan :: proc() {
 	vk.DeviceWaitIdle(r_ctx.device)
+	shutdown_bindless_descriptors()
 
 	// Cleanup queued resources
 	flush_vk_arena(&r_ctx.global_arena)
@@ -578,8 +584,7 @@ cleanup_vulkan :: proc() {
 	destroy_descriptor_allocator(&r_ctx.global_descriptor_allocator)
 
 	if r_ctx.swapchain.swapchain != 0 {
-		vk.DestroySwapchainKHR(r_ctx.device, r_ctx.swapchain.swapchain, nil)
-		destroy_swapchain_resources()
+		destroy_swapchain_resources(&r_ctx.swapchain)
 	}
 
 	// Headless mode
@@ -644,7 +649,7 @@ is_shaders_updated :: proc() -> bool {
 // Called by the user before they start drawing to the screen.
 // This command can fail if the window changes size, if `ok` returns false, then don't
 // draw anything to the screen. Wait for the window to finish polling.
-begin_command_buffer :: proc() -> vk.CommandBuffer {
+begin_command_buffer :: proc() -> (cmd: vk.CommandBuffer, ready, swapchain_resized: bool) {
 	vk_check(vk.WaitForFences(r_ctx.device, 1, &current_frame().render_fence, true, 1_000_000_000))
 
 	// Delete resources for the current frame
@@ -659,7 +664,15 @@ begin_command_buffer :: proc() -> vk.CommandBuffer {
 		&r_ctx.swapchain.swapchain_image_index,
 	)
 
-	vk_check(acquire_image_result)
+	if acquire_image_result == .ERROR_OUT_OF_DATE_KHR {
+		swapchain_resized = resize_swapchain()
+		return nil, false, swapchain_resized
+	}
+	if acquire_image_result == .SUBOPTIMAL_KHR {
+		r_ctx.swapchain_suboptimal = true
+	} else {
+		vk_check(acquire_image_result)
+	}
 
 	r_ctx.draw_extent.width = r_ctx.draw_image.extent.width
 	r_ctx.draw_extent.height = r_ctx.draw_image.extent.height
@@ -671,14 +684,14 @@ begin_command_buffer :: proc() -> vk.CommandBuffer {
 	vk_check(vk.ResetCommandBuffer(current_frame().main_command_buffer, {.RELEASE_RESOURCES}))
 
 	// naming it cmd for shorter writing
-	cmd := current_frame().main_command_buffer
+	cmd = current_frame().main_command_buffer
 
 	// begin the command buffer recording. We will use this command buffer exactly once, so we want to let vulkan know that
 	cmd_begin_info := init_command_buffer_begin_info({.ONE_TIME_SUBMIT})
 
 	vk_check(vk.BeginCommandBuffer(cmd, &cmd_begin_info))
 
-	return cmd
+	return cmd, true, false
 }
 
 copy_image_to_swapchain :: proc(cmd: vk.CommandBuffer, source: vk.Image, src_size: vk.Extent2D) {
@@ -726,9 +739,11 @@ submit :: proc(cmd: vk.CommandBuffer) -> (swapchain_resized: bool) {
 
 	queue_present_result := vk.QueuePresentKHR(r_ctx.graphics_queue, &present_info)
 
-	if queue_present_result == .ERROR_OUT_OF_DATE_KHR {
-		resize_swapchain()
-		swapchain_resized = true
+	if queue_present_result == .ERROR_OUT_OF_DATE_KHR ||
+	   queue_present_result == .SUBOPTIMAL_KHR ||
+	   r_ctx.swapchain_suboptimal {
+		swapchain_resized = resize_swapchain()
+		r_ctx.swapchain_suboptimal = false
 	} else {
 		// TODO: Do normal assert check, maybe other cases though?
 		vk_check(queue_present_result)
@@ -1002,5 +1017,8 @@ load_vulkan_addresses :: proc() {
 
 
 shutdown :: proc() {
+	if r_ctx == nil do return
 	cleanup_vulkan()
+	free(r_ctx)
+	r_ctx = nil
 }
