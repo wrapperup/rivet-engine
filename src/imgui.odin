@@ -211,12 +211,18 @@ update_imgui :: proc() {
 
 	if im.Begin("Entities") {
 		if im.CollapsingHeader("Raw Entities") {
+			im.Text(
+				"%d live entities across %d allocated slots",
+				game.entity_system.live_count,
+				game.entity_system.slot_count,
+			)
 			clipper: im.ListClipper
-			im.ListClipper_Begin(&clipper, i32(game.entity_system.num_entities))
+			im.ListClipper_Begin(&clipper, i32(game.entity_system.slot_count))
 
 			for im.ListClipper_Step(&clipper) {
 				for i in clipper.DisplayStart ..< clipper.DisplayEnd {
-					entity := game.entity_system.entities[i]
+					entity := live_entity_at_index(&game.entity_system, u32(i))
+					if entity == nil do continue
 					im.Text("entity")
 					im.BulletText("id %d", entity.id.index)
 					im.BulletText("gen %d", entity.id.generation)

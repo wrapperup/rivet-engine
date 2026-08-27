@@ -90,10 +90,8 @@ game_init :: proc() {
 		return
 	}
 
-	// init_entity_system()
 	init_input_system()
 	init_sound_system()
-	// init_asset_system()
 
 	// Physics
 	physics_init()
@@ -102,6 +100,11 @@ game_init :: proc() {
 	{
 		init_game_renderer()
 		configure_im()
+	}
+
+	if !init_entity_system() {
+		log.error("Entity storage could not be initialized.")
+		return
 	}
 
 	// Input

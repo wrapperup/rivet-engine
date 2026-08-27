@@ -2,6 +2,7 @@ package game
 
 import "base:intrinsics"
 import "base:runtime"
+import "core:mem/virtual"
 
 RawSparseSet :: struct {
 	sparse:          runtime.Raw_Map,
@@ -56,12 +57,16 @@ remove_elem_sparse_set :: proc(set: ^SparseSet($T), id: EntityId) -> (ok: bool) 
 // Querying subtypes is efficient, it works using an entity ID and a
 // sparse set (like an ECS), and keeping subtype data dense for cache-locality.
 
-// Entity Id is a packed u32 number that contains
-// the liveness, generation and index in entity array.
+// EntityId is a 64-bit generational handle containing a 32-bit stable slot
+// index and a 32-bit generation. Destroying an entity advances the slot's
+// generation so stale handles cannot resolve after that slot is reused.
 EntityId :: struct {
 	generation: u32,
 	index:      u32,
 }
+
+#assert(size_of(EntityId) == 8)
+#assert(size_of(EntityId) == size_of(rawptr))
 
 entity_id_to_rawptr :: proc(id: EntityId) -> rawptr {
 	return transmute(rawptr)id
@@ -90,19 +95,128 @@ Entity :: struct {
 	rotation:    Quat,
 }
 
-MAX_ENTITY_STORAGE :: 16_777_216
+ENTITY_PAGE_SIZE        :: 1024
+ENTITY_FIRST_GENERATION :: 1
 
+EntitySlot :: struct {
+	entity: Entity,
+	alive:  bool,
+}
+
+EntityPage :: [ENTITY_PAGE_SIZE]EntitySlot
+
+// Core entities live in arena-backed pages so their addresses remain stable.
+// Freed slot indices are recycled; slot_count is the high-water mark while
+// live_count tracks entities that currently resolve.
 EntitySystem :: struct {
-	num_entities:    u32,
-
-	// Holds cache-friendly, common data across entities
-	entities:        [MAX_ENTITY_STORAGE]Entity,
+	initialized:  bool,
+	arena:        virtual.Arena,
+	pages:        [dynamic]^EntityPage,
+	free_indices: [dynamic]u32,
+	slot_count:   u32,
+	live_count:   u32,
 
 	// Maps typeid of T to SparseSet(T).
 	//
 	// Safety: NEVER use this raw, use `new_or_get_entity_subtype_system`
 	// or `get_entity_subtype_system to get the correct typing.
 	subtype_storage: map[string]SubtypeStorage,
+}
+
+init_entity_system_storage :: proc(system: ^EntitySystem) -> bool {
+	assert(!system.initialized)
+
+	if virtual.arena_init_growing(&system.arena) != nil {
+		return false
+	}
+
+	allocator := virtual.arena_allocator(&system.arena)
+	system.pages = make([dynamic]^EntityPage, allocator)
+	system.free_indices = make([dynamic]u32, allocator)
+	system.initialized = true
+	return true
+}
+
+init_entity_system :: proc() -> bool {
+	return init_entity_system_storage(&game.entity_system)
+}
+
+entity_slot_at_index :: proc(system: ^EntitySystem, index: u32) -> ^EntitySlot {
+	if !system.initialized || index >= system.slot_count {
+		return nil
+	}
+
+	page_index := int(index / ENTITY_PAGE_SIZE)
+	slot_index := int(index % ENTITY_PAGE_SIZE)
+	assert(page_index < len(system.pages))
+	return &system.pages[page_index][slot_index]
+}
+
+live_entity_at_index :: proc(system: ^EntitySystem, index: u32) -> ^Entity {
+	slot := entity_slot_at_index(system, index)
+	if slot == nil || !slot.alive {
+		return nil
+	}
+	return &slot.entity
+}
+
+entity_slot_from_id :: proc(system: ^EntitySystem, id: EntityId) -> ^EntitySlot {
+	slot := entity_slot_at_index(system, id.index)
+	if slot == nil || !slot.alive || slot.entity.id != id {
+		return nil
+	}
+	return slot
+}
+
+allocate_entity_slot :: proc(system: ^EntitySystem) -> ^EntitySlot {
+	assert(system.initialized)
+
+	index: u32
+	generation := u32(ENTITY_FIRST_GENERATION)
+	if len(system.free_indices) > 0 {
+		index = pop(&system.free_indices)
+		slot := entity_slot_at_index(system, index)
+		assert(slot != nil && !slot.alive)
+		generation = slot.entity.id.generation
+	} else {
+		assert(system.slot_count < max(u32), "Entity slot index exhausted.")
+		index = system.slot_count
+		if index % ENTITY_PAGE_SIZE == 0 {
+			page := new(EntityPage, virtual.arena_allocator(&system.arena))
+			append(&system.pages, page)
+		}
+		system.slot_count += 1
+	}
+
+	slot := entity_slot_at_index(system, index)
+	slot^ = {
+		entity = {
+			id      = {generation = generation, index = index},
+			subtype = Entity,
+		},
+		alive = true,
+	}
+	system.live_count += 1
+	return slot
+}
+
+release_entity_slot :: proc(system: ^EntitySystem, id: EntityId) -> bool {
+	slot := entity_slot_from_id(system, id)
+	if slot == nil {
+		return false
+	}
+
+	next_generation := u32(ENTITY_FIRST_GENERATION)
+	if slot.entity.id.generation != max(u32) {
+		next_generation = slot.entity.id.generation + 1
+	}
+
+	slot^ = {
+		entity = {id = {generation = next_generation, index = id.index}},
+	}
+	append(&system.free_indices, id.index)
+	system.live_count -= 1
+	return true
 }
 
 DestroyProc :: #type proc(entity: rawptr)
@@ -184,18 +298,12 @@ new_entity_subtype_id :: proc($T: typeid) -> (^T, TypedEntityId(T)) where intrin
 	return subtype, TypedEntityId(T){id = subtype.entity.id}
 }
 
-// Returns a pointer to a new entity. If the entity array was
-// extended, returns true, else if an entity was revived, false.
+new_entity_raw_from_storage :: proc(system: ^EntitySystem) -> ^Entity {
+	return &allocate_entity_slot(system).entity
+}
+
 new_entity_raw :: proc() -> ^Entity {
-	created_entity := Entity {
-		id = {generation = 0, index = game.entity_system.num_entities},
-		subtype = Entity, // none assigned.
-	}
-
-	game.entity_system.entities[game.entity_system.num_entities] = created_entity
-	game.entity_system.num_entities += 1
-
-	return &game.entity_system.entities[game.entity_system.num_entities - 1]
+	return new_entity_raw_from_storage(&game.entity_system)
 }
 
 new_entity :: proc {
@@ -203,29 +311,26 @@ new_entity :: proc {
 	new_entity_subtype,
 }
 
-// Get entity. Generational index ensures that the entity
-// you get is a valid entity, don't persist the pointer. Can return nil.
+// Resolve a live entity handle. The returned address remains stable until the
+// entity is destroyed, but callers should retain the handle rather than it.
+get_entity_raw_from_storage :: proc(system: ^EntitySystem, id: EntityId) -> ^Entity {
+	slot := entity_slot_from_id(system, id)
+	if slot == nil do return nil
+	return &slot.entity
+}
+
 get_entity_raw :: proc(id: EntityId) -> ^Entity {
-	entity := game.entity_system.entities[id.index]
-
-	// Safety: Compare generation, this ensures that the entity we find isn't invalidated.
-	if entity.id.generation != id.generation {
-		return nil
-	}
-
-	return &game.entity_system.entities[id.index]
+	return get_entity_raw_from_storage(&game.entity_system, id)
 }
 
 get_entity_subtype :: proc($T: typeid, id: EntityId) -> ^T where intrinsics.type_is_subtype_of(T, ^Entity) {
+	if get_entity_raw(id) == nil do return nil
+
 	storage := get_entity_subtype_system(T)
 	if storage == nil do return nil
 
 	type_t, ok := get_elem_sparse_set(storage, id)
 	if !ok do return nil
-
-	// if type_t.id.generation != id.generation {
-	// 	return nil
-	// }
 
 	return type_t
 }
@@ -243,17 +348,7 @@ get_entity :: proc {
 }
 
 remove_entity_raw :: proc(id: EntityId) -> bool {
-	entity := &game.entity_system.entities[id.index]
-
-	// Compare generation
-	if entity.id.generation != id.generation {
-		return false
-	}
-
-	// Invalidate all references to this entity.
-	entity.id.generation += 1
-
-	return true
+	return release_entity_slot(&game.entity_system, id)
 }
 
 remove_elem_raw_sparse_set :: proc(set: ^RawSparseSet, id: EntityId, elem_size: int) -> bool {
@@ -291,23 +386,19 @@ get_elem_raw_sparse_set :: proc(set: ^RawSparseSet, id: EntityId, elem_size: int
 }
 
 _remove_entity :: proc(id: EntityId) -> bool {
-	if !remove_entity_raw(id) {
-		return false
-	}
+	entity := get_entity_raw(id)
+	if entity == nil do return false
 
-	entity := &game.entity_system.entities[id.index]
 	name := type_info_of(entity.subtype).variant.(runtime.Type_Info_Named).name
 	if storage, ok := game.entity_system.subtype_storage[name]; ok {
 		remove_elem_raw_sparse_set(storage.ptr, id, storage.type_info.size)
 	}
-	return true
+	return remove_entity_raw(id)
 }
 
 destroy_entity :: proc(id: EntityId) -> bool {
-	entity := &game.entity_system.entities[id.index]
-	if entity.id.generation != id.generation {
-		return false
-	}
+	entity := get_entity_raw(id)
+	if entity == nil do return false
 
 	name := type_info_of(entity.subtype).variant.(runtime.Type_Info_Named).name
 	if storage, ok := game.entity_system.subtype_storage[name]; ok {
@@ -394,10 +485,17 @@ parallel_for_entities :: proc {
 	parallel_for_entities_no_data,
 }
 
-shutdown_entity_system :: proc() {
-	for _, storage in game.entity_system.subtype_storage {
+shutdown_entity_system_storage :: proc(system: ^EntitySystem) {
+	if !system.initialized do return
+
+	for _, storage in system.subtype_storage {
 		storage.shutdown(storage.ptr, storage.destroy)
 	}
-	delete(game.entity_system.subtype_storage)
-	game.entity_system = {}
+	delete(system.subtype_storage)
+	virtual.arena_destroy(&system.arena)
+	system^ = {}
+}
+
+shutdown_entity_system :: proc() {
+	shutdown_entity_system_storage(&game.entity_system)
 }
