@@ -165,6 +165,7 @@ game_init :: proc() {
 		}
 
 		game.ball_mesh, _ = load_gpu_mesh_from_file(asset_path(.demo_ball), context.temp_allocator)
+		defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, game.ball_mesh)
 
         for i in 0 ..< 256 {
 		ball := new_entity(Ball)

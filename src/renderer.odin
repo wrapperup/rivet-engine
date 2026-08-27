@@ -521,6 +521,8 @@ renderer_shutdown :: proc() {
 
 	for &frame in game.render_state.frame_data {
 		delete(frame.mesh_draws)
+		// Replaced TLASes are retired per frame; the last one still needs retiring on shutdown.
+		gfx.defer_destroy_accel(&gfx.r_ctx.global_arena, frame.rt.tlas)
 		delete(frame.skel_instances)
 		delete(frame.rt.instances)
 		delete(frame.rt.geometries)

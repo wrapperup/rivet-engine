@@ -19,7 +19,8 @@ configure_im :: proc() {
 
 	font_config: im.FontConfig = {}
 
-	font_config.FontDataOwnedByAtlas = true
+	// Font bytes belong to the asset arena, which outlives the ImGui context.
+	font_config.FontDataOwnedByAtlas = false
 	font_config.OversampleH = 6
 	font_config.OversampleV = 6
 	font_config.GlyphMaxAdvanceX = max(f32)
