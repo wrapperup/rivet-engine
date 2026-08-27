@@ -1,59 +1,38 @@
 @echo off
 setlocal
 
-set META_EXE=build\meta.exe
-set META_BUILD_SCRIPT=build-meta.bat
+set "BUILD_TOOL=build\build.exe"
+set "PENDING_BUILD_TOOL=build\build.next.exe"
+set "BUILD_TOOL_RESTART_EXIT_CODE=75"
 
-if not exist "build" (
-    mkdir "build"
+if exist "build" goto build_directory_ready
+mkdir "build"
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+:build_directory_ready
+
+if exist "%BUILD_TOOL%" goto run_build_tool
+echo Build tool missing; compiling build.odin...
+odin build build.odin -file -o:none -out:%BUILD_TOOL%
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+:run_build_tool
+"%BUILD_TOOL%" %*
+set "BUILD_EXIT_CODE=%ERRORLEVEL%"
+
+if not "%BUILD_EXIT_CODE%"=="%BUILD_TOOL_RESTART_EXIT_CODE%" (
+    exit /b %BUILD_EXIT_CODE%
 )
 
-if "%~1"=="1" (
-    if not exist "build/release" (
-        mkdir "build/release"
-    )
-) else (
-    if not exist "build/debug" (
-        mkdir "build/debug"
-    )
+if not exist "%PENDING_BUILD_TOOL%" (
+    echo Build tool requested a restart, but %PENDING_BUILD_TOOL% was not created.
+    exit /b 1
 )
 
-if not exist "%META_EXE%" (
-    echo Metaprogram missing, building...
-    call %META_BUILD_SCRIPT%
-)
-
-:: Run metaprogram
-%META_EXE%
-
-if %ERRORLEVEL% neq 0 (
-    echo Meta program failed with exit code %ERRORLEVEL%.
+move /y "%PENDING_BUILD_TOOL%" "%BUILD_TOOL%" >nul
+if errorlevel 1 (
+    echo Failed to replace %BUILD_TOOL% with the rebuilt executable.
     exit /b %ERRORLEVEL%
 )
 
-set BASE_FLAGS=entrypoints ^
-    -collection:deps=deps ^
-    -custom-attribute:shader_shared ^
-    -custom-attribute:entity ^
-    -show-timings
-
-:: If first arg is "1", do release; otherwise hotreloadable debug (with hotreload)
-if "%~1"=="1" (
-    set FLAGS=%BASE_FLAGS% ^
-        -o:speed ^
-        -out:build/release/main.exe
-) else (
-    echo Building with hotreload
-    set FLAGS=%BASE_FLAGS% ^
-        -debug ^
-        -o:none ^
-        -define:HOTRELOAD=true ^
-        -define:GLFW_SHARED=true ^
-        -out:build/debug/main.exe
-
-    call .\hotreload.bat
-)
-
-odin build %FLAGS%
-
-exit /b %ERRORLEVEL%
+goto run_build_tool
