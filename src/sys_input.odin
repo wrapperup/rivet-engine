@@ -68,6 +68,11 @@ ActionState :: struct {
 	current_state:  bool,
 }
 
+update_action_state :: proc(state: ^ActionState, pressed: bool) {
+	state.previous_state = state.current_state
+	state.current_state = pressed
+}
+
 add_action_key_mapping :: proc(action: Action, glfw_key_code: i32) {
 	assert(game.input_system.initialized)
 	sm.append(&game.input_system.actions[action].key_codes, glfw_key_code)
@@ -116,7 +121,7 @@ AxisCodeValue :: struct {
 }
 
 AxisState :: struct {
-	keys:         sm.Small_Array(MAX_ACTION_STATE_KEYS, AxisCodeValue),
+	keys:         sm.Small_Array(MAX_AXIS_STATE_KEYS, AxisCodeValue),
 	read_mouse_x: bool,
 	read_mouse_y: bool,
 	value:        f64,
@@ -171,17 +176,11 @@ simulate_input :: proc() {
 			}
 		}
 
-		action_state.previous_state = action_state.current_state
-		action_state.current_state = pressed
+		update_action_state(&action_state, pressed)
 	}
 
 	for &axis_state in game.input_system.axes {
 		value: f64 = 0.0
-
-		for i in 0 ..< axis_state.keys.len {
-			axis_key := axis_state.keys.data[i]
-			value += glfw.GetKey(game.window, axis_key.key_code) == glfw.PRESS ? axis_key.value : 0.0
-		}
 
 		for i in 0 ..< axis_state.keys.len {
 			axis_key := axis_state.keys.data[i]

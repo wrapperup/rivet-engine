@@ -138,7 +138,7 @@ update_player :: proc(player: ^Player, dt: f64) {
 			player.velocity += {0, -70, 0} * f32(dt)
 		}
 
-		if action_is_pressed(.AltFire) {
+		if action_just_pressed(.AltFire) {
 			player.fire_mode = Fire_Mode((u32(player.fire_mode) + 1) % len(Fire_Mode))
 		}
 
