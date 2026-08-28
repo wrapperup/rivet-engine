@@ -69,6 +69,12 @@ public extension _Image<T, Shape, isArray, isMS, sampleCount, 0, format> {
         return image.SampleLevel(sampler, location, level);
     }
 
+    public T sample_grad(Sampler sampler_id, vector<float, isArray+Shape.dimensions> location,
+                         vector<float, Shape.dimensions> dx, vector<float, Shape.dimensions> dy) {
+        ImageType image = get();
+        return image.SampleGrad(sampler_id.get(),location,dx,dy);
+    }
+
     public f32 sample_cmp_level_zero(
         SamplerComparison sampler_id, 
         vector<float, isArray+Shape.dimensions> location, 
