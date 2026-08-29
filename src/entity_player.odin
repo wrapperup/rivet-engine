@@ -49,9 +49,11 @@ update_player :: proc(player: ^Player, dt: f64) {
 	max_ground_acceleration: f32 = 50
 	max_air_acceleration: f32 = 50
 	max_braking_acceleration: f32 = 80
+	fall_speed: f32 = 50
+	jump_force: f32 = 15
 
 	max_ground_speed: f32 = 10
-	max_sprinting_ground_speed: f32 = 10
+	max_sprinting_ground_speed: f32 = 20
 	max_air_speed: f32 = 10
 
 	camera_forward: Vec3
@@ -135,7 +137,7 @@ update_player :: proc(player: ^Player, dt: f64) {
 		}
 
 		if !is_grounded {
-			player.velocity += {0, -70, 0} * f32(dt)
+			player.velocity += {0, -fall_speed, 0} * f32(dt)
 		}
 
 		if action_just_pressed(.AltFire) {
@@ -173,7 +175,7 @@ update_player :: proc(player: ^Player, dt: f64) {
 		player.is_grounded_last_frame = is_grounded
 
 		if action_is_pressed(.Jump) && is_grounded {
-			player.velocity.y = 20
+			player.velocity.y = jump_force
 			player.is_grounded_last_frame = false
 		}
 
@@ -239,7 +241,7 @@ update_player :: proc(player: ^Player, dt: f64) {
 		max_noclip_speed: f32 = 15
 
 		if action_is_pressed(.Fire) {
-			max_noclip_speed = 50
+			max_noclip_speed = 100
 		}
 
 		player.velocity = move_direction_n * max_noclip_speed
