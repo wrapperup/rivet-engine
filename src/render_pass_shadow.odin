@@ -135,6 +135,50 @@ record_shadow_cascade :: proc(cmd: vk.CommandBuffer, cascade: u32, mesh_draws: [
 	gfx.cmd_end_rendering(cmd)
 }
 
+fit_shadow_cascade :: proc(
+	projection, view_to_world: Mat4x4,
+	sun_direction: Vec3,
+	near, far: f32,
+	resolution: u32,
+	stable: bool,
+) -> (
+	Mat4x4,
+	f32,
+) {
+	assert(resolution > 16 && far > near && near > 0)
+	mid := (f64(near) + f64(far)) * 0.5
+	half_depth := (f64(far) - f64(near)) * 0.5
+	far_x := f64(far) / f64(projection[0, 0])
+	far_y := f64(far) / f64(projection[1, 1])
+	// Fixed sphere covers the frustum for every camera orientation. Eight texels
+	// cover snapping, the receiver offset and PCF footprint at the boundary.
+	radius := math.sqrt(far_x * far_x + far_y * far_y + half_depth * half_depth)
+	radius /= 1 - 16 / f64(resolution)
+	center_ws := linalg.Matrix4f64(view_to_world) * linalg.Vector4f64{0, 0, -mid, 1}
+
+	direction := linalg.length(sun_direction) > 0.0001 ? linalg.normalize(sun_direction) : Vec3{0, 1, 0}
+	light_up: Vec3 = math.abs(direction.y) > 0.99 ? {0, 0, 1} : {0, 1, 0}
+	// Build orientation at the origin. look_at(center, center+direction) loses
+	// direction precision as the camera moves away from the world origin.
+	rotation := linalg.Matrix4f64(linalg.matrix4_look_at_f32({}, direction, light_up))
+	center_ls := rotation * center_ws
+	light_view := rotation
+	light_view[3] = {-center_ls.x, -center_ls.y, -center_ls.z, 1}
+	ortho := linalg.Matrix4f64(
+		gfx.matrix_ortho3d_z0_f32(-f32(radius), f32(radius), -f32(radius), f32(radius), f32(radius) * 10, -f32(radius)),
+	)
+	ortho[1, 1] *= -1
+	result := ortho * light_view
+	if stable {
+		// Snap the final NDC translation directly; no subsequent multiplication
+		// can perturb it. XY matrix coefficients remain identical across frames.
+		for axis in 0 ..< 2 {
+			result[axis, 3] = math.round(result[axis, 3] * f64(resolution) * 0.5) * 2 / f64(resolution)
+		}
+	}
+	return Mat4x4(result), f32((2 * radius / f64(resolution)) * math.abs(ortho[2, 2]))
+}
+
 calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 300) {
 	cascade_split_lambda := game.config.shadow_cascade_split_lambda
 
@@ -153,84 +197,26 @@ calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 30
 		cascade_splits[i] = (d - near) / clip_range
 	}
 
+	view_to_world := linalg.inverse(get_current_view_matrix())
 	last_near := near
 	for i in 0 ..< NUM_CASCADES {
 		split_dist := cascade_splits[i]
 
 		test_far := near + split_dist * clip_range
 
-		world_to_clip := get_current_projection_matrix_clipped(near = last_near, far = test_far) * get_current_view_matrix()
-		clip_to_world := linalg.inverse(world_to_clip)
-
-		CORNERS_NDC :: [8]Vec4 {
-			{-1.0, -1.0, 0.0, 1.0},
-			{-1.0, -1.0, 1.0, 1.0},
-			{-1.0, 1.0, 0.0, 1.0},
-			{-1.0, 1.0, 1.0, 1.0},
-			{1.0, -1.0, 0.0, 1.0},
-			{1.0, -1.0, 1.0, 1.0},
-			{1.0, 1.0, 0.0, 1.0},
-			{1.0, 1.0, 1.0, 1.0},
-		}
-
-		corners_ws: [8]Vec4
-		for pos_fs, j in CORNERS_NDC {
-			pos_ws := clip_to_world * pos_fs
-			corners_ws[j] = pos_ws / pos_ws.w
-
-			if i == 1 {
-				debug_draw_dot(corners_ws[j].xyz)
-			}
-		}
-
-		center_ws: Vec3
-		for corner_ws in corners_ws {
-			center_ws += corner_ws.xyz
-		}
-		center_ws /= len(corners_ws)
-
-		sun_dir := game.state.environment.sun_direction
-
-		radius: f32
-		for corner in corners_ws {
-			// A sphere remains conservative after rotating into light space. The
-			// previous max-axis extent did not, so diagonal corners could be clipped.
-			radius = max(radius, linalg.length(corner.xyz - center_ws))
-		}
-
-		// Keep rasterization and PCF taps away from the exact projection boundary.
-		radius *= 1.01
-
-		aabb: Aabb
-		aabb.min = -radius
-		aabb.max = radius
-
-		cascade_world_to_view := linalg.matrix4_look_at_f32(center_ws, center_ws + sun_dir, {0.0, 1.0, 0.0})
-		cascade_view_to_clip := gfx.matrix_ortho3d_z0_f32(aabb.min.x, aabb.max.x, aabb.min.y, aabb.max.y, aabb.max.z * 10, aabb.min.z)
-		cascade_view_to_clip[1][1] *= -1.0
-
-		if game.config.use_stable_shadow_maps {
-			sMapSize := f32(game.config.shadow_map_size)
-
-			shadowMatrix := cascade_view_to_clip * cascade_world_to_view
-			shadowOrigin := Vec4{0, 0, 0, 1}
-			shadowOrigin = shadowMatrix * shadowOrigin
-			shadowOrigin *= sMapSize / 2.0
-
-			roundedOrigin := linalg.round(shadowOrigin)
-			roundOffset := roundedOrigin - shadowOrigin
-			roundOffset *= 2.0 / sMapSize
-			roundOffset.zw = 0.0
-
-			shadowProj := cascade_view_to_clip
-			shadowProj[3] += roundOffset
-			cascade_view_to_clip = shadowProj
-		}
-
-		game.render_state.shadow_rp.cascade_world_to_shadows[i] = cascade_view_to_clip * cascade_world_to_view
+		world_to_shadow, _ := fit_shadow_cascade(
+			get_current_projection_matrix_clipped(near = last_near, far = test_far),
+			view_to_world,
+			game.state.environment.sun_direction,
+			last_near,
+			test_far,
+			game.config.shadow_map_size,
+			game.config.use_stable_shadow_maps,
+		)
+		game.render_state.shadow_rp.cascade_world_to_shadows[i] = world_to_shadow
 		game.render_state.shadow_rp.cascade_configs[i] = {
 			split_dist = test_far,
-			bias       = game.config.shadow_map_biases[i],
+			bias = game.config.shadow_map_biases[i],
 			slope_bias = game.config.shadow_map_slope_biases[i],
 		}
 
