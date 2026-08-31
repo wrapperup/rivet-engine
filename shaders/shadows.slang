@@ -119,7 +119,22 @@ f32 sample_shadow_cascades(GlobalData* g, Image2DArray<f32> shadow_map,
     return 1.0;
   }
 
+  let split = g.cascade_configs[cascade_index].split_dist;
+  let previous_split = cascade_index > 0 ? g.cascade_configs[cascade_index - 1].split_dist : 0.0;
+  // Crossfade over the last 15% of this cascade.
+  let blend = smoothstep(split - 0.15 * (split - previous_split), split, -view_z);
   f32 coverage;
-  return sample_shadow_cascade(g, shadow_map, shadow_sampler, cascade_index,
-                               position, normal, screen_pos, coverage);
+  f32 shadow = sample_shadow_cascade(g, shadow_map, shadow_sampler, cascade_index,
+                                     position, normal, screen_pos, coverage);
+  if (blend > 0.0) {
+    f32 next_shadow = 1.0;
+    coverage = 1.0;
+    if (cascade_index + 1 < num_cascades) {
+      next_shadow = sample_shadow_cascade(g, shadow_map, shadow_sampler, cascade_index + 1,
+                                          position, normal, screen_pos, coverage);
+    }
+    // The final cascade fades to unshadowed at the existing shadow distance.
+    shadow = lerp(shadow, next_shadow, blend * coverage);
+  }
+  return shadow;
 }

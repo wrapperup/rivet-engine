@@ -186,7 +186,7 @@ fit_shadow_cascade :: proc(
 	return Mat4x4(result), f32((2 * radius / f64(resolution)) * math.abs(ortho[2, 2]))
 }
 
-calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 300) {
+calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 1200) {
 	cascade_split_lambda := game.config.shadow_cascade_split_lambda
 
 	cascade_splits: [NUM_CASCADES]f32

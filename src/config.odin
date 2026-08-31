@@ -7,5 +7,5 @@ GameConfig :: struct {
 }
 
 default_game_config :: proc() -> GameConfig {
-	return {use_stable_shadow_maps = true, shadow_map_size = 2048, shadow_cascade_split_lambda = 0.7}
+	return {use_stable_shadow_maps = true, shadow_map_size = 2048, shadow_cascade_split_lambda = 0.9}
 }

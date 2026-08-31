@@ -15,7 +15,7 @@ import im_gfx "gfx/imgui_backend"
 // TODO: Make this into proper assets?
 MaterialId :: u32
 
-NUM_CASCADES: u32 : 3
+NUM_CASCADES: u32 : 4
 
 @(private = "file")
 ImageId :: gfx.ImageId
