@@ -22,14 +22,15 @@ GPUDrawShadowDepthPushConstants :: struct #max_field_align(16) {
 @(shader_shared)
 GPUCascadeConfig :: struct #max_field_align(16) {
 	split_dist: f32,
-	bias:       f32,
-	slope_bias: f32,
+	depth_per_texel:      f32, // One world-space shadow texel expressed in normalized depth.
+	raster_subpixel_size: f32,
 }
 
 ShadowRenderPass :: struct {
 	mesh_shadow_pipeline:            ^gfx.GraphicsPipeline,
 	shadow_depth_image:              gfx.Image,
 	shadow_depth_image_id:           ImageId,
+	shadow_sampler_id:               gfx.SamplerId,
 	shadow_depth_attach_image_views: [NUM_CASCADES]vk.ImageView,
 	cascade_world_to_shadows:        [NUM_CASCADES]Mat4x4,
 	cascade_configs:                 [NUM_CASCADES]GPUCascadeConfig,
@@ -48,6 +49,9 @@ init_shadow_maps :: proc() {
 	)
 
 	shadow_rp.shadow_depth_image_id = gfx.add_image(shadow_rp.shadow_depth_image)
+	sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_BORDER, compare_op = .LESS_OR_EQUAL, border_color = .FLOAT_OPAQUE_WHITE)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, sampler)
+	shadow_rp.shadow_sampler_id = gfx.add_sampler(sampler)
 
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image.image_view)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image.image, shadow_rp.shadow_depth_image.allocation)
@@ -72,7 +76,7 @@ init_shadow_rp :: proc() {
 			cull_mode = {},
 			front_face = .COUNTER_CLOCKWISE,
 			depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-			push_constants = GPUDrawPushConstants,
+			push_constants = GPUDrawShadowDepthPushConstants,
 		)
 	},
 	)
@@ -135,6 +139,9 @@ record_shadow_cascade :: proc(cmd: vk.CommandBuffer, cascade: u32, mesh_draws: [
 	gfx.cmd_end_rendering(cmd)
 }
 
+// Camera motion may change only the XY translation, in whole shadow texels.
+// Fit in camera space: inverse world-frustum corners introduce camera-dependent
+// rounding into the radius, which changes the texel size even after snapping.
 fit_shadow_cascade :: proc(
 	projection, view_to_world: Mat4x4,
 	sun_direction: Vec3,
@@ -204,7 +211,7 @@ calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 30
 
 		test_far := near + split_dist * clip_range
 
-		world_to_shadow, _ := fit_shadow_cascade(
+		world_to_shadow, depth_per_texel := fit_shadow_cascade(
 			get_current_projection_matrix_clipped(near = last_near, far = test_far),
 			view_to_world,
 			game.state.environment.sun_direction,
@@ -216,8 +223,8 @@ calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 30
 		game.render_state.shadow_rp.cascade_world_to_shadows[i] = world_to_shadow
 		game.render_state.shadow_rp.cascade_configs[i] = {
 			split_dist = test_far,
-			bias = game.config.shadow_map_biases[i],
-			slope_bias = game.config.shadow_map_slope_biases[i],
+			depth_per_texel      = depth_per_texel,
+			raster_subpixel_size = 1 / f32(u64(1) << min(gfx.r_ctx.limits.subPixelPrecisionBits, 24)),
 		}
 
 		last_near = test_far

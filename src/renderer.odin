@@ -57,6 +57,7 @@ GPUGlobalData :: struct #max_field_align(16) {
 	default_sampler:          SamplerId `Sampler`,
 	ddgi_volumes:             gfx.Slice(GPUDDGIVolume),
 	reflection_probes:        gfx.Slice(GPUReflectionProbe),
+	mesh_debug_view:          u32,
 }
 
 #assert(offset_of(GPUGlobalData, environment) == 192)
@@ -85,7 +86,6 @@ RenderState :: struct {
 		dfg_id:                  ImageId,
 		env_id:                  ImageId,
 		default_sampler_id:      SamplerId,
-		shadow_depth_sampler_id: SamplerId,
 		env_sampler_id:          SamplerId,
 		resolved_image_id:       ImageId,
 	},
@@ -107,6 +107,8 @@ RenderState :: struct {
 	skybox_pipeline:                 ^gfx.GraphicsPipeline,
 	skybox_mesh:                     GPUMeshBuffers,
 	draw_skybox:                     bool,
+
+	mesh_debug_view:                 i32,
 
 	// Debug
 	debug_rt_pipeline:               ^gfx.ComputePipeline,
@@ -176,10 +178,6 @@ init_test_resources :: proc() {
 	default_sampler := gfx.create_sampler(.LINEAR, .REPEAT, max_lod = 10.0, max_anisotropy = gfx.r_ctx.limits.maxSamplerAnisotropy)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, default_sampler)
 
-	// Shadow Depth Imageture Sampler
-	shadow_depth_sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, .LESS_OR_EQUAL)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_depth_sampler)
-
 	env_sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, max_lod = 8.0)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, env_sampler)
 
@@ -192,7 +190,6 @@ init_test_resources :: proc() {
 		tr.env_id = gfx.add_image(env)
 
 		tr.default_sampler_id = gfx.add_sampler(default_sampler)
-		tr.shadow_depth_sampler_id = gfx.add_sampler(shadow_depth_sampler)
 		tr.env_sampler_id = gfx.add_sampler(env_sampler)
 
 		tr.resolved_image_id = gfx.add_image(gfx.r_ctx.resolve_image)
@@ -492,6 +489,7 @@ prepare_shared_frame_data :: proc() {
 
 	global_data.camera_pos = player != nil ? player.eye_pos : {0, 0, 0} // must match the render view (eye, not feet)
 	global_data.sun_direction = game.state.environment.sun_direction
+	global_data.mesh_debug_view = u32(game.render_state.mesh_debug_view)
 
 	point_light_count := min(
 		len_entities(PointLight),

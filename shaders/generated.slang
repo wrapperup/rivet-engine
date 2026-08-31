@@ -108,6 +108,7 @@ struct GlobalData {
   Sampler default_sampler;
   Slice<DDGIVolume> ddgi_volumes;
   Slice<ReflectionProbe> reflection_probes;
+  u32 mesh_debug_view;
 };
 
 
@@ -246,8 +247,8 @@ struct DrawShadowDepthPushConstants {
 
 struct CascadeConfig {
   f32 split_dist;
-  f32 bias;
-  f32 slope_bias;
+  f32 depth_per_texel;
+  f32 raster_subpixel_size;
 };
 
 

@@ -14,13 +14,6 @@ import world_space;
 // *_vs: View space
 // *_cs: Clip space
 
-static const Mat4x4 BIAS_MAT = {
-  0.5, 0.0, 0.0, 0.5, //
-  0.0, 0.5, 0.0, 0.5, //
-  0.0, 0.0, 1.0, 0.0, //
-  0.0, 0.0, 0.0, 1.0, //
-};
-
 [vk_push_constant]
 DrawPushConstants pc;
 
@@ -56,6 +49,16 @@ FragmentInput vertex_main(VertexInput input) {
   output.pos_ws = pos_ws;
   output.pos_vs = mul(pc.global_data_buffer.world_to_view, pos_ws);
   output.tbn = Mat3x3(T, B, N);
+  // Inverse-transpose normal transform, including nonuniform and mirrored scale.
+  let axis_x = mul((Mat3x3)model_to_world, Vec3(1, 0, 0));
+  let axis_y = mul((Mat3x3)model_to_world, Vec3(0, 1, 0));
+  let axis_z = mul((Mat3x3)model_to_world, Vec3(0, 0, 1));
+  // Use outward glTF normals for the receiver offset; the lighting TBN negates them.
+  let cofactor_normal = cross(axis_y, axis_z) * vertex.normal.x +
+                        cross(axis_z, axis_x) * vertex.normal.y +
+                        cross(axis_x, axis_y) * vertex.normal.z;
+  output.shadow_normal = normalize(cofactor_normal) *
+                         (dot(axis_x, cross(axis_y, axis_z)) < 0 ? -1.0 : 1.0);
 
   return output;
 }
@@ -67,6 +70,7 @@ struct FragmentInput {
   Vec4 pos_ws;
   Vec4 pos_vs;
   Mat3x3 tbn;
+  Vec3 shadow_normal;
   u32 tex_id;
 };
 
@@ -82,8 +86,9 @@ FragmentOutput fragment_main(FragmentInput in) {
 
   let material = pc.materials[pc.material_index];
 
+  let receiver_normal = normalize(in.shadow_normal);
+
   Vec2 uv = in.uv;
-  // uv = 0;
   if (pc.material_index == 0) {
     uv = get_world_space_uv(pos_ws, in.tbn[2]) / 4.f;
   }
@@ -118,38 +123,26 @@ FragmentOutput fragment_main(FragmentInput in) {
 
   f32 sun_NoL = clamp(dot(n, l), 0.0, 1.0);
 
-  u32 cascade_index = 0;
+  f32 shadow = sample_shadow_cascades(
+      pc.global_data_buffer, pc.shadow_depth, pc.shadow_sampler, pc.num_cascades,
+      pos_ws, receiver_normal, in.pos_vs.z, in.pos_cs.xy);
 
-  float blend_factor = 0.f;
-  let blend_dist = 10.f;
-
-  for (uint i = 0; i < pc.num_cascades; i++) {
-    let split_dist = pc.global_data_buffer.cascade_configs[i].split_dist;
-    if (in.pos_vs.z < -split_dist) {
-      cascade_index = i + 1;
-      blend_factor = saturate((in.pos_vs.z + split_dist) / blend_dist);
-    }
+  let debug_view = pc.global_data_buffer.mesh_debug_view;
+  if (debug_view >= 1 && debug_view <= 3) {
+    FragmentOutput diagnostic;
+    diagnostic.frag_color = Vec4(
+        debug_view == 1 ? Vec3(shadow)
+                        : (debug_view == 2 ? receiver_normal : n) * 0.5 + 0.5,
+        1);
+    return diagnostic;
   }
-
-  float shadow = 1.0;
-  if (cascade_index < pc.num_cascades) {
-    let world_to_shadow = pc.global_data_buffer.cascade_world_to_shadows[cascade_index];
-    let shadow_space_pos = mul(BIAS_MAT, mul(world_to_shadow, in.pos_ws));
-
-    let bias = pc.global_data_buffer.cascade_configs[cascade_index].bias;
-    let slope_bias = pc.global_data_buffer.cascade_configs[cascade_index].slope_bias;
-
-    Shadow_Params shadow_params;
-    shadow_params.depth = pc.shadow_depth;
-    shadow_params.sampler = pc.shadow_sampler;
-
-    shadow = filter_pcf(shadow_params, in.pos_cs.xy, shadow_space_pos, cascade_index,
-                        bias, slope_bias, sun_NoL);
-  }
+  if (debug_view == 4)
+    shadow = 1;
 
   Vec3 frag_color = 0;
-  frag_color = saturate( (min(sun_NoL, min(shadow, ao)) * pc.global_data_buffer.sun_color) *
-      standard_bsdf(diffuse, proughness, v, l, n, f0, sun_NoL));
+  frag_color = (min(sun_NoL, ao) * shadow *
+                pc.global_data_buffer.sun_color) *
+               standard_bsdf(diffuse, proughness, v, l, n, f0, sun_NoL);
 
   for (uint i = 0; i < pc.global_data_buffer.environment.point_lights.count; i++) {
     let point_light = pc.global_data_buffer.environment.point_lights[i];
@@ -181,7 +174,7 @@ FragmentOutput fragment_main(FragmentInput in) {
   // the view-aware surface bias (kills Chebyshev self-shadow splotches at grazing angles).
   frag_color += diffuse * ao *
                 ddgi_sample_volumes(pc.global_data_buffer.ddgi_volumes, pos_ws, n,
-                                    pc.global_data_buffer.camera_pos);
+                          pc.global_data_buffer.camera_pos);
 
   // Specular reflections. The split-sum BRDF (DFG) weighting is shared; the reflected
   // *radiance* comes from the reflection probe (box-parallax + edge blend) where one
@@ -219,7 +212,8 @@ FragmentOutput fragment_main(FragmentInput in) {
   // frag_color = Vec3(saturate(in.pos.xyz/1920.f));
 
   FragmentOutput output;
-  output.frag_color = Vec4(frag_color, 1.0f);
+  output.frag_color =
+      Vec4(frag_color, 1.0f);
 
   return output;
 }

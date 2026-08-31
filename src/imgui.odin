@@ -381,13 +381,8 @@ update_imgui :: proc() {
 		im.ColorEdit3("sun_color", &game.state.environment.sun_color)
 		im.ColorEdit3("sky_color", &game.state.environment.sky_color)
 
-		for i in 0 ..< NUM_CASCADES {
-			bias := &game.config.shadow_map_biases[i]
-			slope_bias := &game.config.shadow_map_slope_biases[i]
-
-			im.InputFloat(fmt.ctprintf("bias %v", i), bias, format = "%.5f")
-			im.InputFloat(fmt.ctprintf("slope_bias %v", i), slope_bias, format = "%.5f")
-		}
+		mesh_views := [?]cstring{"Shaded", "Shadow visibility", "Mesh normals", "Shading normals", "Shaded without shadows"}
+		im.ComboChar("Mesh diagnostic", &game.render_state.mesh_debug_view, raw_data(&mesh_views), len(mesh_views))
 
 	}
 	im.End()

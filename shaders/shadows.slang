@@ -1,9 +1,32 @@
 import bindless;
+import common;
 import types;
 
-// 9 imad (+ 6 iops with final shuffle) -- https://vkguide.dev
-uint3 pcg_3d(uint3 v) {
+// Smooth mesh normals keep receiver offsets continuous across shared edges.
+Vec3 shadow_offset_receiver(Vec3 position, Vec3 mesh_normal,
+                            Mat4x4 world_to_shadow, f32 depth_per_texel) {
+  Vec3 N = normalize(mesh_normal);
+  f32 world_texel =
+      depth_per_texel / max(length(world_to_shadow[2].xyz), 1e-10);
+  // Allow 1.5 texels for normal/face mismatch within the filter.
+  return position + N * (1.5 * world_texel);
+}
 
+Vec2 shadow_receiver_gradient(Vec3 mesh_normal, Mat4x4 world_to_shadow) {
+  // Inverse-transpose of the orthogonal world-to-shadow-UV transform.
+  Vec3 x = world_to_shadow[0].xyz * 0.5;
+  Vec3 y = world_to_shadow[1].xyz * 0.5;
+  Vec3 z = world_to_shadow[2].xyz;
+  Vec3 N = normalize(mesh_normal);
+  f32 nz = dot(N, normalize(z));
+  // Regularize the tangent plane continuously at light-grazing angles.
+  f32 inverse_nz = nz / max(nz * nz, 0.0001);
+  return -Vec2(dot(N, x) / dot(x, x), dot(N, y) / dot(y, y)) * length(z) *
+         inverse_nz;
+}
+
+// PCG rotation from the original vkguide-style filter.
+Vec3u32 pcg_3d(Vec3u32 v) {
   v = v * 1664525u + 1013904223u;
 
   v.x += v.y * v.z;
@@ -19,75 +42,84 @@ uint3 pcg_3d(uint3 v) {
   return v;
 }
 
-struct Shadow_Params {
-    Image2DArray<f32> depth;
-    SamplerComparison sampler;
-}
-
-float shadow_calc(Shadow_Params params, float4 shadow_coord, float cascade, float2 offset = 0.0,
-                  float bias) {
-  // perform perspective divide
-  float3 proj_coords = shadow_coord.xyz / shadow_coord.w;
-
-  let shadow = params.depth.sample_cmp_level_zero(
-      params.sampler, Vec3(proj_coords.xy + offset, cascade),
-      proj_coords.z - bias);
-
-  return shadow;
-}
-
-float filter_pcf(Shadow_Params params, float2 screen_pos, float4 shadow_coord, float cascade,
-                 float bias, float slope_bias, float NoL) {
-  int2 texDim;
-  int elems;
-  params.depth.get_dimensions(texDim.x, texDim.y, elems);
-
-  let proj_coords = shadow_coord.xyz / shadow_coord.w;
-
-  if (proj_coords.x < 0 || proj_coords.x > 1) {
-    return 1.f;
-  }
-
-  if (proj_coords.y < 0 || proj_coords.y > 1) {
-    return 1.f;
-  }
-
-  if (proj_coords.z < 0 || proj_coords.z > 1) {
-    return 1.f;
-  }
-
-  float scale = 1.5f;
-  float dx = scale * 1.0 / float(texDim.x);
-  float dy = scale * 1.0 / float(texDim.y);
-
-  float shadow_factor = 0.0;
-  int count = 0;
-  int range = 2;
-
-  uint4 u = uint4(uint2(screen_pos), uint(screen_pos.x) ^ uint(screen_pos.y),
-                  uint(screen_pos.x) + uint(screen_pos.y));
-  float3 rand = pcg_3d(u.xyz);
-  rand = normalize(rand);
-
-  float2 dirA = normalize(rand.xy);
-  float2 dirB = normalize(float2(-dirA.y, dirA.x));
-
-  dirA *= dx;
-  dirB *= dy;
-
-  // Clamp the slope term: tan(acos(NoL)) -> infinity at grazing NoL, which biases the receiver
-  // past its occluder and reads "lit" deep inside shadowed interiors (bright speckles on
-  // normal-mapped edges in dark rooms). 5 ~= NoL 0.2, so tuned cascade biases are unchanged
-  // above that; below it the direct term is killed by its own NoL factor anyway.
-  float totalBias = bias + slope_bias * min(tan(acos(NoL)), 5.0);
-
-  for (int x = -range; x <= range; x++) {
-    for (int y = -range; y <= range; y++) {
-      shadow_factor +=
-          shadow_calc(params, shadow_coord, cascade, dirA * x + dirB * y, totalBias);
-      count++;
+// Rotated 5x5 PCF: 25 hardware comparison samples spaced 1.5 texels apart.
+f32 filter_pcf(Image2DArray<f32> shadow_map, SamplerComparison sampler,
+               Vec2 screen_pos, Vec3 receiver, u32 cascade, Vec2 gradient,
+               f32 depth_per_texel, f32 raster_subpixel_size) {
+  int width, height, layers;
+  shadow_map.get_dimensions(width, height, layers);
+  if (any(receiver < 0.0) || any(receiver > 1.0))
+    return 1.0;
+  Vec2 size = Vec2(width, height);
+  Vec2u32 pixel = Vec2u32(screen_pos);
+  Vec3 random = normalize(Vec3(pcg_3d(Vec3u32(pixel, pixel.x ^ pixel.y))));
+  Vec2 dir_a = normalize(random.xy);
+  Vec2 dir_b = Vec2(-dir_a.y, dir_a.x);
+  f32 precision_bias = max(8.0 * 1.192092896e-7 * max(abs(receiver.z), 0.125),
+                           depth_per_texel * 0.025);
+  // Include a half-texel slope margin for the hardware bilinear footprint.
+  precision_bias += dot(abs(gradient), (0.5 + raster_subpixel_size) / size);
+  f32 visibility = 0.0;
+  for (int x = -2; x <= 2; ++x) {
+    for (int y = -2; y <= 2; ++y) {
+      Vec2 offset = (dir_a * f32(x) + dir_b * f32(y)) * 1.5 / size;
+      f32 reference =
+          min(1.0, receiver.z + dot(gradient, offset) - precision_bias);
+      visibility += shadow_map.sample_cmp_level_zero(
+          sampler, Vec3(receiver.xy + offset, f32(cascade)), reference);
     }
   }
+  return visibility / 25.0;
+}
 
-  return shadow_factor / count;
+static const Mat4x4 BIAS_MAT = {
+  0.5, 0.0, 0.0, 0.5, //
+  0.0, 0.5, 0.0, 0.5, //
+  0.0, 0.0, 1.0, 0.0, //
+  0.0, 0.0, 0.0, 1.0, //
+};
+
+f32 sample_shadow_cascade(GlobalData* g, Image2DArray<f32> shadow_map,
+                          SamplerComparison shadow_sampler, u32 index,
+                          Vec3 position, Vec3 normal, Vec2 screen_pos,
+                          out f32 coverage) {
+  let cascade = g.cascade_configs[index];
+  let world_to_shadow = g.cascade_world_to_shadows[index];
+  let offset = shadow_offset_receiver(position, normal, world_to_shadow,
+                                      cascade.depth_per_texel);
+  let projected = mul(BIAS_MAT, mul(world_to_shadow, Vec4(offset, 1)));
+  let receiver = projected.xyz / projected.w;
+  let gradient = shadow_receiver_gradient(normal, world_to_shadow);
+  // Rotated square: 3*sqrt(2) texels, plus the bilinear comparison footprint.
+  const float radius = 5.25;
+
+  // The next cascade is fitted independently. Blend only where its complete
+  // filter footprint is covered, fading out the blend near the map's edges.
+  int width, height, layers;
+  shadow_map.get_dimensions(width, height, layers);
+  let edge = min(receiver, 1.0 - receiver);
+  coverage =
+      smoothstep(radius, radius + 1.0, min(edge.x * width, edge.y * height)) *
+      smoothstep(0.0, 2.0 * cascade.depth_per_texel, edge.z);
+  return filter_pcf(shadow_map, shadow_sampler, screen_pos, receiver,
+                    index, gradient, cascade.depth_per_texel,
+                    cascade.raster_subpixel_size);
+}
+
+f32 sample_shadow_cascades(GlobalData* g, Image2DArray<f32> shadow_map,
+                           SamplerComparison shadow_sampler, u32 num_cascades,
+                           Vec3 position, Vec3 normal, f32 view_z, Vec2 screen_pos) {
+  u32 cascade_index = 0;
+  for (u32 i = 0; i < num_cascades; i++) {
+    if (view_z < -g.cascade_configs[i].split_dist) {
+      cascade_index = i + 1;
+    }
+  }
+  if (cascade_index >= num_cascades) {
+    return 1.0;
+  }
+
+  f32 coverage;
+  return sample_shadow_cascade(g, shadow_map, shadow_sampler, cascade_index,
+                               position, normal, screen_pos, coverage);
 }

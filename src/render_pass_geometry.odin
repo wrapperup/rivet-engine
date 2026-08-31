@@ -131,7 +131,7 @@ record_geometry_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 				material_index = mesh_draw.material_index,
 				num_cascades = NUM_CASCADES,
 				shadow_depth = game.render_state.shadow_rp.shadow_depth_image_id,
-				shadow_sampler = game.render_state.temp_resources.shadow_depth_sampler_id,
+				shadow_sampler = game.render_state.shadow_rp.shadow_sampler_id,
 			},
 		)
 
