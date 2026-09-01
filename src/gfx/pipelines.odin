@@ -112,7 +112,11 @@ create_graphics_pipeline :: proc(
 			pb_enable_blending_alphablend(&pipeline_builder)
 		}
 
-		pb_enable_depthtest(&pipeline_builder, depth.write_enabled, depth.compare_op)
+		if depth.format == .UNDEFINED {
+			pb_disable_depthtest(&pipeline_builder)
+		} else {
+			pb_enable_depthtest(&pipeline_builder, depth.write_enabled, depth.compare_op)
+		}
 		pb_set_depth_format(&pipeline_builder, depth.format)
 
 		if color_format == .UNDEFINED {

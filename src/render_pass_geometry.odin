@@ -27,6 +27,7 @@ GPUSkyboxPushConstants :: struct #max_field_align(16) {
 }
 
 GeometryRenderPass :: struct {
+	depth_pipeline: ^gfx.GraphicsPipeline,
 	mesh_pipeline:  ^gfx.GraphicsPipeline,
 	model_matrices: [dynamic]Mat4x4,
 }
@@ -41,6 +42,24 @@ MeshDraw :: struct {
 }
 
 init_geometry_rp :: proc() {
+	// Match vertex and raster state in both passes for depth equality.
+	game.render_state.geometry_rp.depth_pipeline = add_graphics_shader(
+		"shaders/mesh.slang",
+		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
+			return gfx.create_graphics_pipeline(
+				name = "Mesh_Depth_Prepass",
+				shader = module,
+				fragment_entry = nil,
+				input_topology = .TRIANGLE_LIST,
+				polygon_mode = .FILL,
+				cull_mode = {.BACK},
+				front_face = .COUNTER_CLOCKWISE,
+				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
+				multisampling_samples = gfx.msaa_samples(),
+				push_constants = GPUDrawPushConstants,
+			)
+		},
+	)
 	game.render_state.geometry_rp.mesh_pipeline = add_graphics_shader(
 		"shaders/mesh.slang",
 		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
@@ -51,7 +70,7 @@ init_geometry_rp :: proc() {
 				polygon_mode = .FILL,
 				cull_mode = {.BACK},
 				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
+				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .EQUAL, write_enabled = false},
 				color_format = gfx.r_ctx.draw_image.format,
 				multisampling_samples = gfx.msaa_samples(),
 				push_constants = GPUDrawPushConstants,
@@ -66,28 +85,6 @@ init_geometry_rp :: proc() {
 	reserve(&game.render_state.geometry_rp.model_matrices, 16_000)
 }
 
-init_skybox_rp :: proc() {
-	game.render_state.skybox_pipeline = add_graphics_shader("shaders/skybox.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-			return gfx.create_graphics_pipeline(
-				name = "Skybox_Pipeline",
-				shader = module,
-				input_topology = .TRIANGLE_LIST,
-				polygon_mode = .FILL,
-				cull_mode = {.BACK},
-				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-				color_format = gfx.r_ctx.draw_image.format,
-				multisampling_samples = gfx.msaa_samples(),
-				push_constants = GPUSkyboxPushConstants,
-			)
-		})
-
-	mesh, ok := load_gpu_mesh_from_file(asset_path(.sm_skybox), context.temp_allocator)
-	assert(ok)
-	defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, mesh)
-	game.render_state.skybox_mesh = mesh
-}
-
 geometry_prepare :: proc() {
 	model_matrices := game.render_state.geometry_rp.model_matrices[:]
 	if len(model_matrices) > 0 {
@@ -99,15 +96,38 @@ record_geometry_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 	gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .COLOR_ATTACHMENT_OPTIMAL)
 	gfx.transition_image(cmd, &gfx.r_ctx.depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
 	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_READ_ONLY_OPTIMAL)
+	record_geometry_depth_pass(cmd, mesh_draws)
+	gfx.image_barrier(cmd, &gfx.r_ctx.depth_image, src_access = .DepthAttachmentReadWrite, dst_access = .DepthAttachmentReadWrite)
 
 	if game.render_state.draw_skybox {
 		record_skybox_pass(cmd)
+	}
+	background_clear := vk.ClearValue {
+		color = {float32 = {0, 0, 0, 1}},
 	}
 
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = gfx.r_ctx.draw_extent,
-		color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .COLOR_ATTACHMENT_OPTIMAL},
+		color_attachment = &{
+			view = gfx.r_ctx.draw_image.image_view,
+			layout = .COLOR_ATTACHMENT_OPTIMAL,
+			clear_value = game.render_state.draw_skybox ? nil : &background_clear,
+		},
+		depth_attachment = &{view = gfx.r_ctx.depth_image.image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL},
+	)
+	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
+
+	gfx.cmd_bind_pipeline(cmd, game.render_state.geometry_rp.mesh_pipeline)
+	record_geometry_draws(cmd, mesh_draws)
+	gfx.cmd_end_rendering(cmd)
+}
+
+@(private = "file")
+record_geometry_depth_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
+	gfx.cmd_begin_rendering(
+		cmd,
+		area = gfx.r_ctx.draw_extent,
 		depth_attachment = &{
 			view = gfx.r_ctx.depth_image.image_view,
 			clear_value = &{depthStencil = {depth = 1.0}},
@@ -115,9 +135,13 @@ record_geometry_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 		},
 	)
 	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
+	gfx.cmd_bind_pipeline(cmd, game.render_state.geometry_rp.depth_pipeline)
+	record_geometry_draws(cmd, mesh_draws)
+	gfx.cmd_end_rendering(cmd)
+}
 
-	gfx.cmd_bind_pipeline(cmd, game.render_state.geometry_rp.mesh_pipeline)
-
+@(private = "file")
+record_geometry_draws :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 	for mesh_draw in mesh_draws {
 		gfx.cmd_bind_index_buffer(cmd, mesh_draw.index_buffer)
 		gfx.cmd_push_constants(
@@ -137,8 +161,28 @@ record_geometry_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 
 		gfx.cmd_draw_indexed(cmd, mesh_draw.index_count)
 	}
+}
 
-	gfx.cmd_end_rendering(cmd)
+init_skybox_rp :: proc() {
+	game.render_state.skybox_pipeline = add_graphics_shader("shaders/skybox.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
+			return gfx.create_graphics_pipeline(
+				name = "Skybox_Pipeline",
+				shader = module,
+				input_topology = .TRIANGLE_LIST,
+				polygon_mode = .FILL,
+				cull_mode = {.BACK},
+				front_face = .COUNTER_CLOCKWISE,
+				depth = {format = .UNDEFINED},
+				color_format = gfx.r_ctx.draw_image.format,
+				multisampling_samples = gfx.msaa_samples(),
+				push_constants = GPUSkyboxPushConstants,
+			)
+		})
+
+	mesh, ok := load_gpu_mesh_from_file(asset_path(.sm_skybox), context.temp_allocator)
+	assert(ok)
+	defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, mesh)
+	game.render_state.skybox_mesh = mesh
 }
 
 @(private = "file")
@@ -147,11 +191,7 @@ record_skybox_pass :: proc(cmd: vk.CommandBuffer) {
 		cmd,
 		area = gfx.r_ctx.draw_extent,
 		color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .COLOR_ATTACHMENT_OPTIMAL},
-		depth_attachment = &{
-			view = gfx.r_ctx.depth_image.image_view,
-			clear_value = &{depthStencil = {depth = 1.0}},
-			layout = .DEPTH_ATTACHMENT_OPTIMAL,
-		},
+
 	)
 	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
 
