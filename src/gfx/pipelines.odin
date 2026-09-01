@@ -74,6 +74,7 @@ create_graphics_pipeline :: proc(
 		format:        vk.Format,
 	} = {},
 	cull_mode: vk.CullModeFlags = {},
+	depth_clamp: bool = false,
 	blend_mode: PipelineBlendMode = .None,
 	multisampling_samples: vk.SampleCountFlag = ._1,
 	color_format: vk.Format = .UNDEFINED,
@@ -97,6 +98,9 @@ create_graphics_pipeline :: proc(
 		pb_set_input_topology(&pipeline_builder, input_topology)
 		pb_set_polygon_mode(&pipeline_builder, polygon_mode)
 		pb_set_cull_mode(&pipeline_builder, cull_mode, front_face)
+		if depth_clamp {
+			pb_enable_depth_clamp(&pipeline_builder)
+		}
 		pb_set_multisampling(&pipeline_builder, multisampling_samples)
 
 		switch blend_mode {
@@ -282,6 +286,10 @@ pb_set_polygon_mode :: proc(builder: ^PipelineBuilder, mode: vk.PolygonMode) {
 pb_set_cull_mode :: proc(builder: ^PipelineBuilder, cull_mode: vk.CullModeFlags, front_face: vk.FrontFace) {
 	builder.rasterizer.cullMode = cull_mode
 	builder.rasterizer.frontFace = front_face
+}
+
+pb_enable_depth_clamp :: proc(builder: ^PipelineBuilder) {
+	builder.rasterizer.depthClampEnable = true
 }
 
 pb_set_multisampling_none :: proc(builder: ^PipelineBuilder) {

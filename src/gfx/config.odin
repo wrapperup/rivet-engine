@@ -11,6 +11,7 @@ REQUIRED_FEATURES := vk.PhysicalDeviceFeatures2 {
 		shaderImageGatherExtended = true,
 		multiDrawIndirect = true,
 		geometryShader = true,
+		depthClamp = true,
 		shaderInt64 = true,
 		shaderInt16 = true,
 		shaderFloat64 = true,

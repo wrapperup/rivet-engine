@@ -74,6 +74,8 @@ init_shadow_rp :: proc() {
 			input_topology = .TRIANGLE_LIST,
 			polygon_mode = .FILL,
 			cull_mode = {},
+			// Keep distant casters beyond the depth slab without expanding its range.
+			depth_clamp = true,
 			front_face = .COUNTER_CLOCKWISE,
 			depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
 			push_constants = GPUDrawShadowDepthPushConstants,
