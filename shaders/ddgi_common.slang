@@ -401,7 +401,12 @@ Vec3 ddgi_sample_irradiance(
 //------------------------------------------------------------------------
 
 // [2021] GIRenderer/GIRenderer_deferredShade.pix: computeScatteredIndirect
-Vec3 ddgi_sample_volumes(Slice<DDGIVolume> volumes, Vec3 pos, Vec3 n, Vec3 camera_pos) {
+// `surface_normal` is unused: the reference biases along the shading normal.
+Vec3 ddgi_sample_volumes(Slice<DDGIVolume> volumes, Vec3 pos, Vec3 n, Vec3 surface_normal, Vec3 camera_pos) {
   Vec3 w_o = normalize(camera_pos - pos);
   return ddgi_sample_irradiance(volumes, pos, n * 0.2 + w_o * 0.8, n);
+}
+
+Vec3 ddgi_sample_volumes(Slice<DDGIVolume> volumes, Vec3 pos, Vec3 n, Vec3 camera_pos) {
+  return ddgi_sample_volumes(volumes, pos, n, n, camera_pos);
 }

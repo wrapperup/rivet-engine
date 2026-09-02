@@ -174,7 +174,7 @@ FragmentOutput fragment_main(FragmentInput in) {
   // the view-aware surface bias (kills Chebyshev self-shadow splotches at grazing angles).
   frag_color += diffuse * ao *
                 ddgi_sample_volumes(pc.global_data_buffer.ddgi_volumes, pos_ws, n,
-                          pc.global_data_buffer.camera_pos);
+                          receiver_normal, pc.global_data_buffer.camera_pos);
 
   // Specular reflections. The split-sum BRDF (DFG) weighting is shared; the reflected
   // *radiance* comes from the reflection probe (box-parallax + edge blend) where one
