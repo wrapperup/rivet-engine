@@ -35,14 +35,15 @@ matrix_ortho3d_z0_f32 :: proc "contextless" (left, right, bottom, top, near, far
 }
 
 @(require_results)
-matrix4_infinite_perspective_z0_f32 :: proc "contextless" (fovy, aspect, near: f32) -> (m: linalg.Matrix4f32) #no_bounds_check {
+// Right-handed infinite reversed-Z: depth = near / -view_z.
+// The near plane maps to 1 and infinity to 0, preserving distant float precision.
+matrix4_infinite_perspective_reversed_z0_f32 :: proc "contextless" (fovy, aspect, near: f32) -> (m: linalg.Matrix4f32) #no_bounds_check {
 	tan_half_fovy := math.tan(0.5 * fovy)
 	m[0, 0] = 1 / (aspect * tan_half_fovy)
 	m[1, 1] = 1 / (tan_half_fovy)
-	m[2, 2] = +1
 	m[3, 2] = +1
 
-	m[2, 3] = -near
+	m[2, 3] = near
 
 	m[2] = -m[2]
 

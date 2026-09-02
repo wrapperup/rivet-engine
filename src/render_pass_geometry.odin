@@ -54,7 +54,7 @@ init_geometry_rp :: proc() {
 				polygon_mode = .FILL,
 				cull_mode = {.BACK},
 				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
+				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
 				multisampling_samples = gfx.msaa_samples(),
 				push_constants = GPUDrawPushConstants,
 			)
@@ -130,7 +130,7 @@ record_geometry_depth_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw
 		area = gfx.r_ctx.draw_extent,
 		depth_attachment = &{
 			view = gfx.r_ctx.depth_image.image_view,
-			clear_value = &{depthStencil = {depth = 1.0}},
+			clear_value = &{depthStencil = {depth = 0.0}},
 			layout = .DEPTH_ATTACHMENT_OPTIMAL,
 		},
 	)

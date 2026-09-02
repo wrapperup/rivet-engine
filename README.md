@@ -25,6 +25,7 @@ Toy engine + Vulkan renderer I built for fun to learn Odin language (and some gr
 - Very Crude Text Rendering
 - CSM
 - Compute skinning
+- Opaque depth prepass (shared mesh vertex shader, followed by depth-equal shading)
 
 ## How to build:
 1. Clone repo

@@ -75,7 +75,7 @@ init_reflection_probe_rp :: proc() {
 				polygon_mode = .FILL,
 				cull_mode = {},
 				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
+				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
 				color_format = gfx.r_ctx.draw_image.format,
 				multisampling_samples = gfx.msaa_samples(),
 				push_constants = GPUReflectionProbeDebugPush,

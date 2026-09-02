@@ -22,8 +22,7 @@ void compute_main(Vec3u32 dispatchThreadID: SV_DispatchThreadID) {
   let uv = (Vec2(px) + 0.5) / Vec2(size);
   let ndc = uv * 2.0 - 1.0;
 
-  // Infinite-far projection: NDC z=1 is at infinity (w->0). Unproject finite depths
-  let p_near = mul(g.clip_to_world, Vec4(ndc, 0.0, 1.0));
+  let p_near = mul(g.clip_to_world, Vec4(ndc, 1.0, 1.0));
   let p_mid = mul(g.clip_to_world, Vec4(ndc, 0.5, 1.0));
   let origin = p_near.xyz / p_near.w;
   let dir = normalize(p_mid.xyz / p_mid.w - origin);

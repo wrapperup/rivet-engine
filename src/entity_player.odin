@@ -342,7 +342,7 @@ player_get_view_matrix :: proc(player: ^Player) -> Mat4x4 {
 player_get_projection_matrix :: proc(player: ^Player, near: f32 = 0.1) -> Mat4x4 {
 	aspect_ratio := f32(gfx.r_ctx.draw_extent.width) / f32(gfx.r_ctx.draw_extent.height)
 
-	projection_matrix := gfx.matrix4_infinite_perspective_z0_f32(
+	projection_matrix := gfx.matrix4_infinite_perspective_reversed_z0_f32(
 		linalg.to_radians(player != nil ? player.camera_fov_deg : 0),
 		aspect_ratio,
 		near,
