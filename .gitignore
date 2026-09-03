@@ -7,3 +7,6 @@ imgui.ini
 *.pdb
 *.lib
 *.exe
+__pycache__/
+*.py[cod]
+*.blend[0-9]*
