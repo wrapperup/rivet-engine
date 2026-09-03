@@ -79,6 +79,29 @@ Asset_Name :: enum {
     t_normalmap,
     t_rma,
     t_tony_mc_mapface,
+    Cube,
+    Cube_001,
+    Cube_003,
+    Cube_003_9fe195dc,
+    Cube_004,
+    Cube_004_8e821e99,
+    Cube_004_8e821e99_fefb6152,
+    Cube_004_8e821e99_fefb6152_1ee52fd3,
+    Cube_004_8e821e99_fefb6152_467d0982,
+    Cube_004_8e821e99_fefb6152_5dbba8fa,
+    Cube_004_8e821e99_fefb6152_9890cf15,
+    Cube_004_e3efccf8,
+    Cube_005,
+    Cube_005_eff2ffbe,
+    Cube_006,
+    Cylinder,
+    Cylinder_4cce1abe,
+    rock_cliff,
+    rock_cliff_82a1e1e2,
+    rock_cliff_a44b3804,
+    rock_cliff_a65b96bf,
+    rock_cliff_ec02ab9f,
+    rock_cliff_f34bdbe6,
 }
 
 load_generated_assets :: proc() -> bool {
@@ -155,6 +178,29 @@ load_generated_assets :: proc() -> bool {
     game.asset_system.assets[.t_normalmap] = load_asset("assets/textures/materialball2/t_normalmap.ktx2") or_return
     game.asset_system.assets[.t_rma] = load_asset("assets/textures/materialball2/t_rma.ktx2") or_return
     game.asset_system.assets[.t_tony_mc_mapface] = load_asset("assets/textures/tonemapping/t_tony_mc_mapface.ktx2") or_return
+    game.asset_system.assets[.Cube] = load_asset("assets/meshes/static/scene_map_test/Cube.glb") or_return
+    game.asset_system.assets[.Cube_001] = load_asset("assets/meshes/static/scene_map_test/Cube_001.glb") or_return
+    game.asset_system.assets[.Cube_003] = load_asset("assets/meshes/static/scene_map_test/Cube_003.glb") or_return
+    game.asset_system.assets[.Cube_003_9fe195dc] = load_asset("assets/meshes/static/scene_map_test/Cube_003_9fe195dc.glb") or_return
+    game.asset_system.assets[.Cube_004] = load_asset("assets/meshes/static/scene_map_test/Cube_004.glb") or_return
+    game.asset_system.assets[.Cube_004_8e821e99] = load_asset("assets/meshes/static/scene_map_test/Cube_004_8e821e99.glb") or_return
+    game.asset_system.assets[.Cube_004_8e821e99_fefb6152] = load_asset("assets/meshes/static/scene_map_test/Cube_004_8e821e99_fefb6152.glb") or_return
+    game.asset_system.assets[.Cube_004_8e821e99_fefb6152_1ee52fd3] = load_asset("assets/meshes/static/scene_map_test/Cube_004_8e821e99_fefb6152_1ee52fd3.glb") or_return
+    game.asset_system.assets[.Cube_004_8e821e99_fefb6152_467d0982] = load_asset("assets/meshes/static/scene_map_test/Cube_004_8e821e99_fefb6152_467d0982.glb") or_return
+    game.asset_system.assets[.Cube_004_8e821e99_fefb6152_5dbba8fa] = load_asset("assets/meshes/static/scene_map_test/Cube_004_8e821e99_fefb6152_5dbba8fa.glb") or_return
+    game.asset_system.assets[.Cube_004_8e821e99_fefb6152_9890cf15] = load_asset("assets/meshes/static/scene_map_test/Cube_004_8e821e99_fefb6152_9890cf15.glb") or_return
+    game.asset_system.assets[.Cube_004_e3efccf8] = load_asset("assets/meshes/static/scene_map_test/Cube_004_e3efccf8.glb") or_return
+    game.asset_system.assets[.Cube_005] = load_asset("assets/meshes/static/scene_map_test/Cube_005.glb") or_return
+    game.asset_system.assets[.Cube_005_eff2ffbe] = load_asset("assets/meshes/static/scene_map_test/Cube_005_eff2ffbe.glb") or_return
+    game.asset_system.assets[.Cube_006] = load_asset("assets/meshes/static/scene_map_test/Cube_006.glb") or_return
+    game.asset_system.assets[.Cylinder] = load_asset("assets/meshes/static/scene_map_test/Cylinder.glb") or_return
+    game.asset_system.assets[.Cylinder_4cce1abe] = load_asset("assets/meshes/static/scene_map_test/Cylinder_4cce1abe.glb") or_return
+    game.asset_system.assets[.rock_cliff] = load_asset("assets/meshes/static/scene_map_test/rock_cliff.glb") or_return
+    game.asset_system.assets[.rock_cliff_82a1e1e2] = load_asset("assets/meshes/static/scene_map_test/rock_cliff_82a1e1e2.glb") or_return
+    game.asset_system.assets[.rock_cliff_a44b3804] = load_asset("assets/meshes/static/scene_map_test/rock_cliff_a44b3804.glb") or_return
+    game.asset_system.assets[.rock_cliff_a65b96bf] = load_asset("assets/meshes/static/scene_map_test/rock_cliff_a65b96bf.glb") or_return
+    game.asset_system.assets[.rock_cliff_ec02ab9f] = load_asset("assets/meshes/static/scene_map_test/rock_cliff_ec02ab9f.glb") or_return
+    game.asset_system.assets[.rock_cliff_f34bdbe6] = load_asset("assets/meshes/static/scene_map_test/rock_cliff_f34bdbe6.glb") or_return
     return true
 }
 
