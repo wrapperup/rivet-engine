@@ -108,7 +108,49 @@ struct GlobalData {
   Sampler default_sampler;
   Slice<DDGIVolume> ddgi_volumes;
   Slice<ReflectionProbe> reflection_probes;
+  Atmosphere atmosphere;
   u32 mesh_debug_view;
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_atmosphere.odin
+//
+struct Atmosphere {
+  Image2D transmittance;
+  Image2D multiple_scattering;
+  Image2D sky_view;
+  Image3D aerial_scattering;
+  Image3D aerial_transmittance;
+  Sampler sampler;
+  f32 rayleigh_density;
+  f32 mie_density;
+  f32 ozone_density;
+  f32 ground_albedo;
+  f32 ground_height;
+  f32 camera_height;
+  f32 sun_radius;
+};
+
+struct AtmosphereLutPush {
+  GlobalData* global;
+  RWImage2D output;
+};
+
+struct AtmosphereCubePush {
+  GlobalData* global;
+  RWImage2DArray output;
+};
+
+struct AtmosphereAerialPush {
+  GlobalData* global;
+  RWImage3D scattering;
+  RWImage3D transmittance;
+};
+
+struct AtmosphereDrawPush {
+  GlobalData* global;
 };
 
 

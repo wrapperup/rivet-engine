@@ -109,6 +109,7 @@ GameState :: struct {
 }
 
 Environment :: struct {
+	atmosphere:    AtmosphereSettings,
 	sun_color:     Vec3,
 	sky_color:     Vec3,
 	sun_direction: Vec3,

@@ -57,6 +57,7 @@ GPUGlobalData :: struct #max_field_align(16) {
 	default_sampler:          SamplerId `Sampler`,
 	ddgi_volumes:             gfx.Slice(GPUDDGIVolume),
 	reflection_probes:        gfx.Slice(GPUReflectionProbe),
+	atmosphere:               GPUAtmosphere,
 	mesh_debug_view:          u32,
 }
 
@@ -108,6 +109,8 @@ RenderState :: struct {
 	skybox_mesh:                     GPUMeshBuffers,
 	draw_skybox:                     bool,
 
+	atmosphere_rp:                   AtmosphereRenderPass,
+	draw_sky:                        bool,
 	mesh_debug_view:                 i32,
 
 	// Debug
