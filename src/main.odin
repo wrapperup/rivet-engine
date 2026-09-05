@@ -144,7 +144,7 @@ game_init :: proc() {
 
 	// Scene
 	{
-		game.render_state.draw_skybox = true
+		game.render_state.draw_sky = true
 
 		player := new_entity(Player)
 		init_player(player)
@@ -160,7 +160,12 @@ game_init :: proc() {
         game.update_physics = false
 		game.state = GameState {
 			player_id = entity_id_of(player),
-			environment = Environment{sun_direction = linalg.normalize(Vec3{12, 15, 10}), sun_color = 2.0, sky_color = 1.0},
+			environment = Environment {
+				sun_direction = linalg.normalize(Vec3{12, 15, 10}),
+				sun_color = 2.0,
+				sky_color = 1.0,
+				atmosphere = default_atmosphere_settings(),
+			},
 			update_ddgi = true, // DDGI must run for reflection capture (and GI) to populate
 		}
 

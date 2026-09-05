@@ -225,11 +225,6 @@ struct DrawPushConstants {
   SamplerComparison shadow_sampler;
 };
 
-struct SkyboxPushConstants {
-  Vertex* vertex_buffer;
-  GlobalData* global_data_buffer;
-};
-
 
 
 //

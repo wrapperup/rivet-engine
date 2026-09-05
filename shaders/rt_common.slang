@@ -1,4 +1,5 @@
 import bindless;
+import atmosphere_common;
 import common;
 import types;
 import world_space;
@@ -154,5 +155,5 @@ Vec3 rt_direct_lighting(RaytracingAccelerationStructure tlas, GlobalData* g, Vec
     shadow = rt_shadow_ray(tlas, rt_offset_origin(pos_ws, N, hit_t), l, 1e4);
   }
 
-  return g.sun_color * ndotl * shadow + rt_point_lights(g, pos_ws, N);
+  return atmosphere_direct_sun(g, pos_ws) * ndotl * shadow + rt_point_lights(g, pos_ws, N);
 }

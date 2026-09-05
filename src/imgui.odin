@@ -374,12 +374,26 @@ update_imgui :: proc() {
 	}
 
 	if im.Begin("Environment") {
-		im.Checkbox("Draw skybox", &game.render_state.draw_skybox)
+		im.Checkbox("Draw sky", &game.render_state.draw_sky)
 		dir_vec := game.state.environment.sun_direction
-		im.InputFloat3("direction", &dir_vec)
+		azimuth := math.to_degrees(math.atan2(dir_vec.x, dir_vec.z))
+		elevation := math.to_degrees(math.asin(clamp(dir_vec.y, -1, 1)))
+		lighting_changed := im.SliderFloat("Sun azimuth", &azimuth, -180, 180, "%.1f deg")
+		lighting_changed = im.SliderFloat("Sun elevation", &elevation, -90, 90, "%.1f deg") || lighting_changed
+		if lighting_changed {
+			az := math.to_radians(azimuth)
+			el := math.to_radians(elevation)
+			dir_vec = {math.cos(el) * math.sin(az), math.sin(el), math.cos(el) * math.cos(az)}
+		}
 		game.state.environment.sun_direction = dir_vec
-		im.ColorEdit3("sun_color", &game.state.environment.sun_color)
-		im.ColorEdit3("sky_color", &game.state.environment.sky_color)
+		im.ColorEdit3("Sun irradiance", &game.state.environment.sun_color, {.Float, .HDR})
+		im.ColorEdit3("Sky tint", &game.state.environment.sky_color, {.Float, .HDR})
+		atmosphere := &game.state.environment.atmosphere
+		im.SliderFloat("Rayleigh density", &atmosphere.rayleigh_density, 0, 4)
+		im.SliderFloat("Haze (Mie density)", &atmosphere.mie_density, 0, 10)
+		im.SliderFloat("Ozone density", &atmosphere.ozone_density, 0, 4)
+		im.SliderFloat("Ground albedo", &atmosphere.ground_albedo, 0, 0.95)
+		im.InputFloat("Ground height (m)", &atmosphere.ground_height)
 
 		mesh_views := [?]cstring{"Shaded", "Shadow visibility", "Mesh normals", "Shading normals", "Shaded without shadows"}
 		im.ComboChar("Mesh diagnostic", &game.render_state.mesh_debug_view, raw_data(&mesh_views), len(mesh_views))

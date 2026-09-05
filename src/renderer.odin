@@ -84,11 +84,10 @@ RenderState :: struct {
 		point_light_buffer: gfx.Buffer(GPUPointLight),
 	},
 	temp_resources:                  struct {
-		dfg_id:                  ImageId,
-		env_id:                  ImageId,
-		default_sampler_id:      SamplerId,
-		env_sampler_id:          SamplerId,
-		resolved_image_id:       ImageId,
+		dfg_id:             ImageId,
+		default_sampler_id: SamplerId,
+		env_sampler_id:     SamplerId,
+		resolved_image_id:  ImageId,
 	},
 	shader_manager:                  ShaderManager,
 	global_session:                  ^sp.IGlobalSession,
@@ -103,12 +102,6 @@ RenderState :: struct {
 	reflection_prefilter_pipeline:   ^gfx.ComputePipeline,
 	reflection_probe_debug_pipeline: ^gfx.GraphicsPipeline,
 	reflection_probes_buffers:       [gfx.FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
-
-	// Skybox pipelines
-	skybox_pipeline:                 ^gfx.GraphicsPipeline,
-	skybox_mesh:                     GPUMeshBuffers,
-	draw_skybox:                     bool,
-
 	atmosphere_rp:                   AtmosphereRenderPass,
 	draw_sky:                        bool,
 	mesh_debug_view:                 i32,
@@ -175,7 +168,6 @@ init_test_resources :: proc() {
 	tony_mc_mapface := gfx.load_image_from_memory(asset_content(.t_tony_mc_mapface), .D3, .D3)
 
 	dfg := gfx.load_image_from_memory(asset_content(.t_dfg))
-	env := gfx.load_image_from_memory(asset_content(.t_test_cubemap_ld), .D2, .CUBE)
 
 	// Default Imageture Sampler
 	default_sampler := gfx.create_sampler(.LINEAR, .REPEAT, max_lod = 10.0, max_anisotropy = gfx.r_ctx.limits.maxSamplerAnisotropy)
@@ -190,7 +182,6 @@ init_test_resources :: proc() {
 
 		rs.post_process_rp.tony_mc_mapface_id = gfx.add_image(tony_mc_mapface)
 		tr.dfg_id = gfx.add_image(dfg)
-		tr.env_id = gfx.add_image(env)
 
 		tr.default_sampler_id = gfx.add_sampler(default_sampler)
 		tr.env_sampler_id = gfx.add_sampler(env_sampler)
@@ -223,7 +214,7 @@ init_render_passes :: proc() {
 	init_geometry_rp()
 	init_shadow_rp()
 	init_skinning_rp()
-	init_skybox_rp()
+	init_atmosphere_rp()
 	init_post_process_rp()
 	init_debug_rt_rp()
 	init_ddgi_rp()
@@ -251,7 +242,7 @@ init_shared_buffers :: proc() {
 			count = 0,
 		),
 		env_sampler = game.render_state.temp_resources.env_sampler_id,
-		env_map     = game.render_state.temp_resources.env_id,
+		env_map      = game.render_state.atmosphere_rp.environment_id,
 		dfg         = game.render_state.temp_resources.dfg_id,
 	}
 }
@@ -264,6 +255,7 @@ draw :: proc() {
 			gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
 			hotreload_start := time.now()
 			if hotreload_modified_shaders() {
+				game.render_state.atmosphere_rp.force_update = true
 				log.info("Shaders hotreloaded in", time.since(hotreload_start))
 			} else {
 				log.warn("Shaders failed to load!")
@@ -299,6 +291,7 @@ draw :: proc() {
 	}
 
 	// CPU preparation and uploads happen before command recording.
+	atmosphere_prepare()
 	geometry_prepare()
 	shadow_prepare()
 	skinning_prepare(frame.skel_instances[:])
@@ -307,6 +300,7 @@ draw :: proc() {
 	reflection_probe_prepare(probes)
 	prepare_shared_frame_data()
 
+	record_atmosphere_pass(cmd)
 	record_rt_scene_pass(cmd, &frame.rt)
 	record_ddgi_pass(cmd, volumes)
 	record_reflection_probe_pass(cmd, probes, volumes)

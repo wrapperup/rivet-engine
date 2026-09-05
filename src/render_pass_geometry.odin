@@ -20,12 +20,6 @@ GPUDrawPushConstants :: struct #max_field_align(16) {
 	shadow_sampler:     gfx.SamplerId `SamplerComparison`,
 }
 
-@(shader_shared)
-GPUSkyboxPushConstants :: struct #max_field_align(16) {
-	vertex_buffer:      gfx.Ptr(Vertex),
-	global_data_buffer: gfx.Ptr(GPUGlobalData),
-}
-
 GeometryRenderPass :: struct {
 	depth_pipeline: ^gfx.GraphicsPipeline,
 	mesh_pipeline:  ^gfx.GraphicsPipeline,
@@ -99,8 +93,8 @@ record_geometry_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 	record_geometry_depth_pass(cmd, mesh_draws)
 	gfx.image_barrier(cmd, &gfx.r_ctx.depth_image, src_access = .DepthAttachmentReadWrite, dst_access = .DepthAttachmentReadWrite)
 
-	if game.render_state.draw_skybox {
-		record_skybox_pass(cmd)
+	if game.render_state.draw_sky {
+		record_atmosphere_background(cmd)
 	}
 	background_clear := vk.ClearValue {
 		color = {float32 = {0, 0, 0, 1}},
@@ -112,7 +106,7 @@ record_geometry_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 		color_attachment = &{
 			view = gfx.r_ctx.draw_image.image_view,
 			layout = .COLOR_ATTACHMENT_OPTIMAL,
-			clear_value = game.render_state.draw_skybox ? nil : &background_clear,
+			clear_value = game.render_state.draw_sky ? nil : &background_clear,
 		},
 		depth_attachment = &{view = gfx.r_ctx.depth_image.image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL},
 	)
@@ -161,50 +155,4 @@ record_geometry_draws :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 
 		gfx.cmd_draw_indexed(cmd, mesh_draw.index_count)
 	}
-}
-
-init_skybox_rp :: proc() {
-	game.render_state.skybox_pipeline = add_graphics_shader("shaders/skybox.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-			return gfx.create_graphics_pipeline(
-				name = "Skybox_Pipeline",
-				shader = module,
-				input_topology = .TRIANGLE_LIST,
-				polygon_mode = .FILL,
-				cull_mode = {.BACK},
-				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = .UNDEFINED},
-				color_format = gfx.r_ctx.draw_image.format,
-				multisampling_samples = gfx.msaa_samples(),
-				push_constants = GPUSkyboxPushConstants,
-			)
-		})
-
-	mesh, ok := load_gpu_mesh_from_file(asset_path(.sm_skybox), context.temp_allocator)
-	assert(ok)
-	defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, mesh)
-	game.render_state.skybox_mesh = mesh
-}
-
-@(private = "file")
-record_skybox_pass :: proc(cmd: vk.CommandBuffer) {
-	gfx.cmd_begin_rendering(
-		cmd,
-		area = gfx.r_ctx.draw_extent,
-		color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .COLOR_ATTACHMENT_OPTIMAL},
-
-	)
-	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
-
-	gfx.cmd_bind_pipeline(cmd, game.render_state.skybox_pipeline)
-	gfx.cmd_bind_index_buffer(cmd, game.render_state.skybox_mesh.index_buffer.buffer)
-	gfx.cmd_push_constants(
-		cmd,
-		GPUSkyboxPushConstants {
-			vertex_buffer = game.render_state.skybox_mesh.vertex_buffer.ptr,
-			global_data_buffer = current_frame_game().global_buffer.ptr,
-		},
-	)
-
-	gfx.cmd_draw_indexed(cmd, game.render_state.skybox_mesh.index_count)
-	gfx.cmd_end_rendering(cmd)
 }

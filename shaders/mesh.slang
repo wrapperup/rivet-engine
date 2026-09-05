@@ -1,4 +1,5 @@
 import bindless;
+import atmosphere_common;
 import brdf;
 import common;
 import ddgi_common;
@@ -141,7 +142,7 @@ FragmentOutput fragment_main(FragmentInput in) {
 
   Vec3 frag_color = 0;
   frag_color = (min(sun_NoL, ao) * shadow *
-                pc.global_data_buffer.sun_color) *
+                atmosphere_direct_sun(pc.global_data_buffer, pos_ws)) *
                standard_bsdf(diffuse, proughness, v, l, n, f0, sun_NoL);
 
   for (uint i = 0; i < pc.global_data_buffer.environment.point_lights.count; i++) {
@@ -213,7 +214,7 @@ FragmentOutput fragment_main(FragmentInput in) {
 
   FragmentOutput output;
   output.frag_color =
-      Vec4(frag_color, 1.0f);
+      Vec4(atmosphere_aerial(pc.global_data_buffer, pos_ws, frag_color), 1.0f);
 
   return output;
 }
