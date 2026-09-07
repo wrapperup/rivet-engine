@@ -7,9 +7,6 @@ import vk "vendor:vulkan"
 
 import "gfx"
 
-@(private = "file")
-ImageId :: gfx.ImageId
-
 @(shader_shared)
 GPUDrawShadowDepthPushConstants :: struct #max_field_align(16) {
 	vertex_buffer:  gfx.Ptr(Vertex),
@@ -29,7 +26,7 @@ GPUCascadeConfig :: struct #max_field_align(16) {
 ShadowRenderPass :: struct {
 	mesh_shadow_pipeline:            ^gfx.GraphicsPipeline,
 	shadow_depth_image:              gfx.Image,
-	shadow_depth_image_id:           ImageId,
+	shadow_depth_image_id:           gfx.ImageId,
 	shadow_sampler_id:               gfx.SamplerId,
 	shadow_depth_attach_image_views: [NUM_CASCADES]vk.ImageView,
 	cascade_world_to_shadows:        [NUM_CASCADES]Mat4x4,

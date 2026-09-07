@@ -117,7 +117,6 @@ record_geometry_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 	gfx.cmd_end_rendering(cmd)
 }
 
-@(private = "file")
 record_geometry_depth_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 	gfx.cmd_begin_rendering(
 		cmd,
@@ -134,7 +133,6 @@ record_geometry_depth_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw
 	gfx.cmd_end_rendering(cmd)
 }
 
-@(private = "file")
 record_geometry_draws :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 	for mesh_draw in mesh_draws {
 		gfx.cmd_bind_index_buffer(cmd, mesh_draw.index_buffer)

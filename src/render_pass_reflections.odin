@@ -6,26 +6,18 @@ import vk "vendor:vulkan"
 
 import "gfx"
 
-@(private = "file")
-ImageId :: gfx.ImageId
-@(private = "file")
-SamplerId :: gfx.SamplerId
-
-// Push for the RT capture compute (shaders/reflection_capture.slang). DDGI indirect at ray hits
-// comes from the packed volume array in global (world-space select), not a single volume pointer.
 @(shader_shared)
 GPUReflectionCapturePush :: struct #max_field_align(16) {
 	global:     gfx.Ptr(GPUGlobalData),
 	geometries: gfx.Ptr(GPUGeometry),
 	materials:  gfx.Ptr(GPUMaterial),
 	tlas:       vk.DeviceAddress `AccelerationStructure`,
-	out_cube:   ImageId `RWImage2DArray`,
+	out_cube:   gfx.ImageId `RWImage2DArray`,
 	center:     Vec3,
 	face_size:  u32,
 	ray_max:    f32,
 }
 
-// Push for the debug mirror-ball gizmo (shaders/reflection_probe_debug.slang).
 @(shader_shared)
 GPUReflectionProbeDebugPush :: struct #max_field_align(16) {
 	global:        gfx.Ptr(GPUGlobalData),
@@ -35,12 +27,11 @@ GPUReflectionProbeDebugPush :: struct #max_field_align(16) {
 	radius:        f32,
 }
 
-// Push for the roughness prefilter (shaders/reflection_prefilter.slang). One dispatch per mip.
 @(shader_shared)
 GPUReflectionPrefilterPush :: struct #max_field_align(16) {
-	src_cube:     ImageId `ImageCube`,
-	sampler:      SamplerId `Sampler`,
-	out_mip:      ImageId `RWImage2DArray`,
+	src_cube:     gfx.ImageId `ImageCube`,
+	sampler:      gfx.SamplerId `Sampler`,
+	out_mip:      gfx.ImageId `RWImage2DArray`,
 	face_size:    u32,
 	roughness:    f32,
 	sample_count: u32,

@@ -6,20 +6,15 @@ import vk "vendor:vulkan"
 
 import "gfx"
 
-@(private = "file")
-ImageId :: gfx.ImageId
-@(private = "file")
-SamplerId :: gfx.SamplerId
-
 @(shader_shared)
 GPUPostProcessingPushConstants :: struct #max_field_align(16) {
-	resolved_image:  ImageId `RWImage2D`,
-	tony_mc_mapface: ImageId `Image3D<Vec3>`,
-	sampler:         SamplerId `Sampler`,
+	resolved_image:  gfx.ImageId `RWImage2D`,
+	tony_mc_mapface: gfx.ImageId `Image3D<Vec3>`,
+	sampler:         gfx.SamplerId `Sampler`,
 }
 
 PostProcessingRenderPass :: struct {
-	tony_mc_mapface_id:  ImageId,
+	tony_mc_mapface_id:  gfx.ImageId,
 	tonemapper_pipeline: ^gfx.ComputePipeline,
 }
 

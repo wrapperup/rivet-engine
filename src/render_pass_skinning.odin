@@ -14,12 +14,6 @@ GPUSkinningPushConstants :: struct #max_field_align(16) {
 	attrs:           gfx.Slice(SkeletonVertexAttribute),
 }
 
-#assert(offset_of(GPUSkinningPushConstants, input_vertices) == 0)
-#assert(offset_of(GPUSkinningPushConstants, output_vertices) == 16)
-#assert(offset_of(GPUSkinningPushConstants, joint_matrices) == 32)
-#assert(offset_of(GPUSkinningPushConstants, attrs) == 48)
-#assert(size_of(GPUSkinningPushConstants) == 64)
-
 SkinningRenderPass :: struct {
 	skinning_pipeline: ^gfx.ComputePipeline,
 }

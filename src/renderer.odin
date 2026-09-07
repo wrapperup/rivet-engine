@@ -43,6 +43,11 @@ GPUEnvironment :: struct #max_field_align(16) {
 #assert(offset_of(GPUEnvironment, env_sampler) == 24)
 
 @(shader_shared)
+GPUDebugView :: enum u32 {
+    
+}
+
+@(shader_shared)
 GPUGlobalData :: struct #max_field_align(16) {
 	view_to_clip:             Mat4x4,
 	world_to_view:            Mat4x4,
