@@ -4,7 +4,7 @@ import "core:math/linalg/hlsl"
 
 import "gfx"
 
-@shader_shared
+@(shader_shared)
 Vertex :: struct #max_field_align(16) {
 	position: hlsl.float3,
 	uv_x:     f32,
@@ -14,7 +14,7 @@ Vertex :: struct #max_field_align(16) {
 	tangent:  hlsl.float4,
 }
 
-@shader_shared
+@(shader_shared)
 SkeletonVertexAttribute :: struct #max_field_align(16) {
 	joints:  [4]u8,
 	weights: [4]f32,

@@ -1,9 +1,9 @@
 package game
 
+import virtual "core:mem/virtual"
+import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import "core:os"
-import virtual "core:mem/virtual"
 
 AssetSystem :: struct {
 	arena:       virtual.Arena,
@@ -11,8 +11,13 @@ AssetSystem :: struct {
 	assets:      [Asset_Name]Asset,
 }
 
+Asset_Load_Kind :: enum {
+    Block,
+    Async
+}
+
 Asset_Type :: enum {
-    Unknown,
+	Unknown,
 	Text,
 	Sound,
 	Texture,
@@ -27,63 +32,67 @@ Asset_Type :: enum {
 Asset :: struct {
 	source_path: string,
 	content:     []u8,
-    // meta:        Asset_Meta,
+	// meta:        Asset_Meta,
 	type:        Asset_Type,
 }
 
 // TODO: Replace this hack with meta files.
 asset_type_from_base :: proc(base: string) -> Asset_Type {
-    asset_type := Asset_Type.Unknown
+	asset_type := Asset_Type.Unknown
 
 	switch filepath.ext(base) {
 	case ".wav":
-        asset_type = .Sound
+		asset_type = .Sound
 	case ".txt":
-        asset_type = .Text
+		asset_type = .Text
 	case ".glb":
-        if strings.starts_with(base, "sk") {
-            asset_type = .SkinnedMesh
-        } else {
-            asset_type = .Mesh
-        }
+		if strings.starts_with(base, "sk") {
+			asset_type = .SkinnedMesh
+		} else {
+			asset_type = .Mesh
+		}
 	case ".ktx2":
-        asset_type = .Texture
+		asset_type = .Texture
 	case ".ttf":
-        asset_type = .Font
-    }
+		asset_type = .Font
+	}
 
-    return asset_type
+	return asset_type
 }
 
+Asset_Load_Result :: enum {
+    Ready,
+    Async,
+    NotAvailable,
+}
 
-load_asset :: proc(path: string) -> (asset: Asset, ok: bool) {
+// TODO: Implement async path.
+load_asset :: proc(path: string, method := Asset_Load_Kind.Block) -> (asset: Asset, result: Asset_Load_Result) {
 	base := filepath.base(path)
 	asset_type := asset_type_from_base(base)
 	allocator := virtual.arena_allocator(&game.asset_system.arena)
 
 	fullpath, fullpath_err := os.get_absolute_path(path, allocator)
 	if fullpath_err != nil {
-		return {}, false
+		return {}, .NotAvailable
 	}
 
 	content: []u8
-	// Meshes and sounds are consumed through their paths. Keeping a second copy of
-	// every source file made startup retain hundreds of megabytes unnecessarily.
 	if asset_type == .Text || asset_type == .Texture || asset_type == .Font {
 		content_err: os.Error
 		content, content_err = os.read_entire_file(path, allocator)
 		if content_err != nil {
-			return {}, false
+			return {}, .NotAvailable
 		}
 	}
 
-    asset = {
-        type = asset_type,
-        content = content,
-        source_path = fullpath,
-    }
+	asset = {
+		type        = asset_type,
+		content     = content,
+		source_path = fullpath,
+	}
 
-    ok = true
+	result = .Ready
 
 	return
 }
@@ -94,7 +103,7 @@ init_asset_system :: proc() -> bool {
 	}
 	game.asset_system.initialized = true
 
-	if !load_generated_assets() {
+	if load_generated_assets() != .Ready {
 		shutdown_asset_system()
 		return false
 	}

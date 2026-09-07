@@ -4,10 +4,11 @@ import vk "vendor:vulkan"
 
 import "gfx"
 
-DfgGeneratePassPC :: struct {
+@(shader_shared)
+GPUDfgGeneratePassPC :: struct #max_field_align(16) {
 	sample_count: u32,
-	multiscatter: b32,
-	dfg_image:    gfx.ImageId,
+	dfg_image:    gfx.ImageId `RWImage2D<float2>`,
+    multiscatter: bool,
 }
 
 DfgGeneratePass :: struct {
@@ -30,7 +31,7 @@ create_dfg_generate_pipeline :: proc(width, height: u32) -> DfgGeneratePass {
     dfg_shader, f_ok := gfx.load_shader_module("shaders/out/dfg.spv", context.temp_allocator)
     assert(f_ok, "Failed to load shaders.")
 
-    pass.pipeline = gfx.create_compute_pipeline("DFG", dfg_shader, DfgGeneratePassPC)
+    pass.pipeline = gfx.create_compute_pipeline("DFG", dfg_shader, GPUDfgGeneratePassPC)
     gfx.defer_destroy(&gfx.r_ctx.global_arena, pass.pipeline)
 
     gfx.destroy_shader_module(dfg_shader)
@@ -47,7 +48,7 @@ create_dfg_generate_pipeline :: proc(width, height: u32) -> DfgGeneratePass {
 run_dfg_generate_pass :: proc(pass: ^DfgGeneratePass, cmd: vk.CommandBuffer) {
 	gfx.cmd_bind_pipeline(cmd, pass.pipeline)
 
-	gfx.cmd_push_constants(cmd, DfgGeneratePassPC {
+	gfx.cmd_push_constants(cmd, GPUDfgGeneratePassPC {
 		sample_count = 4096,
 		multiscatter = false,
         dfg_image = pass.dfg_image

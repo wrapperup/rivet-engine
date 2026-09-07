@@ -9,10 +9,10 @@ MAX_ROUGHNESS_LEVELS: u32 : 9
 PREFILTERED_DEFAULT_SIZE: u32 : 1024
 
 PrefilteredCubeMapPushConstants :: struct {
-	mip_level:    u32,
-	sample_count: u32,
-    environment_map: gfx.ImageId,
-    prefiltered_map: [MAX_ROUGHNESS_LEVELS]gfx.ImageId
+	mip_level:       u32,
+	sample_count:    u32,
+	environment_map: gfx.ImageId,
+	prefiltered_map: [MAX_ROUGHNESS_LEVELS]gfx.ImageId,
 }
 
 PrefilteredCubeMapPass :: struct {
@@ -39,11 +39,7 @@ create_prefiltered_cubemap_pipeline :: proc(filename: cstring, out_width, out_he
 
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, pass.descriptor_set_layout)
 
-	pass.descriptor_set = gfx.allocate_descriptor_set(
-		&gfx.r_ctx.global_descriptor_allocator,
-		gfx.r_ctx.device,
-		pass.descriptor_set_layout,
-	)
+	pass.descriptor_set = gfx.allocate_descriptor_set(&gfx.r_ctx.global_descriptor_allocator, gfx.r_ctx.device, pass.descriptor_set_layout)
 
 	width, height: u32
 	pass.cube_image = gfx.load_image_from_file(filename, .D2, .CUBE, &width, &height)
@@ -124,10 +120,7 @@ run_prefilter_cubemap_pass :: proc(pass: ^PrefilteredCubeMapPass, cmd: vk.Comman
 	gfx.cmd_bind_pipeline(cmd, pass.pipeline)
 
 	for level in 0 ..< MAX_ROUGHNESS_LEVELS {
-		gfx.cmd_push_constants(cmd, PrefilteredCubeMapPushConstants {
-			mip_level    = level,
-			sample_count = sample_count,
-        })
+		gfx.cmd_push_constants(cmd, PrefilteredCubeMapPushConstants{mip_level = level, sample_count = sample_count})
 
 		gfx.cmd_dispatch(cmd, u32(math.ceil(f32(pass.width >> level) / 16.0)), u32(math.ceil(f32(pass.height >> level) / 16.0)), 6)
 	}

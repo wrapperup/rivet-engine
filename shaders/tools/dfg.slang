@@ -53,14 +53,7 @@ float2 dfv(float NoV, float linear_roughness, int sample_count, bool multiscatte
 	return r * (4.0f / float(sample_count));
 }
 
-// Matches DfgGeneratePassPC in src/dfg.odin (bindless storage image via ImageId).
-struct DfgPushConstant {
-    uint32_t sample_count;
-    bool multiscatter;
-    RWImage2D<float2> dfg_image;
-};
-
-[vk_push_constant] DfgPushConstant pc;
+[vk_push_constant] GPUDfgGeneratePassPC pc;
 
 // Integrates DFG into a f16 sequence that can be stored in a texture.
 // Recommended to store this in a R16G16_SFLOAT texture.

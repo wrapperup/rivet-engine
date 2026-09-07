@@ -446,16 +446,13 @@ update_imgui :: proc() {
 // Box3D debug draw (replaces the PhysX render-buffer line loop)
 // ---------------------------------------------------------------------------
 
-@(private = "file")
 g_show_physics_debug: bool
 
-@(private = "file")
 Phys_Debug_Ctx :: struct {
 	view_projection: Mat4x4,
 	draw_list:       ^im.DrawList,
 }
 
-@(private = "file")
 phys_hex_to_im :: proc(color: b3.HexColor) -> u32 {
 	c := u32(color)
 	r := f32((c >> 16) & 0xff) / 255
@@ -464,7 +461,6 @@ phys_hex_to_im :: proc(color: b3.HexColor) -> u32 {
 	return im.GetColorU32ImVec4({r, g, b, 1})
 }
 
-@(private = "file")
 phys_debug_segment :: proc "c" (p1, p2: b3.Pos, color: b3.HexColor, ctx: rawptr) {
 	context = runtime.default_context()
 	dc := cast(^Phys_Debug_Ctx)ctx
@@ -474,7 +470,6 @@ phys_debug_segment :: proc "c" (p1, p2: b3.Pos, color: b3.HexColor, ctx: rawptr)
 	im.DrawList_AddLine(dc.draw_list, a, b, phys_hex_to_im(color), 1.0)
 }
 
-@(private = "file")
 phys_debug_bounds :: proc "c" (aabb: b3.AABB, color: b3.HexColor, ctx: rawptr) {
 	context = runtime.default_context()
 	dc := cast(^Phys_Debug_Ctx)ctx

@@ -1,6 +1,5 @@
 package game
 
-import "base:intrinsics"
 import "core:time"
 
 import glfw "vendor:glfw"
@@ -74,9 +73,9 @@ Game :: struct {
 	// Debug
 	show_imgui:         bool,
 
-    // TEMP storage
-    ball_mesh: GPUMeshBuffers,
-    update_physics: bool,
+	// TEMP storage
+	ball_mesh:          GPUMeshBuffers,
+	update_physics:     bool,
 }
 
 FrameTimeStats :: enum {
@@ -101,10 +100,10 @@ end_scope_stat_time :: proc(stat_type: FrameTimeStats) {
 }
 
 GameState :: struct {
-	current_scene: Scene,
-	environment:   Environment,
-	player_id:     TypedEntityId(Player),
-	update_ddgi:   bool,
+	current_scene:      Scene,
+	environment:        Environment,
+	player_id:          TypedEntityId(Player),
+	update_ddgi:        bool,
 	update_reflections: bool,
 }
 

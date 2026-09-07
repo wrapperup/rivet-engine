@@ -21,11 +21,7 @@ create_mesh_buffers :: proc(mesh: Mesh, loc := #caller_location) -> GPUMeshBuffe
 	new_surface.index_count = index_count
 	new_surface.vertex_count = vertex_count
 
-	new_surface.vertex_buffer = gfx.create_buffer(
-        Vertex,
-		vertex_count,
-		loc = loc,
-	)
+	new_surface.vertex_buffer = gfx.create_buffer(Vertex, vertex_count, loc = loc)
 	new_surface.index_buffer = gfx.create_buffer(u32, index_count, .Index, loc = loc)
 
 	return new_surface
@@ -81,9 +77,9 @@ parse_gltf_mesh_into_mesh :: proc(
 		assert(skin != nil)
 	}
 
-    indices_idx := primitive.indices.?
+	indices_idx := primitive.indices.?
 	pos_idx, pos_ok := primitive.attributes["POSITION"]
-    assert(pos_ok)
+	assert(pos_ok)
 	norm_idx, norm_ok := primitive.attributes["NORMAL"]
 	color_idx, color_ok := primitive.attributes["COLOR_0"]
 	uv_idx, uv_ok := primitive.attributes["TEXCOORD_0"]
@@ -122,7 +118,7 @@ parse_gltf_mesh_into_mesh :: proc(
 
 		for val, i in colors {
 			mesh.vertices[i].color.xyz = val
-            mesh.vertices[i].color.a = 1
+			mesh.vertices[i].color.a = 1
 		}
 	} else {
 		// Default the color to 1
@@ -136,19 +132,19 @@ parse_gltf_mesh_into_mesh :: proc(
 		defer delete(uvs, allocator)
 
 		for val, i in uvs {
-			mesh.vertices[i].uv_x  = val.x
-            mesh.vertices[i].uv_y = val.y
+			mesh.vertices[i].uv_x = val.x
+			mesh.vertices[i].uv_y = val.y
 		}
 	}
 
-    // assert(tangent_ok)
+	// assert(tangent_ok)
 
 	if tangent_ok {
 		tangents := read_accessor(data, tangent_idx, [4]f32, allocator) or_return
 		defer delete(tangents, allocator)
 
 		for val, i in tangents {
-            mesh.vertices[i].tangent = val
+			mesh.vertices[i].tangent = val
 		}
 	} else if uv_ok && norm_ok {
 		// MikkTSpace returns per-corner tangents. Expand shared vertices so UV seams
@@ -236,11 +232,11 @@ parse_gltf_mesh_into_mesh :: proc(
 // Normalized integer accessors are decoded to floats. Mirrors buffer_slice's pointer math
 // but doesn't care that Blender emits VEC4 u16 for one mesh and VEC3 f32 for another.
 read_accessor :: proc(data: ^gltf2.Data, accessor_index: gltf2.Integer, $T: typeid, allocator := context.allocator) -> ([]T, bool) {
-	accessor    := data.accessors[accessor_index]
+	accessor := data.accessors[accessor_index]
 	buffer_view := data.buffer_views[accessor.buffer_view.?]
-	bytes       := data.buffers[buffer_view.buffer].uri.([]byte)
+	bytes := data.buffers[buffer_view.buffer].uri.([]byte)
 
-	start  := int(accessor.byte_offset + buffer_view.byte_offset)
+	start := int(accessor.byte_offset + buffer_view.byte_offset)
 	stride := component_size(accessor.component_type) * accessor_component_count(accessor.type)
 
 	out := make([]T, accessor.count, allocator)
@@ -259,27 +255,46 @@ read_accessor :: proc(data: ^gltf2.Data, accessor_index: gltf2.Integer, $T: type
 
 component_size :: proc(ct: gltf2.Component_Type) -> int {
 	switch ct {
-	case .Byte, .Unsigned_Byte:   return 1
-	case .Short, .Unsigned_Short: return 2
-	case .Unsigned_Int, .Float:   return 4
+	case .Byte, .Unsigned_Byte:
+		return 1
+	case .Short, .Unsigned_Short:
+		return 2
+	case .Unsigned_Int, .Float:
+		return 4
 	}
 	return 0
 }
 
 accessor_component_count :: proc(t: gltf2.Accessor_Type) -> int {
 	switch t {
-	case .Scalar:  return 1
-	case .Vector2: return 2
-	case .Vector3: return 3
-	case .Vector4: return 4
-	case .Matrix2: return 4
-	case .Matrix3: return 9
-	case .Matrix4: return 16
+	case .Scalar:
+		return 1
+	case .Vector2:
+		return 2
+	case .Vector3:
+		return 3
+	case .Vector4:
+		return 4
+	case .Matrix2:
+		return 4
+	case .Matrix3:
+		return 9
+	case .Matrix4:
+		return 16
 	}
 	return 0
 }
 
-try_cast_accessor_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.Component_Type, type: gltf2.Accessor_Type, normalized := false) -> (T, bool) {
+try_cast_accessor_type :: proc(
+	$T: typeid,
+	value_ptr: rawptr,
+	component_type: gltf2.Component_Type,
+	type: gltf2.Accessor_Type,
+	normalized := false,
+) -> (
+	T,
+	bool,
+) {
 	when intrinsics.type_is_array(T) {
 		value, ok := try_cast_vec_type(T, value_ptr, component_type, type, normalized)
 		return value, ok
@@ -296,8 +311,16 @@ try_cast_accessor_type :: proc($T: typeid, value_ptr: rawptr, component_type: gl
 	}
 }
 
-try_cast_numeric_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.Component_Type, normalized := false) -> (T, bool)
-	where intrinsics.type_is_float(T) || intrinsics.type_is_integer(T) {
+try_cast_numeric_type :: proc(
+	$T: typeid,
+	value_ptr: rawptr,
+	component_type: gltf2.Component_Type,
+	normalized := false,
+) -> (
+	T,
+	bool,
+) where intrinsics.type_is_float(T) ||
+	intrinsics.type_is_integer(T) {
 
 	when intrinsics.type_is_integer(T) {
 		when intrinsics.type_is_unsigned(T) {
@@ -313,32 +336,53 @@ try_cast_numeric_type :: proc($T: typeid, value_ptr: rawptr, component_type: glt
 	}
 }
 
-try_cast_int_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.Component_Type) -> (T, bool)
-	where intrinsics.type_is_integer(T) && !intrinsics.type_is_unsigned(T) {
+try_cast_int_type :: proc(
+	$T: typeid,
+	value_ptr: rawptr,
+	component_type: gltf2.Component_Type,
+) -> (
+	T,
+	bool,
+) where intrinsics.type_is_integer(T) &&
+	!intrinsics.type_is_unsigned(T) {
 
 	value: T = ---
 
 	#partial switch component_type {
-	case .Byte:  value = T((cast(^i8)  value_ptr)^)
-	case .Short: value = T((cast(^i16) value_ptr)^)
+	case .Byte:
+		value = T((cast(^i8)value_ptr)^)
+	case .Short:
+		value = T((cast(^i16)value_ptr)^)
 
-	case: return 0, false
+	case:
+		return 0, false
 	}
 
 	return value, true
 }
 
-try_cast_uint_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.Component_Type) -> (T, bool)
-	where intrinsics.type_is_integer(T) && intrinsics.type_is_unsigned(T) {
+try_cast_uint_type :: proc(
+	$T: typeid,
+	value_ptr: rawptr,
+	component_type: gltf2.Component_Type,
+) -> (
+	T,
+	bool,
+) where intrinsics.type_is_integer(T) &&
+	intrinsics.type_is_unsigned(T) {
 
 	value: T = ---
 
 	#partial switch component_type {
-	case .Unsigned_Byte:  value = T((cast(^u8)  value_ptr)^)
-	case .Unsigned_Short: value = T((cast(^u16) value_ptr)^)
-	case .Unsigned_Int:   value = T((cast(^u32) value_ptr)^)
+	case .Unsigned_Byte:
+		value = T((cast(^u8)value_ptr)^)
+	case .Unsigned_Short:
+		value = T((cast(^u16)value_ptr)^)
+	case .Unsigned_Int:
+		value = T((cast(^u32)value_ptr)^)
 
-	case: return 0, false
+	case:
+		return 0, false
 	}
 
 	return value, true
@@ -347,26 +391,49 @@ try_cast_uint_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.
 // Diverges from the equivalent Jai proc, which only accepted .FLOAT: glTF stores normalized
 // integer colors, so we also decode integer components (scaled to [0,1]/[-1,1] when
 // `normalized`). Without this, demo_ball's u16 colors come out as 61537.0 instead of 0.94.
-try_cast_float_type :: proc($T: typeid, value_ptr: rawptr, component_type: gltf2.Component_Type, normalized := false) -> (T, bool)
-	where intrinsics.type_is_float(T) {
+try_cast_float_type :: proc(
+	$T: typeid,
+	value_ptr: rawptr,
+	component_type: gltf2.Component_Type,
+	normalized := false,
+) -> (
+	T,
+	bool,
+) where intrinsics.type_is_float(T) {
 
 	value: T = ---
 
 	#partial switch component_type {
-	case .Float:          value = T((cast(^f32) value_ptr)^)
-	case .Unsigned_Byte:  value = normalized ? T(f32((cast(^u8)  value_ptr)^) / 255.0)           : T((cast(^u8)  value_ptr)^)
-	case .Byte:           value = normalized ? T(max(f32((cast(^i8)  value_ptr)^) / 127.0,   -1)) : T((cast(^i8)  value_ptr)^)
-	case .Unsigned_Short: value = normalized ? T(f32((cast(^u16) value_ptr)^) / 65535.0)         : T((cast(^u16) value_ptr)^)
-	case .Short:          value = normalized ? T(max(f32((cast(^i16) value_ptr)^) / 32767.0, -1)) : T((cast(^i16) value_ptr)^)
-	case .Unsigned_Int:   value = T((cast(^u32) value_ptr)^)
+	case .Float:
+		value = T((cast(^f32)value_ptr)^)
+	case .Unsigned_Byte:
+		value = normalized ? T(f32((cast(^u8)value_ptr)^) / 255.0) : T((cast(^u8)value_ptr)^)
+	case .Byte:
+		value = normalized ? T(max(f32((cast(^i8)value_ptr)^) / 127.0, -1)) : T((cast(^i8)value_ptr)^)
+	case .Unsigned_Short:
+		value = normalized ? T(f32((cast(^u16)value_ptr)^) / 65535.0) : T((cast(^u16)value_ptr)^)
+	case .Short:
+		value = normalized ? T(max(f32((cast(^i16)value_ptr)^) / 32767.0, -1)) : T((cast(^i16)value_ptr)^)
+	case .Unsigned_Int:
+		value = T((cast(^u32)value_ptr)^)
 
-	case: return 0, false
+	case:
+		return 0, false
 	}
 
 	return value, true
 }
 
-try_cast_vec_type :: proc($T: typeid/[$N]$E, value_ptr: rawptr, component_type: gltf2.Component_Type, type: gltf2.Accessor_Type, normalized := false) -> (T, bool) {
+try_cast_vec_type :: proc(
+	$T: typeid/[$N]$E,
+	value_ptr: rawptr,
+	component_type: gltf2.Component_Type,
+	type: gltf2.Accessor_Type,
+	normalized := false,
+) -> (
+	T,
+	bool,
+) {
 	value: T = ---
 
 	// We narrow but never widen: a target with fewer components than the source drops the
@@ -404,11 +471,11 @@ SkeletalMesh :: struct {
 
 
 load_mesh_from_file :: proc(path: string, allocator := context.allocator, loc := #caller_location) -> (Mesh, bool) {
-    data, error := gltf2.load_from_file(path)
-    assert(error == nil, "Couldn't load mesh.", loc = loc)
+	data, error := gltf2.load_from_file(path)
+	assert(error == nil, "Couldn't load mesh.", loc = loc)
 
-    // if there are no errors we want to free memory when we are done with processing gltf/glb file.
-    defer gltf2.unload(data)
+	// if there are no errors we want to free memory when we are done with processing gltf/glb file.
+	defer gltf2.unload(data)
 
 	// Scene-local exports bake transforms into the vertices. Flatten all primitives,
 	// including separate meshes produced by Geometry Nodes.
@@ -457,7 +524,14 @@ load_mesh_from_file :: proc(path: string, allocator := context.allocator, loc :=
 	return mesh, true
 }
 
-load_gpu_mesh_from_file :: proc(path: string, allocator := context.allocator, loc := #caller_location) -> (gpu_mesh: GPUMeshBuffers, ok: bool) {
+load_gpu_mesh_from_file :: proc(
+	path: string,
+	allocator := context.allocator,
+	loc := #caller_location,
+) -> (
+	gpu_mesh: GPUMeshBuffers,
+	ok: bool,
+) {
 	mesh := load_mesh_from_file(path, allocator, loc = loc) or_return
 	return upload_mesh_to_gpu(mesh, loc = loc), true
 }
@@ -469,8 +543,8 @@ defer_destroy_gpu_mesh :: proc(arena: ^gfx.ResourceArena, gpu_mesh: GPUMeshBuffe
 }
 
 upload_mesh_to_gpu :: proc(mesh: Mesh, loc := #caller_location) -> GPUMeshBuffers {
-    assert(len(mesh.indices) > 0, "Mesh has no indices!")
-    assert(len(mesh.vertices) > 0, "Mesh has no vertices!")
+	assert(len(mesh.indices) > 0, "Mesh has no indices!")
+	assert(len(mesh.vertices) > 0, "Mesh has no vertices!")
 
 	buffers := create_mesh_buffers(mesh, loc = loc)
 	staging_write_mesh_buffers(&buffers, mesh)
@@ -512,8 +586,8 @@ parse_gltf_mesh_into_skel_mesh :: proc(
 	joints_idx := primitive.attributes["JOINTS_0"] or_return
 	weights_idx := primitive.attributes["WEIGHTS_0"] or_return
 
-    joints_buf := gltf2.buffer_slice(data, joints_idx).([][4]u8)
-    weights_buf := gltf2.buffer_slice(data, weights_idx).([][4]f32)
+	joints_buf := gltf2.buffer_slice(data, joints_idx).([][4]u8)
+	weights_buf := gltf2.buffer_slice(data, weights_idx).([][4]f32)
 
 	skel_mesh.attrs = make([]SkeletonVertexAttribute, len(joints_buf))
 
@@ -537,11 +611,11 @@ parse_gltf_mesh_into_skel_mesh :: proc(
 			append(&skeleton.inverse_bind_matrices, val)
 		}
 
-        joint_remap: map[u32]u32
+		joint_remap: map[u32]u32
 
 		for joint_i, i in skin.joints {
-            joint_remap[joint_i] = u32(i)
-        }
+			joint_remap[joint_i] = u32(i)
+		}
 
 		for &joint_i in skin.joints {
 			node := data.nodes[joint_i]
@@ -551,11 +625,11 @@ parse_gltf_mesh_into_skel_mesh :: proc(
 			local_matrix := node.mat
 			append(&skeleton.bind_matrices_ls, local_matrix)
 
-            children: [dynamic]JointId
+			children: [dynamic]JointId
 
-            for child_idx in node.children {
-                append(&children, joint_remap[child_idx])
-            }
+			for child_idx in node.children {
+				append(&children, joint_remap[child_idx])
+			}
 
 			append(&skeleton.joint_tree, children)
 		}
@@ -568,35 +642,35 @@ parse_gltf_mesh_into_skel_mesh :: proc(
 		for &channel in animation.channels {
 			joint_index := channel.target.node.?
 
-            joint_anim, ok_j := &joint_anims[joint_index]
-            if !ok_j {
-                // TODO: this is kinda ass ngl
-                joint_anims[joint_index] = JointTrack{}
-                joint_anim = &joint_anims[joint_index]
-            }
+			joint_anim, ok_j := &joint_anims[joint_index]
+			if !ok_j {
+				// TODO: this is kinda ass ngl
+				joint_anims[joint_index] = JointTrack{}
+				joint_anim = &joint_anims[joint_index]
+			}
 
-            sampler := animation.samplers[channel.sampler]
+			sampler := animation.samplers[channel.sampler]
 
-            #partial switch channel.target.path {
-            case .Translation:
-                translation_buf := gltf2.buffer_slice(data, sampler.output).([]Vec3)
-                for val in translation_buf {
-                    append(&joint_anim.keyframes_translation, val)
-                }
-            case .Rotation:
-                rotation_buf := gltf2.buffer_slice(data, sampler.output).([]Vec4)
-                for val in rotation_buf {
-                    q := quaternion(w = val.w, x = val.x, y = val.y, z = val.z)
-                    append(&joint_anim.keyframes_rotation, q)
-                }
-            case .Scale:
-                scale_buf := gltf2.buffer_slice(data, sampler.output).([]Vec3)
-                for val in scale_buf {
-                    append(&joint_anim.keyframes_scale, val)
-                }
-            case:
-                panic("Unsupported animation channel type.")
-            }
+			#partial switch channel.target.path {
+			case .Translation:
+				translation_buf := gltf2.buffer_slice(data, sampler.output).([]Vec3)
+				for val in translation_buf {
+					append(&joint_anim.keyframes_translation, val)
+				}
+			case .Rotation:
+				rotation_buf := gltf2.buffer_slice(data, sampler.output).([]Vec4)
+				for val in rotation_buf {
+					q := quaternion(w = val.w, x = val.x, y = val.y, z = val.z)
+					append(&joint_anim.keyframes_rotation, q)
+				}
+			case .Scale:
+				scale_buf := gltf2.buffer_slice(data, sampler.output).([]Vec3)
+				for val in scale_buf {
+					append(&joint_anim.keyframes_scale, val)
+				}
+			case:
+				panic("Unsupported animation channel type.")
+			}
 		}
 
 		resize(&skel_anim.joint_animations, len(joint_anims))
@@ -614,11 +688,11 @@ parse_gltf_mesh_into_skel_mesh :: proc(
 }
 
 load_skel_mesh_from_file :: proc(path: string, loc := #caller_location) -> (skeleton: Skeleton, anim: SkeletalAnimation, ok: bool) {
-    data, error := gltf2.load_from_file(path)
-    assert(error == nil, "Couldn't load skeletal mesh.", loc = loc)
+	data, error := gltf2.load_from_file(path)
+	assert(error == nil, "Couldn't load skeletal mesh.", loc = loc)
 
-    // if there are no errors we want to free memory when we are done with processing gltf/glb file.
-    defer gltf2.unload(data)
+	// if there are no errors we want to free memory when we are done with processing gltf/glb file.
+	defer gltf2.unload(data)
 
 	skel_mesh, skel, an := parse_gltf_mesh_into_skel_mesh(data, 0) or_return
 	skeleton = skel
@@ -646,11 +720,7 @@ create_skel_mesh_buffers :: proc(skel_mesh: SkeletalMesh, loc := #caller_locatio
 	new_surface.mesh_buffers = create_mesh_buffers(skel_mesh, loc = loc)
 	new_surface.attrs_count = u32(len(skel_mesh.attrs))
 
-	new_surface.skel_vert_attrs_buffer = gfx.create_buffer(
-		SkeletonVertexAttribute,
-        len(skel_mesh.attrs),
-		loc = loc,
-	)
+	new_surface.skel_vert_attrs_buffer = gfx.create_buffer(SkeletonVertexAttribute, len(skel_mesh.attrs), loc = loc)
 
 	return new_surface
 }

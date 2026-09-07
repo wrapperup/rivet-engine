@@ -3,6 +3,17 @@
 //
 
 //
+// Generated from C:\Repos\odin\vulkan-playground\src\dfg.odin
+//
+struct DfgGeneratePassPC {
+  u32 sample_count;
+  RWImage2D<float2> dfg_image;
+  bool multiscatter;
+};
+
+
+
+//
 // Generated from C:\Repos\odin\vulkan-playground\src\entity_ddgi_volume.odin
 //
 struct DDGIVolume {

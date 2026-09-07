@@ -104,7 +104,7 @@ Asset_Name :: enum {
     rock_cliff_f34bdbe6,
 }
 
-load_generated_assets :: proc() -> bool {
+load_generated_assets :: proc() -> Asset_Load_Result {
     game.asset_system.assets[.f_fa_regular_400] = load_asset("assets/fonts/f_fa_regular_400.ttf") or_return
     game.asset_system.assets[.f_roboto_regular] = load_asset("assets/fonts/f_roboto_regular.ttf") or_return
     game.asset_system.assets[.f_segoeui] = load_asset("assets/fonts/f_segoeui.ttf") or_return
@@ -201,7 +201,7 @@ load_generated_assets :: proc() -> bool {
     game.asset_system.assets[.rock_cliff_a65b96bf] = load_asset("assets/meshes/static/scene_map_test/rock_cliff_a65b96bf.glb") or_return
     game.asset_system.assets[.rock_cliff_ec02ab9f] = load_asset("assets/meshes/static/scene_map_test/rock_cliff_ec02ab9f.glb") or_return
     game.asset_system.assets[.rock_cliff_f34bdbe6] = load_asset("assets/meshes/static/scene_map_test/rock_cliff_f34bdbe6.glb") or_return
-    return true
+    return .Ready
 }
 
 // GPUGlobalData
