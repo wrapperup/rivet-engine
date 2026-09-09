@@ -2,9 +2,6 @@
 // This is a generated file, do not modify. See src/meta.odin
 //
 
-//
-// Generated from C:\Repos\odin\vulkan-playground\src\dfg.odin
-//
 struct DfgGeneratePassPC {
   u32 sample_count;
   RWImage2D<float2> dfg_image;
@@ -14,7 +11,7 @@ struct DfgGeneratePassPC {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\entity_ddgi_volume.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\dfg.odin
 //
 struct DDGIVolume {
   Vec3 grid_origin;
@@ -43,7 +40,7 @@ struct DDGIVolume {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\entity_point_light.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\entity_ddgi_volume.odin
 //
 struct PointLight {
   Vec3 color;
@@ -55,7 +52,7 @@ struct PointLight {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\entity_reflection_probe.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\entity_point_light.odin
 //
 struct ReflectionProbe {
   Vec3 center;
@@ -71,7 +68,7 @@ struct ReflectionProbe {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\gpu_types.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\entity_reflection_probe.odin
 //
 struct Vertex {
   float3 position;
@@ -82,9 +79,20 @@ struct Vertex {
   float4 tangent;
 };
 
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\gpu_types.odin
+//
 struct SkeletonVertexAttribute {
   u8 joints[4];
   f32 weights[4];
+};
+
+struct Material {
+  Image2D base_color_id;
+  Image2D normal_map_id;
+  Image2D ao_roughness_metallic_id;
 };
 
 
@@ -92,12 +100,6 @@ struct SkeletonVertexAttribute {
 //
 // Generated from C:\Repos\odin\vulkan-playground\src\renderer.odin
 //
-struct Material {
-  Image2D base_color_id;
-  Image2D normal_map_id;
-  Image2D ao_roughness_metallic_id;
-};
-
 struct Environment {
   Slice<PointLight> point_lights;
   ImageCube env_map;
@@ -123,11 +125,6 @@ struct GlobalData {
   u32 mesh_debug_view;
 };
 
-
-
-//
-// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_atmosphere.odin
-//
 struct Atmosphere {
   Image2D transmittance;
   Image2D multiple_scattering;
@@ -144,6 +141,11 @@ struct Atmosphere {
   f32 sun_radius;
 };
 
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_atmosphere.odin
+//
 struct AtmosphereLutPush {
   GlobalData* global;
   RWImage2D output;
@@ -164,11 +166,6 @@ struct AtmosphereDrawPush {
   GlobalData* global;
 };
 
-
-
-//
-// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_ddgi.odin
-//
 struct DDGITracePush {
   DDGIVolume* volume;
   Geometry* geometries;
@@ -178,6 +175,11 @@ struct DDGITracePush {
   AccelerationStructure tlas;
 };
 
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_ddgi.odin
+//
 struct DDGIUpdatePush {
   DDGIVolume* volume;
   Vec4* radiance;
@@ -206,11 +208,6 @@ struct DDGIProbePush {
   f32 probe_radius;
 };
 
-
-
-//
-// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_debug.odin
-//
 struct DebugRTPushConstants {
   GlobalData* global;
   Geometry* geometries;
@@ -222,7 +219,7 @@ struct DebugRTPushConstants {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_geometry.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_debug.odin
 //
 struct DrawPushConstants {
   GlobalData* global_data_buffer;
@@ -239,7 +236,7 @@ struct DrawPushConstants {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_post.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_geometry.odin
 //
 struct PostProcessingPushConstants {
   RWImage2D resolved_image;
@@ -250,7 +247,7 @@ struct PostProcessingPushConstants {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_reflections.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_post.odin
 //
 struct ReflectionCapturePush {
   GlobalData* global;
@@ -263,6 +260,11 @@ struct ReflectionCapturePush {
   f32 ray_max;
 };
 
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_reflections.odin
+//
 struct ReflectionProbeDebugPush {
   GlobalData* global;
   ReflectionProbe* probe;
@@ -280,11 +282,6 @@ struct ReflectionPrefilterPush {
   u32 sample_count;
 };
 
-
-
-//
-// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_shadow.odin
-//
 struct DrawShadowDepthPushConstants {
   Vertex* vertex_buffer;
   Mat4x4* model_matrices;
@@ -293,17 +290,17 @@ struct DrawShadowDepthPushConstants {
   u32 cascade_index;
 };
 
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_shadow.odin
+//
 struct CascadeConfig {
   f32 split_dist;
   f32 depth_per_texel;
   f32 raster_subpixel_size;
 };
 
-
-
-//
-// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_skinning.odin
-//
 struct SkinningPushConstants {
   Slice<Vertex> input_vertices;
   Slice<Vertex> output_vertices;
@@ -314,7 +311,7 @@ struct SkinningPushConstants {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\rt_scene.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_skinning.odin
 //
 struct Geometry {
   Vertex* vertex_buffer;
@@ -322,3 +319,9 @@ struct Geometry {
   MaterialId material_index;
   u32 _pad[3];
 };
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\rt_scene.odin
+//

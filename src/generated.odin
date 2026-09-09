@@ -4,6 +4,42 @@
 
 package game
 
+// Entity System
+Entity_Kind :: enum {
+    Ball,
+    DDGIVolume,
+    Player,
+    PointLight,
+    ReflectionProbe,
+    SoundSource,
+    StaticMesh,
+    Terrain,
+}
+
+register_entity_subtypes :: proc() {
+    register_entity_subtype(Ball)
+    register_entity_subtype(DDGIVolume, ddgi_volume_destroy)
+    register_entity_subtype(Player)
+    register_entity_subtype(PointLight)
+    register_entity_subtype(ReflectionProbe, reflection_probe_destroy)
+    register_entity_subtype(SoundSource)
+    register_entity_subtype(StaticMesh, static_mesh_destroy)
+    register_entity_subtype(Terrain, terrain_destroy)
+}
+
+entity_type_to_kind :: proc($T: typeid) -> Entity_Kind {
+    return .Base when T == Entity else
+           .Ball when T == Ball else
+           .DDGIVolume when T == DDGIVolume else
+           .Player when T == Player else
+           .PointLight when T == PointLight else
+           .ReflectionProbe when T == ReflectionProbe else
+           .SoundSource when T == SoundSource else
+           .StaticMesh when T == StaticMesh else
+           .Terrain when T == Terrain else
+           #panic("Unregistered entity type")
+}
+
 // Assets
 Asset_Name :: enum {
     f_fa_regular_400,

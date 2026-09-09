@@ -1,5 +1,6 @@
 package game
 
+import "core:reflect"
 import "base:intrinsics"
 import "base:runtime"
 import "core:mem/virtual"
@@ -89,13 +90,15 @@ TypedEntityId :: struct($T: typeid) {
 // possible.
 Entity :: struct {
 	id:          EntityId,
-	subtype:     typeid,
+	kind:        Entity_Kind,
+
+	// shared
 	translation: Vec3,
 	velocity:    Vec3,
 	rotation:    Quat,
 }
 
-ENTITY_PAGE_SIZE        :: 1024
+ENTITY_PAGE_SIZE :: 1024
 ENTITY_FIRST_GENERATION :: 1
 
 EntitySlot :: struct {
@@ -109,18 +112,18 @@ EntityPage :: [ENTITY_PAGE_SIZE]EntitySlot
 // Freed slot indices are recycled; slot_count is the high-water mark while
 // live_count tracks entities that currently resolve.
 EntitySystem :: struct {
-	initialized:  bool,
-	arena:        virtual.Arena,
-	pages:        [dynamic]^EntityPage,
-	free_indices: [dynamic]u32,
-	slot_count:   u32,
-	live_count:   u32,
+	initialized:     bool,
+	arena:           virtual.Arena,
+	pages:           [dynamic]^EntityPage,
+	free_indices:    [dynamic]u32,
+	slot_count:      u32,
+	live_count:      u32,
 
 	// Maps typeid of T to SparseSet(T).
 	//
 	// Safety: NEVER use this raw, use `new_or_get_entity_subtype_system`
 	// or `get_entity_subtype_system to get the correct typing.
-	subtype_storage: map[string]SubtypeStorage,
+	subtype_storage: [Entity_Kind]SubtypeStorage,
 }
 
 init_entity_system_storage :: proc(system: ^EntitySystem) -> bool {
@@ -190,10 +193,7 @@ allocate_entity_slot :: proc(system: ^EntitySystem) -> ^EntitySlot {
 
 	slot := entity_slot_at_index(system, index)
 	slot^ = {
-		entity = {
-			id      = {generation = generation, index = index},
-			subtype = Entity,
-		},
+		entity = {id = {generation = generation, index = index}, kind = Entity_Kind(-1)}, // Kinda wierd...
 		alive = true,
 	}
 	system.live_count += 1
@@ -233,19 +233,13 @@ register_entity_subtype_no_destroy :: proc($T: typeid) -> ^SparseSet(T) {
 }
 
 register_entity_subtype_with_destroy :: proc($T: typeid, destroy_proc: proc(_: ^T)) -> ^SparseSet(T) {
-	ty_info := type_info_of(T).variant.(runtime.Type_Info_Named)
-	name := ty_info.name
-
-	_, ok := game.entity_system.subtype_storage[name]
-	assert(!ok, "Entity subtype already registered.")
-
 	sparse_set := new(SparseSet(T))
 
 	subtype_storage := SubtypeStorage {
-		ptr       = cast(^RawSparseSet)sparse_set,
+		ptr = cast(^RawSparseSet)sparse_set,
 		type_info = type_info_of(T)^,
-		destroy   = cast(DestroyProc)destroy_proc,
-		shutdown  = proc(storage_raw: rawptr, destroy: DestroyProc) {
+		destroy = cast(DestroyProc)destroy_proc,
+		shutdown = proc(storage_raw: rawptr, destroy: DestroyProc) {
 			storage := cast(^SparseSet(T))storage_raw
 			if destroy != nil {
 				for &entity in storage.dense {
@@ -260,7 +254,8 @@ register_entity_subtype_with_destroy :: proc($T: typeid, destroy_proc: proc(_: ^
 
 	subtype_storage.ptr.sparse_map_info = runtime.map_info(type_of(sparse_set.sparse))^
 
-	game.entity_system.subtype_storage[name] = subtype_storage
+	kind := entity_type_to_kind(T)
+	game.entity_system.subtype_storage[kind] = subtype_storage
 
 	return sparse_set
 }
@@ -271,11 +266,9 @@ register_entity_subtype :: proc {
 }
 
 get_entity_subtype_system :: proc($T: typeid) -> ^SparseSet(T) {
-	ty_info := type_info_of(T).variant.(runtime.Type_Info_Named)
-	name := ty_info.name
+	kind := entity_type_to_kind(T)
 
-	storage, ok := game.entity_system.subtype_storage[name]
-	assert(ok, "Entity subtype was not registered.")
+	storage := game.entity_system.subtype_storage[kind]
 
 	return cast(^SparseSet(T))(storage.ptr)
 }
@@ -283,7 +276,9 @@ get_entity_subtype_system :: proc($T: typeid) -> ^SparseSet(T) {
 new_entity_subtype :: proc($T: typeid) -> ^T where intrinsics.type_is_subtype_of(T, ^Entity) {
 	data := T{}
 	data.entity = new_entity_raw()
-	data.entity.subtype = T
+	data.entity.kind = entity_type_to_kind(T)
+
+    assert(reflect.enum_value_has_name(data.entity.kind))
 
 	storage := get_entity_subtype_system(T)
 
@@ -389,10 +384,11 @@ _remove_entity :: proc(id: EntityId) -> bool {
 	entity := get_entity_raw(id)
 	if entity == nil do return false
 
-	name := type_info_of(entity.subtype).variant.(runtime.Type_Info_Named).name
-	if storage, ok := game.entity_system.subtype_storage[name]; ok {
-		remove_elem_raw_sparse_set(storage.ptr, id, storage.type_info.size)
-	}
+    assert(reflect.enum_value_has_name(entity.kind))
+
+	storage := game.entity_system.subtype_storage[entity.kind]
+	remove_elem_raw_sparse_set(storage.ptr, id, storage.type_info.size)
+
 	return remove_entity_raw(id)
 }
 
@@ -400,12 +396,12 @@ destroy_entity :: proc(id: EntityId) -> bool {
 	entity := get_entity_raw(id)
 	if entity == nil do return false
 
-	name := type_info_of(entity.subtype).variant.(runtime.Type_Info_Named).name
-	if storage, ok := game.entity_system.subtype_storage[name]; ok {
-		if storage.destroy != nil {
-			if elem, eok := get_elem_raw_sparse_set(storage.ptr, id, storage.type_info.size); eok {
-				storage.destroy(elem)
-			}
+    assert(reflect.enum_value_has_name(entity.kind))
+
+	storage := game.entity_system.subtype_storage[entity.kind]
+	if storage.destroy != nil {
+		if elem, eok := get_elem_raw_sparse_set(storage.ptr, id, storage.type_info.size); eok {
+			storage.destroy(elem)
 		}
 	}
 
@@ -488,10 +484,9 @@ parallel_for_entities :: proc {
 shutdown_entity_system_storage :: proc(system: ^EntitySystem) {
 	if !system.initialized do return
 
-	for _, storage in system.subtype_storage {
+	for storage in system.subtype_storage {
 		storage.shutdown(storage.ptr, storage.destroy)
 	}
-	delete(system.subtype_storage)
 	virtual.arena_destroy(&system.arena)
 	system^ = {}
 }

@@ -1,6 +1,5 @@
 package meta
 
-import "base:intrinsics"
 import "base:runtime"
 import "core:strconv"
 
@@ -179,11 +178,7 @@ collect_files :: proc(path: string, allocator: runtime.Allocator) -> (ast_files:
 	return
 }
 
-get_named_type_reference :: proc(expr: ^ast.Expr) -> (
-	package_name: string,
-	type_name: string,
-	ok: bool,
-) {
+get_named_type_reference :: proc(expr: ^ast.Expr) -> (package_name: string, type_name: string, ok: bool) {
 	#partial switch ty in expr.derived {
 	case ^ast.Ident:
 		return "", ty.name, true
@@ -212,11 +207,7 @@ get_type_string :: proc(expr: ^ast.Expr, file: ^ast.File) -> (type_name: string,
 		if len(ty.args) == 1 {
 			package_name, generic_name, named_type_ok := get_named_type_reference(ty.expr)
 			if !named_type_ok {
-				report_error(
-					"Parametric shader field type must be a named type.",
-					&ty.node,
-					file,
-				)
+				report_error("Parametric shader field type must be a named type.", &ty.node, file)
 				break
 			}
 
@@ -232,12 +223,7 @@ get_type_string :: proc(expr: ^ast.Expr, file: ^ast.File) -> (type_name: string,
 				break
 			}
 
-			report_error(
-				"Parametric shader field type is not supported.",
-				&ty.node,
-				file,
-				"Use gfx.Ptr(T) or gfx.Slice(T).",
-			)
+			report_error("Parametric shader field type is not supported.", &ty.node, file, "Use gfx.Ptr(T) or gfx.Slice(T).")
 		}
 	case ^ast.Array_Type:
 		assert(ty.len != nil, "Arrays must be fixed length.")
@@ -258,12 +244,14 @@ get_type_string :: proc(expr: ^ast.Expr, file: ^ast.File) -> (type_name: string,
 }
 
 generate_shader_bindings :: proc(files: []^ast.File) {
-	builder: strings.Builder
-	strings.builder_init(&builder)
+	b: strings.Builder
+	strings.builder_init(&b)
 
-	strings.write_string(&builder, "//\n")
-	strings.write_string(&builder, "// This is a generated file, do not modify. See src/meta.odin\n")
-	strings.write_string(&builder, "//")
+	strings.write_string(&b, "//\n")
+	strings.write_string(&b, "// This is a generated file, do not modify. See src/meta.odin\n")
+	strings.write_string(&b, "//\n\n")
+
+	entity_kinds: [dynamic]^ast.Struct_Type
 
 	for file in files {
 		printed_header_once := false
@@ -273,58 +261,144 @@ generate_shader_bindings :: proc(files: []^ast.File) {
 
 			if len(value.attributes) <= 0 do continue
 
-			found := false
 			for attr in value.attributes {
 				for elem in attr.elems {
 					i, iok := elem.derived.(^ast.Ident)
-					if iok && i.name == "shader_shared" {
-						found = true
+					if iok {
+						switch i.name {
+						case "entity":
+							if len(value.values) != 1 {
+								report_error("Declaration has multiple values. This is not supported with @shader_shared.", value, file)
+								continue
+							}
+							if len(value.names) != 1 {
+								report_error("Declaration has names. This is not supported with @shader_shared.", value, file)
+								continue
+							}
+
+							ident, nok := value.names[0].derived.(^ast.Ident)
+							if !nok {
+								report_error("Declaration name must be an identifier.", value.names[0], file)
+								continue
+							}
+
+							struct_type, s_ok := value.values[0].derived_expr.(^ast.Struct_Type)
+							if !nok {
+								report_error("Declaration must be a struct.", value.values[0], file)
+								continue
+							}
+
+							append(&entity_kinds, struct_type)
+
+							continue
+
+						case "shader_shared":
+							if len(value.values) != 1 {
+								report_error("Declaration has multiple values. This is not supported with @shader_shared.", value, file)
+								continue
+							}
+							if len(value.names) != 1 {
+								report_error("Declaration has names. This is not supported with @shader_shared.", value, file)
+								continue
+							}
+
+							ident, nok := value.names[0].derived.(^ast.Ident)
+							if !nok {
+								report_error("Declaration name must be an identifier.", value.names[0], file)
+								continue
+							}
+
+							name := ident.name
+
+							#partial switch expr in value.values[0].derived_expr {
+							case ^ast.Struct_Type:
+								strings.write_string(&b, "struct ")
+								strings.write_string(&b, strip_gpu_name(name))
+
+								if expr.max_field_align != nil {
+									text := ""
+
+									#partial switch e in expr.max_field_align.derived {
+									case ^ast.Basic_Lit:
+										text = e.tok.text
+									case ^ast.Paren_Expr:
+										text = e.expr.derived.(^ast.Basic_Lit).tok.text
+									case:
+										unreachable()
+									}
+
+									max_field_align, ok := strconv.parse_int(text)
+									if max_field_align > 16 || !ok {
+										report_error("Struct must have a max field align of 16.", expr, file)
+									}
+								} else {
+									report_error("Struct must have a max field align of 16.", expr, file, "Add #max_field_align(16)")
+								}
+
+								if len(expr.fields.list) > 0 {
+									strings.write_string(&b, " {\n")
+
+									for field in expr.fields.list {
+										field_type, array_decl: string
+										if field.tag.text != "" {
+											field_type = field.tag.text[1:len(field.tag.text) - 1]
+										} else {
+											field_type, array_decl = get_type_string(field.type, file)
+										}
+
+										for banned_name in banned_types {
+											if banned_name.from == field_type {
+												report_error(
+													"Type is not allowed in a shader struct.",
+													&field.type.expr_base,
+													file,
+													banned_name.to,
+												)
+											}
+										}
+
+										field_name := field.names[0].derived_expr.(^ast.Ident).name
+
+										strings.write_string(&b, "  ")
+										strings.write_string(&b, field_type)
+										strings.write_string(&b, " ")
+										strings.write_string(&b, field_name)
+										if len(array_decl) > 0 {
+											strings.write_string(&b, array_decl)
+										}
+										strings.write_string(&b, ";\n")
+									}
+
+									strings.write_string(&b, "}")
+								}
+								strings.write_string(&b, ";\n\n")
+							case ^ast.Basic_Lit:
+								if value.type != nil {
+									report_warning("Shader shared define will ignore the type.", value, file)
+								}
+								fmt.sbprintln(&b, "#define", name, expr.tok.text)
+							}
+						case:
+							continue // skip writing header for any files that aren't generating code.
+						}
+
+						if !printed_header_once {
+							strings.write_string(&b, "\n\n")
+							strings.write_string(&b, "//\n")
+							strings.write_string(&b, "// Generated from ")
+							strings.write_string(&b, file.fullpath)
+							strings.write_string(&b, "\n")
+							strings.write_string(&b, "//\n")
+							printed_header_once = true
+						}
+
 					}
 				}
-			}
-
-			if !found do continue
-
-			if len(value.values) != 1 {
-				report_error("Declaration has multiple values. This is not supported with @shader_shared.", value, file)
-				continue
-			}
-			if len(value.names) != 1 {
-				report_error("Declaration has names. This is not supported with @shader_shared.", value, file)
-				continue
-			}
-
-			ident, nok := value.names[0].derived.(^ast.Ident)
-			if !nok {
-				report_error("Declaration name must be an identifier.", value.names[0], file)
-				continue
-			}
-
-			name := ident.name
-
-			if !printed_header_once {
-				strings.write_string(&builder, "\n\n")
-				strings.write_string(&builder, "//\n")
-				strings.write_string(&builder, "// Generated from ")
-				strings.write_string(&builder, file.fullpath)
-				strings.write_string(&builder, "\n")
-				strings.write_string(&builder, "//\n")
-				printed_header_once = true
-			}
-
-			#partial switch expr in value.values[0].derived_expr {
-			case ^ast.Struct_Type:
-				generate_bind_struct(&builder, name, expr, file)
-			case ^ast.Basic_Lit:
-				if value.type != nil {
-					report_warning("Shader shared define will ignore the type.", value, file)
-				}
-				generate_bind_lit(&builder, name, expr, file)
 			}
 		}
 	}
 
-	str := strings.to_string(builder)
+	str := strings.to_string(b)
 	str = strings.trim(str, "\n")
 
 	if !error_reported {
@@ -334,65 +408,9 @@ generate_shader_bindings :: proc(files: []^ast.File) {
 }
 
 generate_bind_lit :: proc(builder: ^strings.Builder, name: string, expr: ^ast.Basic_Lit, src_file: ^ast.File) {
-	fmt.sbprintln(builder, "#define", name, expr.tok.text)
 }
 
 generate_bind_struct :: proc(builder: ^strings.Builder, name: string, expr: ^ast.Struct_Type, src_file: ^ast.File) {
-	strings.write_string(builder, "struct ")
-	strings.write_string(builder, strip_gpu_name(name))
-
-	if expr.max_field_align != nil {
-		text := ""
-
-		#partial switch e in expr.max_field_align.derived {
-		case ^ast.Basic_Lit:
-			text = e.tok.text
-		case ^ast.Paren_Expr:
-			text = e.expr.derived.(^ast.Basic_Lit).tok.text
-		case:
-			unreachable()
-		}
-
-		max_field_align, ok := strconv.parse_int(text)
-		if max_field_align > 16 || !ok {
-			report_error("Struct must have a max field align of 16.", expr, src_file)
-		}
-	} else {
-		report_error("Struct must have a max field align of 16.", expr, src_file, "Add #max_field_align(16)")
-	}
-
-	if len(expr.fields.list) > 0 {
-		strings.write_string(builder, " {\n")
-
-		for field in expr.fields.list {
-			field_type, array_decl: string
-			if field.tag.text != "" {
-				field_type = field.tag.text[1:len(field.tag.text) - 1]
-			} else {
-				field_type, array_decl = get_type_string(field.type, src_file)
-			}
-
-			for banned_name in banned_types {
-				if banned_name.from == field_type {
-					report_error("Type is not allowed in a shader struct.", &field.type.expr_base, src_file, banned_name.to)
-				}
-			}
-
-			field_name := field.names[0].derived_expr.(^ast.Ident).name
-
-			strings.write_string(builder, "  ")
-			strings.write_string(builder, field_type)
-			strings.write_string(builder, " ")
-			strings.write_string(builder, field_name)
-			if len(array_decl) > 0 {
-				strings.write_string(builder, array_decl)
-			}
-			strings.write_string(builder, ";\n")
-		}
-
-		strings.write_string(builder, "}")
-	}
-	strings.write_string(builder, ";\n\n")
 }
 
 ShaderDecl :: struct {
@@ -409,7 +427,7 @@ generate :: proc() -> bool {
 	assert(ok)
 
 	generate_shader_bindings(files[:])
-	generate_assets(files[:])
+	generate_code(files[:])
 
 	if !error_reported {
 		fmt.println("Parsed and generated code in", time.since(start_time))
@@ -508,7 +526,14 @@ append_layout_asserts :: proc(b: ^strings.Builder, files: []^ast.File) {
 							// field types (gfx.Ptr, ImageId, ...) that aren't in scope in this
 							// generated file don't matter — only struct/field names are referenced. The `{}`
 							// is written literally (fmt treats it as a format verb otherwise).
-							fmt.sbprintf(b, "#assert(offset_of(%s, %s) == (offset_of(%s, %s) + size_of(type_of(", name, fname, name, prev_name)
+							fmt.sbprintf(
+								b,
+								"#assert(offset_of(%s, %s) == (offset_of(%s, %s) + size_of(type_of(",
+								name,
+								fname,
+								name,
+								prev_name,
+							)
 							strings.write_string(b, name)
 							strings.write_string(b, "{}.")
 							strings.write_string(b, prev_name)
@@ -534,14 +559,118 @@ is_supported_asset :: proc(path: string) -> bool {
 	return false
 }
 
-generate_assets :: proc(files: []^ast.File) {
+generate_code :: proc(files: []^ast.File) {
 	b: strings.Builder
 
+	bp :: fmt.sbprint
 	bpln :: fmt.sbprintln
 
 	bpln(&b, "//")
 	bpln(&b, "// This is a generated file, do not modify. See src/meta.odin")
 	bpln(&b, "//\n")
+
+	Entity_Kind_Data :: struct {
+		name:             string,
+		s_type:           ^ast.Struct_Type,
+		has_destroy_proc: bool,
+	}
+
+	entity_kinds: [dynamic]Entity_Kind_Data
+
+	for file in files {
+		for decl in file.decls {
+			value, ok := decl.derived_stmt.(^ast.Value_Decl)
+			if !ok do continue
+
+			if len(value.attributes) <= 0 do continue
+
+			for attr in value.attributes {
+				for elem in attr.elems {
+					i, iok := elem.derived.(^ast.Ident)
+					if iok {
+						switch i.name {
+						case "entity":
+							if len(value.values) != 1 {
+								report_error("Declaration has multiple values. This is not supported with @shader_shared.", value, file)
+								continue
+							}
+							if len(value.names) != 1 {
+								report_error("Declaration has names. This is not supported with @shader_shared.", value, file)
+								continue
+							}
+
+							ident, nok := value.names[0].derived.(^ast.Ident)
+							if !nok {
+								report_error("Declaration name must be an identifier.", value.names[0], file)
+								continue
+							}
+
+							struct_type, s_ok := value.values[0].derived_expr.(^ast.Struct_Type)
+							if !s_ok {
+								report_error("Declaration must be a struct.", value.values[0], file)
+								continue
+							}
+
+							has_destroy_proc := false
+
+							for decl in file.decls {
+								proc_value, ok := decl.derived_stmt.(^ast.Value_Decl)
+								if !ok do continue
+
+								proc_ident, nok := proc_value.names[0].derived.(^ast.Ident)
+
+								p, p_ok := proc_value.values[0].derived_expr.(^ast.Proc_Lit)
+								if !p_ok {
+									continue
+								}
+
+								if strings.has_prefix(proc_ident.name, strings.to_snake_case(ident.name)) &&
+								   strings.has_suffix(proc_ident.name, "_destroy") {
+									has_destroy_proc = true
+									break
+								}
+							}
+
+							append(
+								&entity_kinds,
+								Entity_Kind_Data{name = ident.name, s_type = struct_type, has_destroy_proc = has_destroy_proc},
+							)
+
+							continue
+						}
+					}
+				}
+			}
+		}
+	}
+
+	bpln(&b, "package game")
+	bpln(&b, "")
+	bpln(&b, "// Entity System")
+
+	bpln(&b, "Entity_Kind :: enum {")
+	for kind in entity_kinds {
+		bpln(&b, "    ", kind.name, ",", sep = "")
+	}
+	bpln(&b, "}\n")
+
+	bpln(&b, "register_entity_subtypes :: proc() {")
+	for kind in entity_kinds {
+		bp(&b, "    register_entity_subtype(", kind.name, sep = "")
+		if (kind.has_destroy_proc) {
+			bp(&b, ", ", strings.to_snake_case(kind.name), "_destroy", sep = "")
+		}
+		bpln(&b, ")")
+	}
+	bpln(&b, "}\n")
+
+	bpln(&b, "entity_type_to_kind :: proc($T: typeid) -> Entity_Kind {")
+    bpln(&b, "    return .Base when T == Entity else")
+	for kind in entity_kinds {
+        bpln(&b, "           .", kind.name, " when T == ", kind.name, " else", sep = "")
+	}
+    bpln(&b, "           #panic(\"Unregistered entity type\")")
+	bpln(&b, "}\n")
 
 	asset_files: [dynamic]os.File_Info
 
@@ -561,8 +690,6 @@ generate_assets :: proc(files: []^ast.File) {
 	working_directory, err_wd := os.get_working_directory(context.temp_allocator)
 	assert(err_wd == nil, "Can't get working directory")
 
-	bpln(&b, "package game")
-	bpln(&b, "")
 	bpln(&b, "// Assets")
 	bpln(&b, "Asset_Name :: enum {")
 	for file in asset_files {
