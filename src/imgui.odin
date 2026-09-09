@@ -1,6 +1,8 @@
 package game
 
+import "base:intrinsics"
 import "base:runtime"
+import "core:c"
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
@@ -212,11 +214,7 @@ update_imgui :: proc() {
 
 	if im.Begin("Entities") {
 		if im.CollapsingHeader("Raw Entities") {
-			im.Text(
-				"%d live entities across %d allocated slots",
-				game.entity_system.live_count,
-				game.entity_system.slot_count,
-			)
+			im.Text("%d live entities across %d allocated slots", game.entity_system.live_count, game.entity_system.slot_count)
 			clipper: im.ListClipper
 			im.ListClipper_Begin(&clipper, i32(game.entity_system.slot_count))
 
@@ -282,17 +280,18 @@ update_imgui :: proc() {
 			im.Text("")
 		}
 
-		for key, subtype_ptr in game.entity_system.subtype_storage {
+		for subtype_ptr, i in game.entity_system.subtype_storage {
 			storage_raw := subtype_ptr.ptr
 			size_t := subtype_ptr.type_info.size
 
-			if im.SmallButton(fmt.ctprintf("Clear All %s", key)) {
+			if im.SmallButton(fmt.ctprintf("Clear All %s", reflect.enum_string(i))) {
 				runtime.map_clear_dynamic(&storage_raw.sparse, &storage_raw.sparse_map_info)
 				storage_raw.dense.len = 0
 			}
 
 			im.SameLine()
 
+			// TODO: really sketchy.
 			if im.TreeNode(
 				fmt.ctprintf("%s Entities (num: %d)", subtype_ptr.type_info.variant.(runtime.Type_Info_Named).name, storage_raw.dense.len),
 			) {
@@ -397,7 +396,11 @@ update_imgui :: proc() {
 
 		mesh_views := [?]cstring{"Shaded", "Shadow visibility", "Mesh normals", "Shading normals", "Shaded without shadows"}
 		im.ComboChar("Mesh diagnostic", &game.render_state.mesh_debug_view, raw_data(&mesh_views), len(mesh_views))
+	}
+	im.End()
 
+	if im.Begin("Environment V2") {
+		inspector_draw_struct(&game.state.environment)
 	}
 	im.End()
 
@@ -445,6 +448,144 @@ update_imgui :: proc() {
 // ---------------------------------------------------------------------------
 // Box3D debug draw (replaces the PhysX render-buffer line loop)
 // ---------------------------------------------------------------------------
+
+inspector_draw_struct :: proc(data: ^$T) where intrinsics.type_is_struct(T) {
+	for field in reflect.struct_fields_zipped(T) {
+		tag_value, is_inspectable := reflect.struct_tag_lookup(field.tag, "edit")
+
+		if tag_value == "-" {
+			continue
+		}
+		if !is_inspectable {
+			continue
+		}
+
+		field_value := reflect.struct_field_value(any{data, typeid_of(T)}, field)
+        label := strings.clone_to_cstring(field.name, context.temp_allocator)
+
+		switch v in field.type.variant {
+		case runtime.Type_Info_Named:
+			unimplemented("Named")
+		case runtime.Type_Info_Integer:
+			if !reflect.is_endian_platform(field.type) || field.type.size > 8 {
+				continue
+			}
+			if v.signed {
+				edit_value, ok := reflect.as_i64(field_value)
+				assert(ok)
+				min_value, max_value: i64 = 0, 20
+				if im.SliderScalar(label, .S64, &edit_value, &min_value, &max_value, flags = {.AlwaysClamp}) {
+					switch &dst in field_value {
+					case i8:
+						dst = i8(edit_value)
+					case i16:
+						dst = i16(edit_value)
+					case i32:
+						dst = i32(edit_value)
+					case i64:
+						dst = edit_value
+					case int:
+						dst = int(edit_value)
+					}
+				}
+			} else {
+				edit_value, ok := reflect.as_u64(field_value)
+				assert(ok)
+				min_value, max_value: u64 = 0, 20
+				if im.SliderScalar(label, .U64, &edit_value, &min_value, &max_value, flags = {.AlwaysClamp}) {
+					switch &dst in field_value {
+					case u8:
+						dst = u8(edit_value)
+					case u16:
+						dst = u16(edit_value)
+					case u32:
+						dst = u32(edit_value)
+					case u64:
+						dst = edit_value
+					case uint:
+						dst = uint(edit_value)
+					case uintptr:
+						dst = uintptr(edit_value)
+					}
+				}
+			}
+
+		case runtime.Type_Info_Rune:
+			unimplemented("Rune")
+		case runtime.Type_Info_Float:
+			if !reflect.is_endian_platform(field.type) || field.type.size > 8 {
+				continue
+			}
+			edit_value, ok := reflect.as_f64(field_value)
+			assert(ok)
+			min_value, max_value: f64 = 0, 20
+			if im.SliderScalar(label, .Double, &edit_value, &min_value, &max_value, flags = {.AlwaysClamp}) {
+				switch &dst in field_value {
+				case f16: dst = f16(edit_value)
+				case f32: dst = f32(edit_value)
+				case f64: dst = f64(edit_value)
+				}
+			}
+		case runtime.Type_Info_Complex:
+			unimplemented("Complex")
+		case runtime.Type_Info_Quaternion:
+			unimplemented("Quaternion")
+		case runtime.Type_Info_String:
+			unimplemented("String")
+		case runtime.Type_Info_Boolean:
+			edit_value, ok := reflect.as_f64(field_value)
+			assert(ok)
+			min_value, max_value: f64 = 0, 20
+			if im.SliderScalar(label, .Double, &edit_value, &min_value, &max_value, flags = {.AlwaysClamp}) {
+				switch &dst in field_value {
+				case f16: dst = f16(edit_value)
+				case f32: dst = f32(edit_value)
+				case f64: dst = f64(edit_value)
+				}
+			}
+		case runtime.Type_Info_Any:
+			unimplemented("Any")
+		case runtime.Type_Info_Type_Id:
+			unimplemented("Type_Id")
+		case runtime.Type_Info_Pointer:
+			unimplemented("Pointer")
+		case runtime.Type_Info_Multi_Pointer:
+			unimplemented("Multi_Pointer")
+		case runtime.Type_Info_Procedure:
+			unimplemented("Procedure")
+		case runtime.Type_Info_Array:
+			unimplemented("Array")
+		case runtime.Type_Info_Enumerated_Array:
+			unimplemented("Enumerated_Array")
+		case runtime.Type_Info_Dynamic_Array:
+			unimplemented("Dynamic_Array")
+		case runtime.Type_Info_Slice:
+			unimplemented("Slice")
+		case runtime.Type_Info_Parameters:
+			unimplemented("Parameters")
+		case runtime.Type_Info_Struct:
+			unimplemented("Struct")
+		case runtime.Type_Info_Union:
+			unimplemented("Union")
+		case runtime.Type_Info_Enum:
+			unimplemented("Enum")
+		case runtime.Type_Info_Map:
+			unimplemented("Map")
+		case runtime.Type_Info_Bit_Set:
+			unimplemented("Bit_Set")
+		case runtime.Type_Info_Simd_Vector:
+			unimplemented("Simd_Vector")
+		case runtime.Type_Info_Matrix:
+			unimplemented("Matrix")
+		case runtime.Type_Info_Soa_Pointer:
+			unimplemented("Soa_Pointer")
+		case runtime.Type_Info_Bit_Field:
+			unimplemented("Bit_Field")
+		case runtime.Type_Info_Fixed_Capacity_Dynamic_Array:
+			unimplemented("Fixed_Capacity_Dynamic_Array")
+		}
+	}
+}
 
 g_show_physics_debug: bool
 
