@@ -170,9 +170,9 @@ init_imgui :: proc() {
 }
 
 init_test_resources :: proc() {
-	tony_mc_mapface := gfx.load_image_from_memory(asset_content(.t_tony_mc_mapface), .D3, .D3)
+	tony_mc_mapface := gfx.load_image_from_file("assets/textures/tonemapping/t_tony_mc_mapface.ktx2", .D3, .D3)
 
-	dfg := gfx.load_image_from_memory(asset_content(.t_dfg))
+	dfg := gfx.load_image_from_file("assets/gen/t_dfg.ktx2")
 
 	// Default Imageture Sampler
 	default_sampler := gfx.create_sampler(.LINEAR, .REPEAT, max_lod = 10.0, max_anisotropy = gfx.r_ctx.limits.maxSamplerAnisotropy)
@@ -199,16 +199,16 @@ init_test_materials :: proc() {
 	game.render_state.scene_resources.materials_buffer = gfx.create_buffer(GPUMaterial, 20)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.scene_resources.materials_buffer)
 
-	base_color_id := gfx.add_image(gfx.load_image_from_memory(asset_content(.t_test_basecolor2)))
-	normal_map_id := gfx.add_image(gfx.load_image_from_memory(asset_content(.t_test_normalmap)))
-	proughness_metallic_ao_id := gfx.add_image(gfx.load_image_from_memory(asset_content(.t_test_rma)))
+	base_color_id := gfx.add_image(gfx.load_image_from_file("assets/textures/t_test_basecolor2.ktx2"))
+	normal_map_id := gfx.add_image(gfx.load_image_from_file("assets/textures/t_test_normalmap.ktx2"))
+	proughness_metallic_ao_id := gfx.add_image(gfx.load_image_from_file("assets/textures/t_test_rma.ktx2"))
 
 	add_material({base_color_id = base_color_id, normal_map_id = normal_map_id, ao_roughness_metallic_id = proughness_metallic_ao_id})
 	add_material({base_color_id = base_color_id, normal_map_id = normal_map_id, ao_roughness_metallic_id = proughness_metallic_ao_id})
 
-	base_color_id = gfx.add_image(gfx.load_image_from_memory(asset_content(.t_basecolor)))
-	normal_map_id = gfx.add_image(gfx.load_image_from_memory(asset_content(.t_normalmap)))
-	proughness_metallic_ao_id = gfx.add_image(gfx.load_image_from_memory(asset_content(.t_rma)))
+	base_color_id = gfx.add_image(gfx.load_image_from_file("assets/textures/materialball2/t_basecolor.ktx2"))
+	normal_map_id = gfx.add_image(gfx.load_image_from_file("assets/textures/materialball2/t_normalmap.ktx2"))
+	proughness_metallic_ao_id = gfx.add_image(gfx.load_image_from_file("assets/textures/materialball2/t_rma.ktx2"))
 
 	add_material({base_color_id = base_color_id, normal_map_id = normal_map_id, ao_roughness_metallic_id = proughness_metallic_ao_id})
 }

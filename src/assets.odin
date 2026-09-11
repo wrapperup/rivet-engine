@@ -8,7 +8,7 @@ import "core:strings"
 AssetSystem :: struct {
 	arena:       virtual.Arena,
 	initialized: bool,
-	assets:      [Asset_Name]Asset,
+	assets:      [dynamic]Asset,
 }
 
 Asset_Load_Kind :: enum {
@@ -103,10 +103,6 @@ init_asset_system :: proc() -> bool {
 	}
 	game.asset_system.initialized = true
 
-	if load_generated_assets() != .Ready {
-		shutdown_asset_system()
-		return false
-	}
 	return true
 }
 
@@ -116,14 +112,15 @@ shutdown_asset_system :: proc() {
 	game.asset_system = {}
 }
 
-get_asset :: proc(name: Asset_Name) -> ^Asset {
-	return &game.asset_system.assets[name]
-}
-
-asset_content :: proc(name: Asset_Name) -> []u8 {
-	return game.asset_system.assets[name].content
-}
-
-asset_path :: proc(name: Asset_Name) -> string {
-	return game.asset_system.assets[name].source_path
-}
+// TODO: Revisit this.
+// get_asset :: proc(name: Asset_Name) -> ^Asset {
+// 	return &game.asset_system.assets[name]
+// }
+//
+// asset_content :: proc(name: Asset_Name) -> []u8 {
+// 	return game.asset_system.assets[name].content
+// }
+//
+// asset_path :: proc(name: Asset_Name) -> string {
+// 	return game.asset_system.assets[name].source_path
+// }

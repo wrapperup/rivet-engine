@@ -147,7 +147,7 @@ game_init :: proc() {
 		grid_size: f32 = 3.0
 
 		sound_source := new_entity(SoundSource)
-		init_sound_source(sound_source, .a_outdoors_birds, true, 0.1, false, 0.5)
+		init_sound_source(sound_source, "assets/audio/ambient/a_outdoors_birds.wav", true, 0.1, false, 0.5)
 
         game.update_physics = false
 		game.state = GameState {
@@ -161,7 +161,7 @@ game_init :: proc() {
 			update_ddgi = true, // DDGI must run for reflection capture (and GI) to populate
 		}
 
-		game.ball_mesh, _ = load_gpu_mesh_from_file(asset_path(.demo_ball), context.temp_allocator)
+		game.ball_mesh, _ = load_gpu_mesh_from_file("assets/meshes/static/demo_ball.glb", context.temp_allocator)
 		defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, game.ball_mesh)
 
         for i in 0 ..< 256 {
@@ -175,7 +175,7 @@ game_init :: proc() {
 
 		// Load AFTER `game.state = GameState{...}` — that assignment replaces the whole struct,
 		// so setting current_scene before it just gets wiped (source -> "", arenas -> zero).
-		load_scene_from_file(&game.state.current_scene, asset_path(.scene_map_test))
+		load_scene_from_file(&game.state.current_scene, "assets/meshes/static/scene_map_test.glb")
 	}
 
 	game.frame_time_start = time.tick_now()

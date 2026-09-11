@@ -24,10 +24,10 @@ shutdown_sound_system :: proc() {
 	game.sound_system = {}
 }
 
-play_sound :: proc(asset_name: Asset_Name) {
+play_sound :: proc(path: string) {
 	assert(game.sound_system.initialized)
-    path_c := strings.clone_to_cstring(asset_path(asset_name))
-    defer delete(path_c)
+	path_c := strings.clone_to_cstring(path)
+	defer delete(path_c)
 
 	ma.engine_play_sound(&game.sound_system.sound_engine, path_c, nil)
 }

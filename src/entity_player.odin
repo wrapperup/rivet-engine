@@ -202,27 +202,27 @@ update_player :: proc(player: ^Player, dt: f64) {
 				player.footstep_distance_traveled = 0
 				player.footstep_time = 0
 
-				STEP_TABLE: []Asset_Name = {
-					.a_step1,
-					.a_step2,
-					.a_step3,
-					.a_step4,
-					.a_step5,
-					.a_step6,
-					.a_step7,
-					.a_step8,
-					.a_step9,
-					.a_step10,
-					.a_step11,
-					.a_step12,
-					.a_step13,
-					.a_step14,
-					.a_step15,
-					.a_step16,
-					.a_step17,
-					.a_step18,
-					.a_step19,
-					.a_step20,
+				STEP_TABLE: []string = {
+					"assets/audio/footsteps/a_step1.wav",
+					"assets/audio/footsteps/a_step2.wav",
+					"assets/audio/footsteps/a_step3.wav",
+					"assets/audio/footsteps/a_step4.wav",
+					"assets/audio/footsteps/a_step5.wav",
+					"assets/audio/footsteps/a_step6.wav",
+					"assets/audio/footsteps/a_step7.wav",
+					"assets/audio/footsteps/a_step8.wav",
+					"assets/audio/footsteps/a_step9.wav",
+					"assets/audio/footsteps/a_step10.wav",
+					"assets/audio/footsteps/a_step11.wav",
+					"assets/audio/footsteps/a_step12.wav",
+					"assets/audio/footsteps/a_step13.wav",
+					"assets/audio/footsteps/a_step14.wav",
+					"assets/audio/footsteps/a_step15.wav",
+					"assets/audio/footsteps/a_step16.wav",
+					"assets/audio/footsteps/a_step17.wav",
+					"assets/audio/footsteps/a_step18.wav",
+					"assets/audio/footsteps/a_step19.wav",
+					"assets/audio/footsteps/a_step20.wav",
 				}
 
 				play_sound(STEP_TABLE[player.footstep])

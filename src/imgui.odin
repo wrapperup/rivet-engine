@@ -1,5 +1,6 @@
 package game
 
+import "core:os"
 import "base:intrinsics"
 import "base:runtime"
 import "core:c"
@@ -33,8 +34,7 @@ configure_im :: proc() {
 	font_config.PixelSnapH = false
 	font_config.GlyphOffset = {0.0, -1.0}
 
-	segoe_ui := asset_content(.f_segoeui)
-	im.FontAtlas_AddFontFromMemoryTTF(io.Fonts, raw_data(segoe_ui), cast(i32)len(segoe_ui), 18.0, &font_config)
+	im.FontAtlas_AddFontFromFileTTF(io.Fonts, "assets/fonts/f_segoeui.ttf", 18.0, &font_config)
 
 	font_config.MergeMode = true
 
@@ -46,11 +46,9 @@ configure_im :: proc() {
 	font_config.RasterizerMultiply = 1.0
 	font_config.GlyphOffset = {0.0, -1.0}
 
-	fa_regular := asset_content(.f_fa_regular_400)
-	im.FontAtlas_AddFontFromMemoryTTF(
+	im.FontAtlas_AddFontFromFileTTF(
 		io.Fonts,
-		raw_data(fa_regular),
-		cast(i32)len(fa_regular),
+		"assets/fonts/f_fa_regular_400.ttf",
 		14.0,
 		&font_config,
 		slice.as_ptr(FA_RANGES[:]),
@@ -564,7 +562,7 @@ inspector_draw_struct :: proc(data: ^$T) where intrinsics.type_is_struct(T) {
 		case runtime.Type_Info_Parameters:
 			unimplemented("Parameters")
 		case runtime.Type_Info_Struct:
-			unimplemented("Struct")
+			unimplemented("Struct (recurse)")
 		case runtime.Type_Info_Union:
 			unimplemented("Union")
 		case runtime.Type_Info_Enum:

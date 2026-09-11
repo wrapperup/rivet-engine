@@ -548,17 +548,6 @@ append_layout_asserts :: proc(b: ^strings.Builder, files: []^ast.File) {
 	}
 }
 
-// Keep in sync with `asset_type_from_base` in src/assets.odin — only extensions the engine can
-// actually load should become Asset_Name entries. Everything else (.blend, .exr, .aup3, ...) is
-// skipped so source files sitting in assets/ don't pollute the generated enum.
-is_supported_asset :: proc(path: string) -> bool {
-	switch strings.to_lower(filepath.ext(path), context.temp_allocator) {
-	case ".glb", ".ktx2", ".wav", ".txt", ".ttf":
-		return true
-	}
-	return false
-}
-
 generate_code :: proc(files: []^ast.File) {
 	b: strings.Builder
 
@@ -572,7 +561,6 @@ generate_code :: proc(files: []^ast.File) {
 	Entity_Kind_Data :: struct {
 		name:             string,
 		s_type:           ^ast.Struct_Type,
-		has_destroy_proc: bool,
 	}
 
 	entity_kinds: [dynamic]Entity_Kind_Data
@@ -611,29 +599,9 @@ generate_code :: proc(files: []^ast.File) {
 								continue
 							}
 
-							has_destroy_proc := false
-
-							for decl in file.decls {
-								proc_value, ok := decl.derived_stmt.(^ast.Value_Decl)
-								if !ok do continue
-
-								proc_ident, nok := proc_value.names[0].derived.(^ast.Ident)
-
-								p, p_ok := proc_value.values[0].derived_expr.(^ast.Proc_Lit)
-								if !p_ok {
-									continue
-								}
-
-								if strings.has_prefix(proc_ident.name, strings.to_snake_case(ident.name)) &&
-								   strings.has_suffix(proc_ident.name, "_destroy") {
-									has_destroy_proc = true
-									break
-								}
-							}
-
 							append(
 								&entity_kinds,
-								Entity_Kind_Data{name = ident.name, s_type = struct_type, has_destroy_proc = has_destroy_proc},
+								Entity_Kind_Data{name = ident.name, s_type = struct_type},
 							)
 
 							continue
@@ -656,11 +624,12 @@ generate_code :: proc(files: []^ast.File) {
 
 	bpln(&b, "register_entity_subtypes :: proc() {")
 	for kind in entity_kinds {
-		bp(&b, "    register_entity_subtype(", kind.name, sep = "")
-		if (kind.has_destroy_proc) {
-			bp(&b, ", ", strings.to_snake_case(kind.name), "_destroy", sep = "")
-		}
-		bpln(&b, ")")
+        snake_case_name := strings.to_snake_case(kind.name)
+        bpln(&b, "    when #defined(", snake_case_name, "_destroy) {", sep = "")
+        bpln(&b, "        register_entity_subtype(", kind.name, ", ", snake_case_name, "_destroy)", sep = "")
+        bpln(&b, "    } else {")
+        bpln(&b, "        register_entity_subtype(", kind.name, ")", sep = "")
+        bpln(&b, "    }")
 	}
 	bpln(&b, "}\n")
 
@@ -671,43 +640,6 @@ generate_code :: proc(files: []^ast.File) {
 	}
     bpln(&b, "           #panic(\"Unregistered entity type\")")
 	bpln(&b, "}\n")
-
-	asset_files: [dynamic]os.File_Info
-
-	// TODO: This probably needs cleanup, I just made it work with os2->os breaking changes.
-	walker := filepath.walker_create("assets")
-	defer os.walker_destroy(&walker)
-
-	for info in os.walker_walk(&walker) {
-		if info.type == .Directory do continue
-		if !is_supported_asset(info.fullpath) do continue // skip source files (.blend, .exr, .aup3, ...)
-
-		cloned, clone_err := os.file_info_clone(info, context.allocator)
-		assert(clone_err == nil)
-		append(&asset_files, cloned)
-	}
-
-	working_directory, err_wd := os.get_working_directory(context.temp_allocator)
-	assert(err_wd == nil, "Can't get working directory")
-
-	bpln(&b, "// Assets")
-	bpln(&b, "Asset_Name :: enum {")
-	for file in asset_files {
-		stem := filepath.stem(file.name)
-		bpln(&b, "    ", stem, ",", sep = "")
-	}
-	bpln(&b, "}")
-	bpln(&b, "")
-	bpln(&b, "load_generated_assets :: proc() -> Asset_Load_Result {")
-	for file in asset_files {
-		base := filepath.stem(file.name)
-		rel_path, k := filepath.rel(working_directory, file.fullpath)
-		assert(k == nil, "Couldn't get relative path")
-		fixed_path, ok := strings.replace_all(rel_path, "\\", "/")
-		bpln(&b, "    game.asset_system.assets[.", base, "] = load_asset(\"", fixed_path, "\") or_return", sep = "")
-	}
-	bpln(&b, "    return .Ready")
-	bpln(&b, "}")
 
 	append_layout_asserts(&b, files)
 

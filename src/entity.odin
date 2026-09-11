@@ -285,8 +285,6 @@ new_entity_subtype :: proc($T: typeid) -> ^T where intrinsics.type_is_subtype_of
 	return assign_at_sparse_set(storage, data.entity.id, data)
 }
 
-#assert(size_of(typeid) == 8)
-
 new_entity_subtype_id :: proc($T: typeid) -> (^T, TypedEntityId(T)) where intrinsics.type_is_subtype_of(T, ^Entity) {
 	subtype := new_entity_subtype(T)
 
