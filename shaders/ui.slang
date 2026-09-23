@@ -30,7 +30,7 @@ struct FragmentInput {
     Vec2 size;
 
     [vk_location(4)]
-    f32 radius;
+    Vec4 radius;
 };
 
 [shader("vertex")]
@@ -53,7 +53,7 @@ FragmentInput vertex_main(VertexInput in) {
         color,
         command.pos,
         command.size,
-        command.corner_radius,
+        command.radius,
     };
 }
 
@@ -64,7 +64,7 @@ struct FragmentOutput {
 
 [shader("fragment")]
 FragmentOutput fragment_main(FragmentInput in) {
-    let dist = sdf_rounded_box(in.pos_cs.xy - in.pos - in.size/2.f, in.size / 2.f, 10); 
+    let dist = sdf_rounded_box(in.pos_cs.xy - in.pos - in.size/2.f, in.size / 2.f, in.radius); 
 
     let aa = max(fwidth(dist), 1e-4);
     let coverage = 1.0 - smoothstep(-0.5 * aa, 0.5 * aa, dist);

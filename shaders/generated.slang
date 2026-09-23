@@ -317,7 +317,7 @@ struct UI_Command {
   Vec2 pos;
   Vec2 size;
   Vec4 color;
-  f32 corner_radius;
+  Vec4 radius;
 };
 
 

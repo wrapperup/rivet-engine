@@ -1,13 +1,14 @@
 package game
 
+import "core:slice"
 import "gfx"
 
 @(shader_shared)
 UI_Command :: struct #max_field_align(16) {
-	pos:           Vec2,
-	size:          Vec2,
-	color:         Vec4,
-	corner_radius: f32,
+	pos:    Vec2,
+	size:   Vec2,
+	color:  Vec4,
+	radius: Vec4, // clockwise from top-left corner
 }
 
 @(shader_shared)
@@ -19,6 +20,7 @@ UI_Push :: struct #max_field_align(16) {
 UIRenderPass :: struct {
 	pipeline:        ^gfx.GraphicsPipeline,
 	commands:        [dynamic]UI_Command,
+	num_commands:    int,
 	command_buffers: [gfx.FRAME_OVERLAP]gfx.Buffer(UI_Command),
 }
 
@@ -51,26 +53,37 @@ init_ui_rp :: proc() {
 	reserve(&game.render_state.geometry_rp.model_matrices, 16_000)
 }
 
-ui_prepare :: proc() {
-	TEST_COMMANDS: []UI_Command = {
-		// UI_Command{pos = {0, 0}, size = {128, 128}, color = {1, 0, 0, 1}},
-		// UI_Command{pos = {256, 0}, size = {64, 128}, color = {0, 1, 0, 1}},
-		// UI_Command{pos = {0, 256}, size = {256, 128}, color = {0, 0, 1, 0.5}},
+ui_append_command :: proc(pos: Vec2, size: Vec2, color: Vec4 = 1, radius: Vec4 = 0) {
+	radius := radius
+
+	half_size := size / 2
+	max_radius := slice.min(half_size[:])
+
+	for &r in radius {
+		r = min(r, max_radius)
 	}
 
+	command := UI_Command {
+		pos    = pos,
+		size   = size,
+		color  = color,
+		radius = radius,
+	}
+
+	append(&game.render_state.ui_rp.commands, command)
+}
+
+ui_prepare :: proc() {
 	ui_rp := &game.render_state.ui_rp
-
-	// TEMP TODO: clear for next frame.
-	clear(&ui_rp.commands)
-
-	// TODO: these should be filled by the user, but we will fill it with TEST_COMMANDS for now.
-	append(&ui_rp.commands, ..TEST_COMMANDS)
 
 	assert(len(ui_rp.commands) < MAX_UI_COMMANDS, "Submitted too many UI commands.")
 
 	if len(ui_rp.commands) > 0 {
 		gfx.staging_write_buffer_slice(&ui_rp.command_buffers[gfx.current_frame_index()], ui_rp.commands[:])
 	}
+
+	ui_rp.num_commands = len(ui_rp.commands)
+	clear(&ui_rp.commands)
 }
 
 record_ui_pass :: proc(cmd: gfx.CommandBuffer) {
@@ -90,7 +103,7 @@ record_ui_pass :: proc(cmd: gfx.CommandBuffer) {
 		commands := gfx.slice(game.render_state.ui_rp.command_buffers[gfx.current_frame_index()])
 		gfx.cmd_push_constants(cmd, UI_Push{commands = commands, viewport_size = auto_cast (transmute([2]u32)game.renderer.draw_extent)})
 
-		gfx.cmd_draw(cmd, 4, u32(len(game.render_state.ui_rp.commands)))
+		gfx.cmd_draw(cmd, 4, u32(game.render_state.ui_rp.num_commands))
 
 		gfx.cmd_end_rendering(cmd)
 	}
