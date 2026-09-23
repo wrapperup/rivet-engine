@@ -24,6 +24,7 @@ when ODIN_OS == .Windows {
 	GAME_LIBRARY_BUILD_OUTPUT :: "build/debug/game.pending.dll"
 	GAME_DEBUG_DATABASE :: "build/debug/game.pdb"
 	GLFW_RUNTIME_SOURCE :: ODIN_ROOT + "vendor/glfw/lib/glfw3.dll"
+	BOX3D_RUNTIME_SOURCE :: ODIN_ROOT + "vendor/box3d/lib/box3d.dll"
 	SLANG_RUNTIME_DIRECTORY :: "deps/odin-slang/slang/bin/"
 	SLANG_RUNTIME_DLLS :: [?]string {
 		"gfx.dll",
@@ -303,6 +304,11 @@ ensure_runtime_dependencies :: proc(output_directory: string, include_hot_reload
 			return false
 		}
 
+		if include_hot_reload_libraries &&
+		   !copy_runtime_dependency_if_missing(BOX3D_RUNTIME_SOURCE, fmt.tprintf("{0}/box3d.dll", output_directory)) {
+			return false
+		}
+
 		for filename in SLANG_RUNTIME_DLLS {
 			if !copy_runtime_dependency_if_missing(
 				fmt.tprintf("{0}{1}", SLANG_RUNTIME_DIRECTORY, filename),
@@ -337,6 +343,7 @@ start_game_library_build :: proc() -> (process: os.Process, started: bool) {
 			"-debug",
 			"-o:none",
 			"-define:GLFW_SHARED=true",
+			"-define:BOX3D_SHARED=true",
 			"-pdb-name:" + GAME_DEBUG_DATABASE,
 			"-out:" + GAME_LIBRARY_BUILD_OUTPUT,
 		}
