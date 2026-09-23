@@ -413,16 +413,16 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 			}
 		}
 
-        // Do a second pass but don't require a discrete GPU.
+		// Do a second pass but don't require a discrete GPU.
 		if r_ctx.physical_device == nil {
-            for device in devices {
-                is_suitable, _is_discrete := is_device_suitable(device)
-                if is_suitable {
-                    r_ctx.physical_device = device
-                    break
-                }
-            }
-        }
+			for device in devices {
+				is_suitable, _is_discrete := is_device_suitable(device)
+				if is_suitable {
+					r_ctx.physical_device = device
+					break
+				}
+			}
+		}
 
 		if r_ctx.physical_device == nil {
 			panic("No GPU found that supports all required features.")
@@ -739,9 +739,7 @@ submit :: proc(cmd: vk.CommandBuffer) -> (swapchain_resized: bool) {
 
 	queue_present_result := vk.QueuePresentKHR(r_ctx.graphics_queue, &present_info)
 
-	if queue_present_result == .ERROR_OUT_OF_DATE_KHR ||
-	   queue_present_result == .SUBOPTIMAL_KHR ||
-	   r_ctx.swapchain_suboptimal {
+	if queue_present_result == .ERROR_OUT_OF_DATE_KHR || queue_present_result == .SUBOPTIMAL_KHR || r_ctx.swapchain_suboptimal {
 		swapchain_resized = resize_swapchain()
 		r_ctx.swapchain_suboptimal = false
 	} else {
@@ -848,20 +846,20 @@ is_device_suitable :: proc(device: vk.PhysicalDevice) -> (is_suitable: bool, is_
 	properties: vk.PhysicalDeviceProperties
 	vk.GetPhysicalDeviceProperties(device, &properties)
 
-    log_normal("GPU:", string(properties.deviceName[:]))
+	log_normal("GPU:", string(properties.deviceName[:]))
 
-    vk_ray_query_features := vk.PhysicalDeviceRayQueryFeaturesKHR {
-        sType = .PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
-    }
+	vk_ray_query_features := vk.PhysicalDeviceRayQueryFeaturesKHR {
+		sType = .PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+	}
 
 	vk_accel_features := vk.PhysicalDeviceAccelerationStructureFeaturesKHR {
 		sType = .PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
-        pNext = &vk_ray_query_features,
+		pNext = &vk_ray_query_features,
 	}
 
 	vk_13_features := vk.PhysicalDeviceVulkan13Features {
 		sType = .PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        pNext = &vk_accel_features,
+		pNext = &vk_accel_features,
 	}
 
 	vk_12_features := vk.PhysicalDeviceVulkan12Features {
@@ -925,9 +923,9 @@ check_device_extension_support :: proc(device: vk.PhysicalDevice) -> bool {
 			}
 		}
 
-        if !found {
-            log_normal("Extension not available:", expected_extension)
-        }
+		if !found {
+			log_normal("Extension not available:", expected_extension)
+		}
 
 		found or_return
 	}

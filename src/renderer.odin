@@ -43,9 +43,7 @@ GPUEnvironment :: struct #max_field_align(16) {
 #assert(offset_of(GPUEnvironment, env_sampler) == 24)
 
 @(shader_shared)
-GPUDebugView :: enum u32 {
-    
-}
+GPUDebugView :: enum u32 {}
 
 @(shader_shared)
 GPUGlobalData :: struct #max_field_align(16) {
@@ -101,6 +99,7 @@ RenderState :: struct {
 	skinning_rp:                     SkinningRenderPass,
 	shadow_rp:                       ShadowRenderPass,
 	post_process_rp:                 PostProcessingRenderPass,
+	ui_rp:                           UIRenderPass,
 
 	// Reflection probe pipelines
 	reflection_capture_pipeline:     ^gfx.ComputePipeline,
@@ -225,6 +224,7 @@ init_render_passes :: proc() {
 	init_ddgi_rp()
 	init_reflection_probe_rp()
 	init_rt_scene_pass()
+	init_ui_rp()
 }
 
 init_shared_buffers :: proc() {
@@ -242,13 +242,10 @@ init_shared_buffers :: proc() {
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.scene_resources.point_light_buffer)
 
 	environment^ = {
-		point_lights = gfx.slice(
-			game.render_state.scene_resources.point_light_buffer,
-			count = 0,
-		),
-		env_sampler = game.render_state.temp_resources.env_sampler_id,
+		point_lights = gfx.slice(game.render_state.scene_resources.point_light_buffer, count = 0),
+		env_sampler  = game.render_state.temp_resources.env_sampler_id,
 		env_map      = game.render_state.atmosphere_rp.environment_id,
-		dfg         = game.render_state.temp_resources.dfg_id,
+		dfg          = game.render_state.temp_resources.dfg_id,
 	}
 }
 
@@ -266,7 +263,7 @@ draw :: proc() {
 				log.warn("Shaders failed to load!")
 			}
 		}
-    }
+	}
 
 	// TEMP: test draw command
 	for &ball in get_entities(Ball) {
@@ -303,6 +300,7 @@ draw :: proc() {
 	rt_scene_prepare(&frame.rt)
 	ddgi_prepare(volumes, game.state.update_ddgi && len(frame.rt.instances) > 0)
 	reflection_probe_prepare(probes)
+	ui_prepare()
 	prepare_shared_frame_data()
 
 	record_atmosphere_pass(cmd)
@@ -317,6 +315,37 @@ draw :: proc() {
 
 	// Finalize ImGui draw data for this frame; gfx_imgui_render consumes it below.
 	im.Render()
+
+	// kinda HACK: use draw image for resolved image when msaa is disabled.
+	// TODO: this means you can't enable/disable MSAA at runtime until this hack is fixed.
+	if gfx.msaa_enabled() {
+		// resolve MSAA
+		gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .TRANSFER_SRC_OPTIMAL)
+		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_DST_OPTIMAL)
+
+		ex := gfx.r_ctx.draw_extent
+
+		resolve_region := vk.ImageResolve {
+			srcSubresource = {mipLevel = 0, aspectMask = {.COLOR}, baseArrayLayer = 0, layerCount = 1},
+			srcOffset = {0, 0, 0},
+			dstSubresource = {mipLevel = 0, aspectMask = {.COLOR}, baseArrayLayer = 0, layerCount = 1},
+			dstOffset = {0, 0, 0},
+			extent = {ex.width, ex.height, 1},
+		}
+
+		vk.CmdResolveImage(
+			cmd,
+			gfx.r_ctx.draw_image.image,
+			.TRANSFER_SRC_OPTIMAL,
+			gfx.r_ctx.resolve_image.image,
+			.TRANSFER_DST_OPTIMAL,
+			1,
+			&resolve_region,
+		)
+	} else {
+        // HACK: here's that hack i mentioned. TODO: this needs to be fixed in the api.
+        gfx.r_ctx.resolve_image = gfx.r_ctx.draw_image
+	}
 
 	final_image: vk.Image
 	switch game.view_state {
@@ -338,44 +367,12 @@ draw :: proc() {
 		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
 		final_image = gfx.r_ctx.resolve_image.image
 	case .SceneColor:
-		if gfx.msaa_enabled() {
-			// Resolve MSAA
-			gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .TRANSFER_SRC_OPTIMAL)
-			gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_DST_OPTIMAL)
+		record_post_process_pass(cmd)
+		record_ui_pass(cmd)
 
-			ex := gfx.r_ctx.draw_extent
-
-			resolve_region := vk.ImageResolve {
-				srcSubresource = {mipLevel = 0, aspectMask = {.COLOR}, baseArrayLayer = 0, layerCount = 1},
-				srcOffset = {0, 0, 0},
-				dstSubresource = {mipLevel = 0, aspectMask = {.COLOR}, baseArrayLayer = 0, layerCount = 1},
-				dstOffset = {0, 0, 0},
-				extent = {ex.width, ex.height, 1},
-			}
-
-			vk.CmdResolveImage(
-				cmd,
-				// gfx.r_ctx.draw_image.image,
-				gfx.r_ctx.draw_image.image,
-				.TRANSFER_SRC_OPTIMAL,
-				gfx.r_ctx.resolve_image.image,
-				.TRANSFER_DST_OPTIMAL,
-				1,
-				&resolve_region,
-			)
-
-			record_post_process_pass(cmd)
-
-			// Prepare swapchain image
-			gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
-			final_image = gfx.r_ctx.resolve_image.image
-		} else {
-			record_post_process_pass(cmd)
-
-			// Prepare swapchain image
-			gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .TRANSFER_SRC_OPTIMAL)
-			final_image = gfx.r_ctx.draw_image.image
-		}
+		// Prepare swapchain image
+		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = gfx.r_ctx.resolve_image.image
 	}
 
 	gfx.copy_image_to_swapchain(cmd, final_image, gfx.r_ctx.draw_extent)
@@ -423,7 +420,14 @@ clear_frame_submission_data :: proc() {
 	clear(&game.render_state.geometry_rp.model_matrices)
 }
 
-draw_mesh :: proc(mesh: GPUMeshBuffers, material: MaterialId, translation: Vec3, rotation: quaternion128, scale: [3]f32, include_in_raytracing := true) {
+draw_mesh :: proc(
+	mesh: GPUMeshBuffers,
+	material: MaterialId,
+	translation: Vec3,
+	rotation: quaternion128,
+	scale: [3]f32,
+	include_in_raytracing := true,
+) {
 	model_index := len(game.render_state.geometry_rp.model_matrices)
 	model := linalg.matrix4_from_trs_f32(translation, rotation, scale)
 
@@ -493,14 +497,8 @@ prepare_shared_frame_data :: proc() {
 	global_data.sun_direction = game.state.environment.sun_direction
 	global_data.mesh_debug_view = u32(game.render_state.mesh_debug_view)
 
-	point_light_count := min(
-		len_entities(PointLight),
-		len(game.render_state.scene_resources.point_lights),
-	)
-	global_data.environment.point_lights = gfx.slice(
-		game.render_state.scene_resources.point_light_buffer,
-		count = u64(point_light_count),
-	)
+	point_light_count := min(len_entities(PointLight), len(game.render_state.scene_resources.point_lights))
+	global_data.environment.point_lights = gfx.slice(game.render_state.scene_resources.point_light_buffer, count = u64(point_light_count))
 
 	global_data.cascade_world_to_shadows = current_frame_game().cascade_matrices_buffer.ptr
 	global_data.cascade_configs = current_frame_game().cascade_configs_buffer.ptr

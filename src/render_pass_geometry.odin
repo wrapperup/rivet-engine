@@ -4,9 +4,6 @@ import vk "vendor:vulkan"
 
 import "gfx"
 
-@(private = "file")
-ImageId :: gfx.ImageId
-
 @(shader_shared)
 GPUDrawPushConstants :: struct #max_field_align(16) {
 	global_data_buffer: gfx.Ptr(GPUGlobalData),
@@ -16,7 +13,7 @@ GPUDrawPushConstants :: struct #max_field_align(16) {
 	model_index:        u32,
 	material_index:     MaterialId,
 	num_cascades:       u32,
-	shadow_depth:       ImageId `Image2DArray<f32>`,
+	shadow_depth:       gfx.ImageId `Image2DArray<f32>`,
 	shadow_sampler:     gfx.SamplerId `SamplerComparison`,
 }
 

@@ -313,6 +313,23 @@ struct SkinningPushConstants {
 //
 // Generated from C:\Repos\odin\vulkan-playground\src\render_pass_skinning.odin
 //
+struct UI_Command {
+  Vec2 pos;
+  Vec2 size;
+  Vec4 color;
+  f32 corner_radius;
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_ui.odin
+//
+struct UI_Push {
+  Slice<UI_Command> commands;
+  Vec2 viewport_size;
+};
+
 struct Geometry {
   Vertex* vertex_buffer;
   u32* index_buffer;

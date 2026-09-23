@@ -41,6 +41,16 @@ cmd_bind_index_buffer :: #force_inline proc(cmd: vk.CommandBuffer, buffer: vk.Bu
 	vk.CmdBindIndexBuffer(cmd, buffer, offset, index_type)
 }
 
+cmd_draw :: #force_inline proc(
+	cmd: vk.CommandBuffer,
+	vertex_count: u32,
+	instance_count: u32 = 1,
+	first_vertex: u32 = 0,
+	first_instance: u32 = 0,
+) {
+	vk.CmdDraw(cmd, vertex_count, instance_count, first_vertex, first_instance)
+}
+
 cmd_draw_indexed :: #force_inline proc(
 	cmd: vk.CommandBuffer,
 	index_count: u32,

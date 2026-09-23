@@ -1,56 +1,78 @@
 import bindless;
+import common;
 import types;
+import sdf;
 
-struct UI_Circle {
-    Vec2 center;
-    f32 radius;
-    Vec4 color;
-}
+// Naming convention:
+// *_ws: World space
+// *_vs: View space
+// *_cs: Clip space
 
-struct UI_Rounded_Box {
-    Vec2 center;
-    f32 radius;
-    Vec4 color;
-}
-
-struct PushConstants {
-  RWImage2D resolved_image;
+struct VertexInput {
+    u32 vertex_id : SV_VertexID;
+    u32 instance_id : SV_InstanceID;
 };
 
 [vk_push_constant]
-PushConstants pc;
+UI_Push pc;
 
-[numthreads(16, 16, 1)]
-[shader("compute")]
-void compute_main(Vec3u32 dispatchThreadID: SV_DispatchThreadID) {
-  let texel_coord = uint2(dispatchThreadID.xy);
+struct FragmentInput {
+    [vk_location(0)]
+    Vec4 pos_cs : SV_Position;
 
-  Vec2u32 size;
-  pc.resolved_image.get_dimensions(size.x, size.y);
+    [vk_location(1)]
+    Vec4 color : COLOR0;
 
-  let exposure = 3.0f;
-  if (texel_coord.x < size.x && texel_coord.y < size.y) {
-    var color = pc.resolved_image.load(texel_coord).rgba;
+    [vk_location(2)]
+    Vec2 pos;
 
-    let circles: UI_Circle[] = {
-        { Vec2(10, 2), 20, Vec4(1, 1, 0, 0.5) },
-        { Vec2(1920/2, 1080/2), 80, Vec4(1, 1, 1, 1) },
+    [vk_location(3)]
+    Vec2 size;
+
+    [vk_location(4)]
+    f32 radius;
+};
+
+[shader("vertex")]
+FragmentInput vertex_main(VertexInput in) {
+    let command = pc.commands[in.instance_id];
+
+    let left = bool(in.vertex_id & 1);
+    let top = bool((in.vertex_id >> 1) & 1);
+
+    let pos = Vec2(
+        left ? command.pos.x : command.pos.x + command.size.x,
+        top ? command.pos.y : command.pos.y + command.size.y
+    );
+
+    let pos_cs = Vec4(pos / pc.viewport_size * 2.0 - 1.0, 0.0, 1.0);
+    let color = command.color;
+
+    return {
+        pos_cs,
+        color,
+        command.pos,
+        command.size,
+        command.corner_radius,
     };
-
-    for (int i = 0; i < 10; i++) {
-        let circle = circles[i];
-
-        let d_shadow = sdf_circle(texel_coord, circle.center, circle.radius);
-        color = lerp(color, Vec4(0), saturate((-d_shadow/10) + 10/10) * 0.3);
-
-        let d_object = sdf_circle(texel_coord, circle.center, circle.radius);
-        color = lerp(color, circle.color, saturate(-d_object));
-    }
-
-    pc.resolved_image.store(texel_coord, color);
-  }
 }
 
-float sdf_circle(Vec2 coord, Vec2 center, f32 radius) {
-    return length(center - coord) - radius;
+struct FragmentOutput {
+    [vk_location(0)]
+    Vec4 frag_color : COLOR0;
+};
+
+[shader("fragment")]
+FragmentOutput fragment_main(FragmentInput in) {
+    let dist = sdf_rounded_box(in.pos_cs.xy - in.pos - in.size/2.f, in.size / 2.f, 10); 
+
+    let aa = max(fwidth(dist), 1e-4);
+    let coverage = 1.0 - smoothstep(-0.5 * aa, 0.5 * aa, dist);
+
+    var frag_color = saturate(in.color);
+    frag_color.a *= coverage;
+
+    return {
+      frag_color,
+    };
 }
