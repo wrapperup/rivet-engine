@@ -16,3 +16,6 @@
 [submodule "deps/knit"]
 	path = deps/knit
 	url = https://github.com/wrapperup/knit
+[submodule "deps/odin_livepatch"]
+	path = deps/odin_livepatch
+	url = https://github.com/MatzeOGH/odin_livepatch
