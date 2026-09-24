@@ -94,7 +94,7 @@ shadow_prepare :: proc() {
 	gfx.write_buffer_slice(&current_frame_game().cascade_configs_buffer, game.render_state.shadow_rp.cascade_configs[:])
 }
 
-record_shadow_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
+record_shadow_pass :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDraw) {
 	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
 	for cascade in u32(0) ..< NUM_CASCADES {
 		record_shadow_cascade(cmd, cascade, mesh_draws)
@@ -102,7 +102,7 @@ record_shadow_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 }
 
 @(private = "file")
-record_shadow_cascade :: proc(cmd: vk.CommandBuffer, cascade: u32, mesh_draws: []MeshDraw) {
+record_shadow_cascade :: proc(cmd: gfx.CommandBuffer, cascade: u32, mesh_draws: []MeshDraw) {
 	image_view := game.render_state.shadow_rp.shadow_depth_attach_image_views[cascade]
 	extent := game.render_state.shadow_rp.shadow_depth_image.extent
 

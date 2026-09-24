@@ -267,11 +267,11 @@ image_access_masks :: proc(access: ImageAccess) -> (vk.PipelineStageFlags2, vk.A
 }
 
 image_barrier :: proc(
-	cmd: vk.CommandBuffer,
+	cmd: CommandBuffer,
 	image: ^Image,
 	src_access: ImageAccess,
 	dst_access: ImageAccess,
-	new_layout: Maybe(vk.ImageLayout) = nil,
+	new_layout: vk.ImageLayout = .UNDEFINED,
 	range: ImageSubresourceRange = {},
 ) -> bool {
 	assert(image != nil)
@@ -280,8 +280,8 @@ image_barrier :: proc(
 	dst_stage_mask, dst_access_mask := image_access_masks(dst_access)
 
 	target_layout := image.current_layout
-	if layout, ok := new_layout.?; ok {
-		target_layout = layout
+	if new_layout != .UNDEFINED {
+		target_layout = new_layout
 	}
 
 	mip_count := range.mip_count
@@ -294,7 +294,7 @@ image_barrier :: proc(
 		layer_count = vk.REMAINING_ARRAY_LAYERS
 	}
 
-	if _, ok := new_layout.?; ok {
+	if new_layout != .UNDEFINED {
 		assert(
 			range.base_mip_level == 0 &&
 				(range.mip_count == 0 || range.mip_count == image.mip_levels) &&
@@ -334,14 +334,14 @@ image_barrier :: proc(
 
 	vk.CmdPipelineBarrier2(cmd, &dep_info)
 
-	if _, ok := new_layout.?; ok {
+	if new_layout != .UNDEFINED {
 		image.current_layout = target_layout
 	}
 
 	return true
 }
 
-transition_vk_image :: proc(cmd: vk.CommandBuffer, image: vk.Image, current_layout: vk.ImageLayout, new_layout: vk.ImageLayout) {
+transition_vk_image :: proc(cmd: CommandBuffer, image: vk.Image, current_layout: vk.ImageLayout, new_layout: vk.ImageLayout) {
 	image_barrier := vk.ImageMemoryBarrier2 {
 		sType               = .IMAGE_MEMORY_BARRIER_2,
 		pNext               = nil,
@@ -371,7 +371,7 @@ transition_vk_image :: proc(cmd: vk.CommandBuffer, image: vk.Image, current_layo
 	vk.CmdPipelineBarrier2(cmd, &dep_info)
 }
 
-transition_image :: proc(cmd: vk.CommandBuffer, image: ^Image, new_layout: vk.ImageLayout) -> bool {
+transition_image :: proc(cmd: CommandBuffer, image: ^Image, new_layout: vk.ImageLayout) -> bool {
 	return image_barrier(
 		cmd,
 		image,
@@ -381,7 +381,7 @@ transition_image :: proc(cmd: vk.CommandBuffer, image: ^Image, new_layout: vk.Im
 	)
 }
 
-copy_image_to_image :: proc(cmd: vk.CommandBuffer, source: vk.Image, destination: vk.Image, src_size: vk.Extent2D, dst_size: vk.Extent2D) {
+copy_image_to_image :: proc(cmd: CommandBuffer, source: vk.Image, destination: vk.Image, src_size: vk.Extent2D, dst_size: vk.Extent2D) {
 	blit_region := vk.ImageBlit2 {
 		sType = .IMAGE_BLIT_2,
 		pNext = nil,

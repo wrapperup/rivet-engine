@@ -27,7 +27,7 @@ init_debug_rt_rp :: proc() {
 	)
 }
 
-record_debug_rt_pass :: proc(cmd: vk.CommandBuffer) {
+record_debug_rt_pass :: proc(cmd: gfx.CommandBuffer) {
 	gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.debug_rt_pipeline)
 	gfx.cmd_push_constants(

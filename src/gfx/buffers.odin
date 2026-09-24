@@ -283,7 +283,7 @@ buffer_access_masks :: proc(access: BufferAccess) -> (vk.PipelineStageFlags2, vk
 }
 
 buffer_barrier :: proc(
-	cmd: vk.CommandBuffer,
+	cmd: CommandBuffer,
 	buffer: Buffer($T),
 	src_access: BufferAccess,
 	dst_access: BufferAccess,

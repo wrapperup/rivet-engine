@@ -51,7 +51,7 @@ skinning_prepare :: proc(instances: []^SkeletalMeshInstance) {
 	}
 }
 
-record_skinning_pass :: proc(cmd: vk.CommandBuffer, instances: []^SkeletalMeshInstance) {
+record_skinning_pass :: proc(cmd: gfx.CommandBuffer, instances: []^SkeletalMeshInstance) {
 	if len(instances) == 0 do return
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.skinning_rp.skinning_pipeline)

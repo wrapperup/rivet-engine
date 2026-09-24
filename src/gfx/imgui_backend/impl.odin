@@ -130,7 +130,7 @@ gfx_imgui_destroy :: proc() {
 	free(this)
 }
 
-gfx_imgui_render :: proc(cmd: vk.CommandBuffer, target_view: vk.ImageView, target_extent: vk.Extent2D) {
+gfx_imgui_render :: proc(cmd: gfx.CommandBuffer, target_view: vk.ImageView, target_extent: vk.Extent2D) {
 	this := gfx_imgui_backend_data()
 	assert(this != nil, "Imgui renderer backend not initialized! Call gfx_imgui_init first.")
 

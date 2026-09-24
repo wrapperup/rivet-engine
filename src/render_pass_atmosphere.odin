@@ -146,24 +146,29 @@ init_atmosphere_rp :: proc() {
 			return gfx.create_compute_pipeline("Atmosphere_Transmittance", module, GPUAtmosphereLutPush)
 		},
 	)
+
 	rp.multiple_scattering_pipeline = add_compute_shader(
 		"shaders/atmosphere_multiple_scattering.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("Atmosphere_MultipleScattering", module, GPUAtmosphereLutPush)
 		},
 	)
+
 	rp.sky_view_pipeline = add_compute_shader("shaders/atmosphere_sky_view.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 		return gfx.create_compute_pipeline("Atmosphere_SkyView", module, GPUAtmosphereLutPush)
 	})
+
 	rp.environment_pipeline = add_compute_shader(
 		"shaders/atmosphere_environment.slang",
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("Atmosphere_Environment", module, GPUAtmosphereCubePush)
 		},
 	)
+
 	rp.aerial_pipeline = add_compute_shader("shaders/atmosphere_aerial.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 		return gfx.create_compute_pipeline("Atmosphere_Aerial", module, GPUAtmosphereAerialPush)
 	})
+
 	rp.draw_pipeline = add_graphics_shader("shaders/atmosphere.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
 		return gfx.create_graphics_pipeline(
 			name = "Atmosphere_Sky",
@@ -181,11 +186,13 @@ init_atmosphere_rp :: proc() {
 
 atmosphere_prepare :: proc() {
 	env := &game.state.environment
+
 	if linalg.length(env.sun_direction) < 0.0001 {
 		env.sun_direction = {0, 1, 0}
 	} else {
 		env.sun_direction = linalg.normalize(env.sun_direction)
 	}
+
 	settings := &env.atmosphere
 	settings.rayleigh_density = clamp(settings.rayleigh_density, 0, 4)
 	settings.mie_density = clamp(settings.mie_density, 0, 10)
@@ -218,47 +225,46 @@ atmosphere_prepare :: proc() {
 	game.render_state.global_data.atmosphere = a^
 }
 
-@(private = "file")
-atmosphere_begin_write :: proc(cmd: vk.CommandBuffer, img: ^gfx.Image) {
-	gfx.image_barrier(cmd, img, .AllReadsWrites, .ComputeShaderWrite, new_layout = .GENERAL)
-}
+record_atmosphere_lut :: proc(cmd: gfx.CommandBuffer, pipeline: ^gfx.ComputePipeline, img: ^gfx.Image, id: gfx.ImageId) {
+    gfx.image_barrier(cmd, img, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
 
-@(private = "file")
-atmosphere_end_write :: proc(cmd: vk.CommandBuffer, img: ^gfx.Image) {
-	gfx.image_barrier(cmd, img, .ComputeShaderWrite, .ComputeFragmentShaderRead)
-}
-
-@(private = "file")
-record_atmosphere_lut :: proc(cmd: vk.CommandBuffer, pipeline: ^gfx.ComputePipeline, img: ^gfx.Image, id: gfx.ImageId) {
-	atmosphere_begin_write(cmd, img)
 	gfx.cmd_bind_pipeline(cmd, pipeline)
 	gfx.cmd_push_constants(cmd, GPUAtmosphereLutPush{global = current_frame_game().global_buffer.ptr, output = id})
 	vk.CmdDispatch(cmd, (img.extent.width + 7) / 8, (img.extent.height + 7) / 8, 1)
-	atmosphere_end_write(cmd, img)
+
+    gfx.image_barrier(cmd, img, .ComputeShaderWrite, .ComputeFragmentShaderRead)
 }
 
-record_atmosphere_pass :: proc(cmd: vk.CommandBuffer) {
+record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
+	gfx.cmd_begin_label(cmd, "Atmosphere Compute")
+
 	rp := &game.render_state.atmosphere_rp
 	env := &game.state.environment
+
 	medium_changed := !rp.initialized || rp.force_update || rp.last_settings != env.atmosphere
 	sky_changed := medium_changed || rp.last_sun_direction != env.sun_direction || rp.last_camera_height != rp.parameters.camera_height
 	environment_changed := sky_changed || rp.last_sun_color != env.sun_color
+
 	if medium_changed {
 		record_atmosphere_lut(cmd, rp.transmittance_pipeline, &rp.transmittance, rp.parameters.transmittance)
 		record_atmosphere_lut(cmd, rp.multiple_scattering_pipeline, &rp.multiple_scattering, rp.parameters.multiple_scattering)
 	}
+
 	if sky_changed {
 		record_atmosphere_lut(cmd, rp.sky_view_pipeline, &rp.sky_view, rp.parameters.sky_view)
 	}
+
 	if environment_changed {
-		atmosphere_begin_write(cmd, &rp.environment)
+		gfx.image_barrier(cmd, &rp.environment, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
+
 		gfx.cmd_bind_pipeline(cmd, rp.environment_pipeline)
 		gfx.cmd_push_constants(
 			cmd,
 			GPUAtmosphereCubePush{global = current_frame_game().global_buffer.ptr, output = rp.environment_mips[0]},
 		)
 		vk.CmdDispatch(cmd, 32, 32, 6)
-		atmosphere_end_write(cmd, &rp.environment)
+		gfx.image_barrier(cmd, &rp.environment, .ComputeShaderWrite, .ComputeFragmentShaderRead)
+
 		gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_prefilter_pipeline)
 		for mip in u32(1) ..< 9 {
 			size := u32(256) >> mip
@@ -275,11 +281,12 @@ record_atmosphere_pass :: proc(cmd: vk.CommandBuffer) {
 			)
 			vk.CmdDispatch(cmd, (size + 7) / 8, (size + 7) / 8, 6)
 		}
-		atmosphere_end_write(cmd, &rp.environment)
 	}
+
 	// Rebuild view-dependent aerial perspective each frame.
-	atmosphere_begin_write(cmd, &rp.aerial_scattering)
-	atmosphere_begin_write(cmd, &rp.aerial_transmittance)
+	gfx.image_barrier(cmd, &rp.aerial_scattering, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
+	gfx.image_barrier(cmd, &rp.aerial_transmittance, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
+
 	gfx.cmd_bind_pipeline(cmd, rp.aerial_pipeline)
 	gfx.cmd_push_constants(
 		cmd,
@@ -290,8 +297,10 @@ record_atmosphere_pass :: proc(cmd: vk.CommandBuffer) {
 		},
 	)
 	vk.CmdDispatch(cmd, 8, 8, 8)
-	atmosphere_end_write(cmd, &rp.aerial_scattering)
-	atmosphere_end_write(cmd, &rp.aerial_transmittance)
+
+	gfx.image_barrier(cmd, &rp.aerial_scattering, .ComputeShaderWrite, .ComputeFragmentShaderRead)
+	gfx.image_barrier(cmd, &rp.aerial_transmittance, .ComputeShaderWrite, .ComputeFragmentShaderRead)
+
 	rp.initialized = true
 	rp.force_update = false
 	rp.last_settings = env.atmosphere
@@ -299,17 +308,23 @@ record_atmosphere_pass :: proc(cmd: vk.CommandBuffer) {
 	rp.last_sun_color = env.sun_color
 	rp.last_sky_color = env.sky_color
 	rp.last_camera_height = rp.parameters.camera_height
+
+	gfx.cmd_end_label(cmd)
 }
 
-record_atmosphere_background :: proc(cmd: vk.CommandBuffer) {
+record_atmosphere_background :: proc(cmd: gfx.CommandBuffer) {
+	gfx.cmd_begin_label(cmd, "Atmosphere Geometry")
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = gfx.r_ctx.draw_extent,
 		color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .COLOR_ATTACHMENT_OPTIMAL},
 	)
 	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
+
 	gfx.cmd_bind_pipeline(cmd, game.render_state.atmosphere_rp.draw_pipeline)
 	gfx.cmd_push_constants(cmd, GPUAtmosphereDrawPush{global = current_frame_game().global_buffer.ptr})
-	vk.CmdDraw(cmd, 3, 1, 0, 0)
+	gfx.cmd_draw(cmd, 3, 1, 0, 0)
+
 	gfx.cmd_end_rendering(cmd)
+	gfx.cmd_end_label(cmd)
 }

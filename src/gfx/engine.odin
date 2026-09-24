@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:dynlib"
 import "core:fmt"
 import "core:log"
+import "core:mem"
 import "core:os"
 import "core:reflect"
 import "core:strings"
@@ -80,7 +81,7 @@ Renderer :: struct {
 
 	// Immediate submit
 	imm_fence:                   vk.Fence,
-	imm_command_buffer:          vk.CommandBuffer,
+	imm_command_buffer:          CommandBuffer,
 	imm_command_pool:            vk.CommandPool,
 
 	// Bindless
@@ -231,11 +232,11 @@ FrameData :: struct {
 	swapchain_semaphore, render_semaphore: vk.Semaphore,
 	render_fence:                          vk.Fence,
 	command_pool:                          vk.CommandPool,
-	main_command_buffer:                   vk.CommandBuffer,
+	main_command_buffer:                   CommandBuffer,
 	arena:                                 ResourceArena,
 }
 
-begin_immediate_submit :: proc() -> vk.CommandBuffer {
+begin_immediate_submit :: proc() -> CommandBuffer {
 	vk_check(vk.ResetFences(r_ctx.device, 1, &r_ctx.imm_fence))
 	vk_check(vk.ResetCommandBuffer(r_ctx.imm_command_buffer, {}))
 
@@ -264,7 +265,7 @@ end_immediate_submit :: proc() {
 }
 
 @(deferred_in = end_immediate_submit)
-immediate_submit :: proc() -> (cmd: vk.CommandBuffer, ready: bool) {
+immediate_submit :: proc() -> (cmd: CommandBuffer, ready: bool) {
 	return begin_immediate_submit(), true
 }
 
@@ -602,11 +603,11 @@ cleanup_vulkan :: proc() {
 	vk.DestroyInstance(r_ctx.instance, nil)
 }
 
-set_viewport_and_scissor_2d :: proc(cmd: vk.CommandBuffer, extent: vk.Extent2D) {
+set_viewport_and_scissor_2d :: proc(cmd: CommandBuffer, extent: vk.Extent2D) {
 	set_viewport_and_scissor_3d(cmd, {extent.width, extent.height, 1})
 }
 
-set_viewport_and_scissor_3d :: proc(cmd: vk.CommandBuffer, extent: vk.Extent3D) {
+set_viewport_and_scissor_3d :: proc(cmd: CommandBuffer, extent: vk.Extent3D) {
 	//set dynamic viewport and scissor
 	viewport := vk.Viewport {
 		x        = 0,
@@ -649,7 +650,7 @@ is_shaders_updated :: proc() -> bool {
 // Called by the user before they start drawing to the screen.
 // This command can fail if the window changes size, if `ok` returns false, then don't
 // draw anything to the screen. Wait for the window to finish polling.
-begin_command_buffer :: proc() -> (cmd: vk.CommandBuffer, ready, swapchain_resized: bool) {
+begin_command_buffer :: proc() -> (cmd: CommandBuffer, ready, swapchain_resized: bool) {
 	vk_check(vk.WaitForFences(r_ctx.device, 1, &current_frame().render_fence, true, 1_000_000_000))
 
 	// Delete resources for the current frame
@@ -694,7 +695,7 @@ begin_command_buffer :: proc() -> (cmd: vk.CommandBuffer, ready, swapchain_resiz
 	return cmd, true, false
 }
 
-copy_image_to_swapchain :: proc(cmd: vk.CommandBuffer, source: vk.Image, src_size: vk.Extent2D) {
+copy_image_to_swapchain :: proc(cmd: CommandBuffer, source: vk.Image, src_size: vk.Extent2D) {
 	transition_vk_image(cmd, r_ctx.swapchain.swapchain_images[r_ctx.swapchain.swapchain_image_index], .UNDEFINED, .TRANSFER_DST_OPTIMAL)
 
 	copy_image_to_image(
@@ -707,7 +708,7 @@ copy_image_to_swapchain :: proc(cmd: vk.CommandBuffer, source: vk.Image, src_siz
 }
 
 // Called by the user when they end drawing to the screen.
-submit :: proc(cmd: vk.CommandBuffer) -> (swapchain_resized: bool) {
+submit :: proc(cmd: CommandBuffer) -> (swapchain_resized: bool) {
 	// set swapchain image layout to Present so we can show it on the screen
 	transition_vk_image(
 		cmd,

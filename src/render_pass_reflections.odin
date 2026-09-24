@@ -101,7 +101,7 @@ reflection_probe_prepare :: proc(probes: []ReflectionProbe) {
 	)
 }
 
-record_reflection_probe_pass :: proc(cmd: vk.CommandBuffer, probes: []ReflectionProbe, volumes: []DDGIVolume) {
+record_reflection_probe_pass :: proc(cmd: gfx.CommandBuffer, probes: []ReflectionProbe, volumes: []DDGIVolume) {
 	if current_frame_game().rt.tlas.address == 0 do return
 
 	converged := true
@@ -122,7 +122,7 @@ record_reflection_probe_pass :: proc(cmd: vk.CommandBuffer, probes: []Reflection
 	}
 }
 
-record_reflection_probe_debug_pass :: proc(cmd: vk.CommandBuffer, probes: []ReflectionProbe) {
+record_reflection_probe_debug_pass :: proc(cmd: gfx.CommandBuffer, probes: []ReflectionProbe) {
 	if !game.render_state.ddgi_rp.draw_reflection_probes do return
 
 	rp := &game.render_state.ddgi_rp
@@ -173,7 +173,7 @@ reflection_probe_debug_draw_box :: proc(probe: ^ReflectionProbe) {
 
 // Uses the per-frame scene TLAS, so call after record_rt_scene_pass + DDGI update.
 @(private = "file")
-record_reflection_probe_capture :: proc(cmd: vk.CommandBuffer, probe: ^ReflectionProbe) {
+record_reflection_probe_capture :: proc(cmd: gfx.CommandBuffer, probe: ^ReflectionProbe) {
 	gfx.image_barrier(
 		cmd,
 		&probe.cube_image,

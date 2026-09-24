@@ -81,7 +81,7 @@ rt_scene_prepare :: proc(rt: ^RaytracingScene) {
 
 // Rebuilds the scene TLAS from the instance data uploaded by rt_scene_prepare.
 // Scratch + the previous TLAS for this frame slot are deferred on the frame arena.
-record_rt_scene_pass :: proc(cmd: vk.CommandBuffer, rt: ^RaytracingScene) {
+record_rt_scene_pass :: proc(cmd: gfx.CommandBuffer, rt: ^RaytracingScene) {
 	gfx.defer_destroy_accel(&gfx.current_frame().arena, rt.tlas)
 	rt.tlas = {}
 

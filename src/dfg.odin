@@ -45,7 +45,7 @@ create_dfg_generate_pipeline :: proc(width, height: u32) -> DfgGeneratePass {
 	return pass
 }
 
-run_dfg_generate_pass :: proc(pass: ^DfgGeneratePass, cmd: vk.CommandBuffer) {
+run_dfg_generate_pass :: proc(pass: ^DfgGeneratePass, cmd: gfx.CommandBuffer) {
 	gfx.cmd_bind_pipeline(cmd, pass.pipeline)
 
 	gfx.cmd_push_constants(cmd, GPUDfgGeneratePassPC {

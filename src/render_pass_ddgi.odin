@@ -187,7 +187,7 @@ ddgi_current_config :: proc(volume: ^DDGI_Volume_Resources) -> ^gfx.Buffer(GPUDD
 	return &volume.config_buffers[gfx.current_frame_index()]
 }
 
-record_ddgi_pass :: proc(cmd: vk.CommandBuffer, volumes: []DDGIVolume) {
+record_ddgi_pass :: proc(cmd: gfx.CommandBuffer, volumes: []DDGIVolume) {
 	if current_frame_game().rt.tlas.address == 0 || !game.state.update_ddgi do return
 
 	for &volume in volumes {
@@ -197,7 +197,7 @@ record_ddgi_pass :: proc(cmd: vk.CommandBuffer, volumes: []DDGIVolume) {
 
 // Overlay: draws an instanced sphere per probe into the HDR scene, each shaded
 // by its own irradiance. Depth-tested against the scene.
-record_ddgi_debug_probes_pass :: proc(cmd: vk.CommandBuffer, volumes: []DDGIVolume) {
+record_ddgi_debug_probes_pass :: proc(cmd: gfx.CommandBuffer, volumes: []DDGIVolume) {
 	if !game.render_state.ddgi_rp.draw_probes do return
 
 	for &volume in volumes {
@@ -206,7 +206,7 @@ record_ddgi_debug_probes_pass :: proc(cmd: vk.CommandBuffer, volumes: []DDGIVolu
 }
 
 @(private = "file")
-record_ddgi_debug_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
+record_ddgi_debug_volume :: proc(cmd: gfx.CommandBuffer, volume: ^DDGI_Volume_Resources) {
 	rp := &game.render_state.ddgi_rp
 	gfx.cmd_begin_rendering(
 		cmd,
@@ -233,7 +233,7 @@ record_ddgi_debug_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Res
 
 // Trace + update for the volume, recorded into `cmd`. Uses the per-frame scene TLAS.
 @(private = "file")
-record_ddgi_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
+record_ddgi_volume :: proc(cmd: gfx.CommandBuffer, volume: ^DDGI_Volume_Resources) {
 	counts := volume.gpu.grid_counts
 	num_probes := counts[0] * counts[1] * counts[2]
 
@@ -357,7 +357,7 @@ record_ddgi_volume :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources
 	)
 }
 
-record_ddgi_debug_atlas_pass :: proc(cmd: vk.CommandBuffer, volume: ^DDGI_Volume_Resources) {
+record_ddgi_debug_atlas_pass :: proc(cmd: gfx.CommandBuffer, volume: ^DDGI_Volume_Resources) {
 	gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .GENERAL)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_rp.debug_pipeline)
 	gfx.cmd_push_constants(

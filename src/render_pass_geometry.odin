@@ -83,7 +83,7 @@ geometry_prepare :: proc() {
 	}
 }
 
-record_geometry_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
+record_geometry_pass :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDraw) {
 	gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .COLOR_ATTACHMENT_OPTIMAL)
 	gfx.transition_image(cmd, &gfx.r_ctx.depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
 	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_READ_ONLY_OPTIMAL)
@@ -114,7 +114,7 @@ record_geometry_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
 	gfx.cmd_end_rendering(cmd)
 }
 
-record_geometry_depth_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
+record_geometry_depth_pass :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDraw) {
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = gfx.r_ctx.draw_extent,
@@ -130,7 +130,7 @@ record_geometry_depth_pass :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw
 	gfx.cmd_end_rendering(cmd)
 }
 
-record_geometry_draws :: proc(cmd: vk.CommandBuffer, mesh_draws: []MeshDraw) {
+record_geometry_draws :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDraw) {
 	for mesh_draw in mesh_draws {
 		gfx.cmd_bind_index_buffer(cmd, mesh_draw.index_buffer)
 		gfx.cmd_push_constants(

@@ -116,7 +116,7 @@ create_prefiltered_cubemap_pipeline :: proc(filename: cstring, out_width, out_he
 	return pass
 }
 
-run_prefilter_cubemap_pass :: proc(pass: ^PrefilteredCubeMapPass, cmd: vk.CommandBuffer, sample_count: u32 = 4096) {
+run_prefilter_cubemap_pass :: proc(pass: ^PrefilteredCubeMapPass, cmd: gfx.CommandBuffer, sample_count: u32 = 4096) {
 	gfx.cmd_bind_pipeline(cmd, pass.pipeline)
 
 	for level in 0 ..< MAX_ROUGHNESS_LEVELS {
