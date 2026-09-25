@@ -62,7 +62,8 @@ main :: proc() {
 		fmt.eprintln("Failed to create output directory:", err)
 		os.exit(1)
 	}
-	if !build_meta.generate() {
+
+	if !livepatch && !build_meta.generate() {
 		fmt.eprintln("Source generation failed.")
 		os.exit(1)
 	}
