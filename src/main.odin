@@ -5,6 +5,7 @@ import "core:log"
 import "core:math"
 import "core:math/linalg"
 import "core:math/rand"
+import "core:path/filepath"
 import "core:sys/info"
 import "core:sys/windows"
 import "core:time"
@@ -15,6 +16,8 @@ import vk "vendor:vulkan"
 
 import im "deps:odin-imgui"
 import im_glfw "deps:odin-imgui/imgui_impl_glfw"
+import livepatch "deps:odin_livepatch/livepatch"
+
 import im_gfx "gfx/imgui_backend"
 
 import "gfx"
@@ -25,32 +28,10 @@ NvOptimusEnablement: u32 = 1
 @(export)
 AmdPowerXpressRequestHighPerformance: i32 = 1
 
-
 DEBUG :: ODIN_DEBUG
 
 start_live_time := time.tick_now()
-
 game: ^Game
-
-
-//
-// game_hot_reloaded :: proc(mem: rawptr) {
-// 	glfw.Init()
-//
-// 	game = cast(^Game)mem
-// 	glfw.MakeContextCurrent(game.window)
-// 	gfx.set_renderer(game.renderer)
-// 	lock_mouse(game.input_system.mouse_locked)
-//
-// 	gfx.load_vulkan_addresses()
-//
-// 	im.SetCurrentContext(game.render_state.imgui_ctx)
-//
-// 	fmt.println("Hot reloaded!")
-//     glfw.SetWindowAttrib(game.window, glfw.FLOATING, 1)
-//     glfw.SetWindowAttrib(game.window, glfw.FLOATING, 0)
-//     glfw.FocusWindow(game.window)
-// }
 
 main :: proc() {
 	when ODIN_OS == .Windows {
@@ -58,7 +39,7 @@ main :: proc() {
 		windows.SetConsoleOutputCP(.UTF8)
 	}
 
-    // init
+	// init
 	{
 		reserved_threads := 4
 		physical, logical, ok := info.cpu_core_count()
@@ -132,6 +113,7 @@ main :: proc() {
 			add_action_key_mapping(.Fullscreen, glfw.KEY_F10)
 			add_action_key_mapping(.ExitGame, glfw.KEY_ESCAPE)
 			add_action_key_mapping(.ReloadScene, glfw.KEY_R)
+			add_action_key_mapping(.Livepatch, glfw.KEY_F5)
 
 			add_action_mouse_mapping(.Fire, glfw.MOUSE_BUTTON_LEFT)
 			add_action_mouse_mapping(.AltFire, glfw.MOUSE_BUTTON_RIGHT)
@@ -185,8 +167,6 @@ main :: proc() {
 				init_ball(ball, {(rand.float32() - 0.5) * 0.01 * f32(i) + 2, 5.0 * f32(i), (rand.float32() - 0.5) * 0.01 * f32(i)}, 0)
 			}
 
-			// Load AFTER `game.state = GameState{...}` — that assignment replaces the whole struct,
-			// so setting current_scene before it just gets wiped (source -> "", arenas -> zero).
 			load_scene_from_file(&game.state.current_scene, "assets/meshes/static/scene_map_test.glb")
 		}
 
@@ -196,136 +176,177 @@ main :: proc() {
 		glfw.ShowWindow(window)
 	}
 
-    // game loop
+	source_root, source_path_error := filepath.abs("src", context.temp_allocator)
+	assert(source_path_error == nil)
+	source_watcher, watch_error := livepatch.watch_start(source_root)
+	if watch_error != nil {
+		fmt.eprintln("Livepatch watcher failed to start:", watch_error)
+	}
+	defer livepatch.watch_stop(&source_watcher)
+
+	// game loop
 	for {
 		if game == nil || !game.initialized {
-			break;
-		}
-
-		scope_stat_time(.Total)
-
-		if glfw.GetWindowAttrib(game.window, glfw.FOCUSED) > 0 {
-			ma.engine_set_volume(&game.sound_system.sound_engine, 1.0)
-		} else {
-			ma.engine_set_volume(&game.sound_system.sound_engine, 0.0)
-		}
-
-		game.live_time = f64(time.tick_since(start_live_time)) / f64(time.Second)
-
-		game.delta_time = f64(time.tick_since(game.frame_time_start)) / f64(time.Second)
-		game.frame_time_start = time.tick_now()
-
-		dt := game.delta_time
-
-		if glfw.WindowShouldClose(game.window) {
 			break
 		}
 
-		glfw.PollEvents()
-
-		if glfw.GetWindowAttrib(game.window, glfw.ICONIFIED) == 0 {
-			im_glfw.NewFrame()
-			im_gfx.gfx_imgui_new_frame()
-			im.NewFrame()
+		patch_requested := action_just_pressed(.Livepatch)
+		if changed, poll_error := livepatch.watch_poll(&source_watcher); poll_error != nil {
+			fmt.eprintln("Livepatch watcher failed:", poll_error)
+			livepatch.watch_stop(&source_watcher)
+		} else if changed {
+			patch_requested = true
 		}
-
-		simulate_input()
-		if action_just_pressed(.ExitGame) {
-			break
-		}
-
-		if action_just_pressed(.ReloadScene) {
-			reload_scene(&game.state.current_scene)
-		}
-
-		when ODIN_DEBUG {
-			check_scene_hotreload(&game.state.current_scene)
-		}
-
-		// Update Game State
-		{
-			scope_stat_time(.GameState)
-
-			player := get_entity(game.state.player_id)
-
-			for &ball in get_entities(Ball) {
-				update_ball_fixed(&ball)
-			}
-
-			update_player(player, dt)
-		}
-
-		// Update Physics
-		{
-			scope_stat_time(.Physics)
-
-			if game.update_physics {
-				physics_step(f32(dt))
-			}
-		}
-
-		if glfw.GetWindowAttrib(game.window, glfw.ICONIFIED) == 0 {
-			update_imgui()
-			draw()
-		}
-
-		if action_just_pressed(.Fullscreen) {
-			//
-			game.window_state.is_fullscreen = !game.window_state.is_fullscreen
-
-			monitor := glfw.GetPrimaryMonitor()
-			mode := glfw.GetVideoMode(monitor)
-
-			if game.window_state.is_fullscreen {
-				x, y := glfw.GetWindowPos(game.window)
-				w, h := glfw.GetWindowSize(game.window)
-
-				game.window_state.windowed_pos = {x, y}
-				game.window_state.windowed_size = {w, h}
-
-				glfw.SetWindowMonitor(game.window, monitor, 0, 0, mode.width, mode.height, mode.refresh_rate)
+		if patch_requested {
+			path, err := filepath.abs("build_livepatch.bat", context.temp_allocator)
+			assert(err == nil)
+			if patch_error := livepatch.patch(path); patch_error != nil {
+				fmt.eprintln("Livepatch failed:", patch_error)
+				livepatch.error_delete(patch_error)
 			} else {
-				glfw.SetWindowMonitor(
-					game.window,
-					nil,
-					game.window_state.windowed_pos.x,
-					game.window_state.windowed_pos.y,
-					game.window_state.windowed_size.x,
-					game.window_state.windowed_size.y,
-					mode.refresh_rate,
-				)
+				fmt.println("Patched.")
 			}
+		}
+
+		if !update() do break
+
+		update :: proc() -> bool {
+			scope_stat_time(.Total)
+
+			if glfw.GetWindowAttrib(game.window, glfw.FOCUSED) > 0 {
+				ma.engine_set_volume(&game.sound_system.sound_engine, 1.0)
+			} else {
+				ma.engine_set_volume(&game.sound_system.sound_engine, 0.0)
+			}
+
+			game.live_time = f64(time.tick_since(start_live_time)) / f64(time.Second)
+
+			game.delta_time = f64(time.tick_since(game.frame_time_start)) / f64(time.Second)
+			game.frame_time_start = time.tick_now()
+
+			dt := game.delta_time
+
+			if glfw.WindowShouldClose(game.window) {
+				return false
+			}
+
+			glfw.PollEvents()
+
+			if glfw.GetWindowAttrib(game.window, glfw.ICONIFIED) == 0 {
+				im_glfw.NewFrame()
+				im_gfx.gfx_imgui_new_frame()
+				im.NewFrame()
+			}
+
+			simulate_input()
+			if action_just_pressed(.ExitGame) {
+				return false
+			}
+
+			if action_just_pressed(.ReloadScene) {
+				reload_scene(&game.state.current_scene)
+			}
+
+			when ODIN_DEBUG {
+				check_scene_hotreload(&game.state.current_scene)
+			}
+
+			// Update Game State
+			{
+				scope_stat_time(.GameState)
+
+				player := get_entity(game.state.player_id)
+
+				for &ball in get_entities(Ball) {
+					update_ball_fixed(&ball)
+				}
+
+				update_player(player, dt)
+			}
+
+			// Update Physics
+			{
+				scope_stat_time(.Physics)
+
+				if game.update_physics {
+					physics_step(f32(dt))
+				}
+			}
+
+			if glfw.GetWindowAttrib(game.window, glfw.ICONIFIED) == 0 {
+				update_imgui()
+				draw()
+			}
+
+			// UI
+			{
+				ui_text("N: Debug   M: Lock Mouse", pos = {40, 70}, size = 48, anchor = 0, outline_width = 4, align = .Left)
+
+                text := "Livepatched"
+				text_size := measure_text(text, size = 64)
+				ui_rect(0, {text_size.x + 12 + 32, text_size.y + 12 + 16}, 1, 16)
+				ui_text(text, pos = {0, 16 + 6}, size = 64, anchor = .5, outline_width = 8, align = .Center)
+			}
+
+			if action_just_pressed(.Fullscreen) {
+				game.window_state.is_fullscreen = !game.window_state.is_fullscreen
+
+				monitor := glfw.GetPrimaryMonitor()
+				mode := glfw.GetVideoMode(monitor)
+
+				if game.window_state.is_fullscreen {
+					x, y := glfw.GetWindowPos(game.window)
+					w, h := glfw.GetWindowSize(game.window)
+
+					game.window_state.windowed_pos = {x, y}
+					game.window_state.windowed_size = {w, h}
+
+					glfw.SetWindowMonitor(game.window, monitor, 0, 0, mode.width, mode.height, mode.refresh_rate)
+				} else {
+					glfw.SetWindowMonitor(
+						game.window,
+						nil,
+						game.window_state.windowed_pos.x,
+						game.window_state.windowed_pos.y,
+						game.window_state.windowed_size.x,
+						game.window_state.windowed_size.y,
+						mode.refresh_rate,
+					)
+				}
+			}
+
+			return true
 		}
 
 		free_all(context.temp_allocator)
 	}
 
-    // shutdown
-    {
-        if game == nil do return
+	// shutdown
+	{
+		if game == nil do return
 
-        if game.renderer != nil {
-            gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
-            scene_shutdown(&game.state.current_scene)
-        }
+		if game.renderer != nil {
+			gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
+			scene_shutdown(&game.state.current_scene)
+		}
 
-        shutdown_entity_system()
-        physics_shutdown()
-        shutdown_sound_system()
+		shutdown_entity_system()
+		physics_shutdown()
+		shutdown_sound_system()
 
-        if game.renderer != nil {
-            renderer_shutdown()
-            gfx.shutdown()
-            game.renderer = nil
-        }
+		if game.renderer != nil {
+			renderer_shutdown()
+			gfx.shutdown()
+			game.renderer = nil
+		}
 
-        shutdown_asset_system()
-        if game.window != nil {
-            glfw.DestroyWindow(game.window)
-        }
-        glfw.Terminate()
+		shutdown_asset_system()
+		if game.window != nil {
+			glfw.DestroyWindow(game.window)
+		}
+		glfw.Terminate()
 
-        game = nil
-	free(game)
-    }
+		game = nil
+		free(game)
+	}
 }

@@ -15,6 +15,7 @@ Action :: enum {
 	ExitGame,
     ShowDebug,
     ReloadScene,
+    Livepatch,
 }
 
 Axis :: enum {
