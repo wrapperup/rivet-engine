@@ -127,7 +127,6 @@ main :: proc() {
 			add_axis_mouse_axis(.LookUp, mouse_y = true)
 		}
 
-		// TODO: TEMP: Register entity types automatically from metaprogram.
 		{
 			register_entity_subtypes()
 		}
@@ -281,11 +280,6 @@ main :: proc() {
 			// UI
 			{
 				ui_text("N: Debug   M: Lock Mouse", pos = {40, 70}, size = 48, anchor = 0, outline_width = 4, align = .Left)
-
-                text := "Livepatched"
-				text_size := measure_text(text, size = 64)
-				ui_rect(0, {text_size.x + 12 + 32, text_size.y + 12 + 16}, 1, 16)
-				ui_text(text, pos = {0, 16 + 6}, size = 64, anchor = .5, outline_width = 8, align = .Center)
 			}
 
 			if action_just_pressed(.Fullscreen) {
