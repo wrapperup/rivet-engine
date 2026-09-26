@@ -1,5 +1,6 @@
 package gfx
 
+import "core:os"
 import "core:fmt"
 import "core:mem"
 
@@ -426,19 +427,19 @@ destroy_image :: proc(gpu_image: Image) {
 }
 
 load_image_from_file :: proc(
-	filename: cstring,
+	filename: string,
 	image_type: vk.ImageType = .D2,
 	image_view_type: vk.ImageViewType = .D2,
 	out_width: ^u32 = nil,
 	out_height: ^u32 = nil,
 	out_depth: ^u32 = nil,
+    allocator := context.allocator,
 ) -> Image {
-	ktx_texture: ^ktx.Texture2
-	ktx_result := ktx.Texture2_CreateFromNamedFile(filename, {.TEXTURE_CREATE_LOAD_IMAGE_DATA}, &ktx_texture)
+	bytes, read_err := os.read_entire_file(filename, allocator)
+	assert(read_err == nil, "Failed to read file")
+	defer delete(bytes)
 
-	assert(ktx_result == .SUCCESS, "Failed to load image.")
-
-	return load_image_from_ktx_texture(ktx_texture, image_type, image_view_type, out_width, out_height, out_depth)
+    return load_image_from_memory(bytes, image_type, image_view_type, out_width, out_height, out_depth)
 }
 
 load_image_from_memory :: proc(

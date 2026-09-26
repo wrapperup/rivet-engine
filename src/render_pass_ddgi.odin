@@ -277,7 +277,7 @@ record_ddgi_volume :: proc(cmd: gfx.CommandBuffer, volume: ^DDGI_Volume_Resource
 		GPUDDGITracePush {
 			volume = ddgi_current_config(volume).ptr,
 			geometries = current_frame_game().rt.geometries_buffer.ptr,
-			materials = game.render_state.scene_resources.materials_buffer.ptr,
+			materials = game.render_state.material_store.materials_buffer.ptr,
 			global = current_frame_game().global_buffer.ptr,
 			radiance = volume.radiance_buffer.ptr,
 			tlas = current_frame_game().rt.tlas.address,

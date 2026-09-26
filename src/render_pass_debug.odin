@@ -35,7 +35,7 @@ record_debug_rt_pass :: proc(cmd: gfx.CommandBuffer) {
 		GPUDebugRTPushConstants {
 			global = current_frame_game().global_buffer.ptr,
 			geometries = current_frame_game().rt.geometries_buffer.ptr,
-			materials = game.render_state.scene_resources.materials_buffer.ptr,
+			materials = game.render_state.material_store.materials_buffer.ptr,
 			tlas = current_frame_game().rt.tlas.address,
 			out_image = game.render_state.temp_resources.resolved_image_id,
 		},

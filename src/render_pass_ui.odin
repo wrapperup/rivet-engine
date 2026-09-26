@@ -73,7 +73,7 @@ Text_Alignment :: enum {
 	Right,
 }
 
-load_font :: proc(image_path: cstring, json_path: string, allocator := context.allocator) -> (font: Font) {
+load_font :: proc(image_path: string, json_path: string, allocator := context.allocator) -> (font: Font) {
 	Bounds :: struct {
 		left, top, right, bottom: f32,
 	}

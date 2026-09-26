@@ -139,7 +139,7 @@ record_geometry_draws :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDraw) {
 				global_data_buffer = current_frame_game().global_buffer.ptr,
 				vertex_buffer = mesh_draw.vertex_buffer,
 				model_matrices = current_frame_game().model_matrices_buffer.ptr,
-				materials = game.render_state.scene_resources.materials_buffer.ptr,
+				materials = game.render_state.material_store.materials_buffer.ptr,
 				model_index = mesh_draw.model_index,
 				material_index = mesh_draw.material_index,
 				num_cascades = NUM_CASCADES,

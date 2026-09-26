@@ -31,7 +31,7 @@ PrefilteredCubeMapPass :: struct {
 }
 
 
-create_prefiltered_cubemap_pipeline :: proc(filename: cstring, out_width, out_height: u32) -> PrefilteredCubeMapPass {
+create_prefiltered_cubemap_pipeline :: proc(filename: string, out_width, out_height: u32) -> PrefilteredCubeMapPass {
 	pass := PrefilteredCubeMapPass {
 		width  = out_width,
 		height = out_height,

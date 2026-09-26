@@ -1,0 +1,3 @@
+base_color = "assets/textures/materialball2/t_basecolor.ktx2"
+normal_map = "assets/textures/materialball2/t_normalmap.ktx2"
+proughness_metallic_ao = "assets/textures/materialball2/t_rma.ktx2"

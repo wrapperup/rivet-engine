@@ -23,13 +23,6 @@ ImageId :: gfx.ImageId
 SamplerId :: gfx.SamplerId
 
 @(shader_shared)
-GPUMaterial :: struct #max_field_align(16) {
-	base_color_id:            ImageId `Image2D`,
-	normal_map_id:            ImageId `Image2D`,
-	ao_roughness_metallic_id: ImageId `Image2D`,
-}
-
-@(shader_shared)
 GPUEnvironment :: struct #max_field_align(16) {
 	point_lights: gfx.Slice(GPUPointLight),
 	env_map:      ImageId `ImageCube`,
@@ -81,8 +74,6 @@ RenderState :: struct {
 	// Bindless textures, etc
 	global_data:                     GPUGlobalData,
 	scene_resources:                 struct {
-		materials:          [dynamic]GPUMaterial,
-		materials_buffer:   gfx.Buffer(GPUMaterial),
 		point_lights:       [256]GPUPointLight,
 		point_light_buffer: gfx.Buffer(GPUPointLight),
 	},
@@ -92,6 +83,7 @@ RenderState :: struct {
 		env_sampler_id:     SamplerId,
 		resolved_image_id:  ImageId,
 	},
+	material_store:                  Material_Store,
 	shader_manager:                  ShaderManager,
 	global_session:                  ^sp.IGlobalSession,
 	ddgi_rp:                         DDGIRenderPass,
@@ -139,22 +131,11 @@ current_frame_game :: proc() -> ^GameFrameData {
 	return &game.render_state.frame_data[gfx.current_frame_index()]
 }
 
-add_material :: proc(material: GPUMaterial) -> MaterialId {
-	scene_resources := &game.render_state.scene_resources
-	material_id := MaterialId(len(scene_resources.materials))
-
-	append(&scene_resources.materials, material)
-
-	gfx.staging_write_buffer_slice(&scene_resources.materials_buffer, scene_resources.materials[:])
-
-	return material_id
-}
-
 init_game_renderer :: proc() {
 	init_imgui()
 	init_shadow_maps()
 	init_test_resources()
-	init_test_materials()
+	init_material_store()
 	init_render_passes()
 	init_shared_buffers()
 }
@@ -194,22 +175,19 @@ init_test_resources :: proc() {
 	}
 }
 
-init_test_materials :: proc() {
-	game.render_state.scene_resources.materials_buffer = gfx.create_buffer(GPUMaterial, 20)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.scene_resources.materials_buffer)
+init_material_store :: proc() {
+    material_store := &game.render_state.material_store
 
-	base_color_id := gfx.add_image(gfx.load_image_from_file("assets/textures/t_test_basecolor2.ktx2"))
-	normal_map_id := gfx.add_image(gfx.load_image_from_file("assets/textures/t_test_normalmap.ktx2"))
-	proughness_metallic_ao_id := gfx.add_image(gfx.load_image_from_file("assets/textures/t_test_rma.ktx2"))
+	material_store.materials_buffer = gfx.create_buffer(GPUMaterial, 20)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, material_store.materials_buffer)
 
-	add_material({base_color_id = base_color_id, normal_map_id = normal_map_id, ao_roughness_metallic_id = proughness_metallic_ao_id})
-	add_material({base_color_id = base_color_id, normal_map_id = normal_map_id, ao_roughness_metallic_id = proughness_metallic_ao_id})
+    test_material := load_material_from_file("assets/materials/test.sjson")
 
-	base_color_id = gfx.add_image(gfx.load_image_from_file("assets/textures/materialball2/t_basecolor.ktx2"))
-	normal_map_id = gfx.add_image(gfx.load_image_from_file("assets/textures/materialball2/t_normalmap.ktx2"))
-	proughness_metallic_ao_id = gfx.add_image(gfx.load_image_from_file("assets/textures/materialball2/t_rma.ktx2"))
+	add_material(test_material)
+	add_material(test_material)
 
-	add_material({base_color_id = base_color_id, normal_map_id = normal_map_id, ao_roughness_metallic_id = proughness_metallic_ao_id})
+    materialball_material := load_material_from_file("assets/materials/materialball2.sjson")
+	add_material(materialball_material)
 }
 
 init_render_passes :: proc() {
@@ -343,8 +321,8 @@ draw :: proc() {
 			&resolve_region,
 		)
 	} else {
-        // HACK: here's that hack i mentioned. TODO: this needs to be fixed in the api.
-        gfx.r_ctx.resolve_image = gfx.r_ctx.draw_image
+		// HACK: here's that hack i mentioned. TODO: this needs to be fixed in the api.
+		gfx.r_ctx.resolve_image = gfx.r_ctx.draw_image
 	}
 
 	final_image: vk.Image
@@ -525,6 +503,4 @@ renderer_shutdown :: proc() {
 		delete(frame.rt.instances)
 		delete(frame.rt.geometries)
 	}
-	delete(game.render_state.scene_resources.materials)
-	delete(game.render_state.geometry_rp.model_matrices)
 }
