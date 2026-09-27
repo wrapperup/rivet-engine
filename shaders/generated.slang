@@ -98,13 +98,22 @@ struct Material {
 
 
 //
-// Generated from C:\Repos\odin\vulkan-playground\src\renderer.odin
+// Generated from C:\Repos\odin\vulkan-playground\src\materials.odin
 //
 struct Environment {
   Slice<PointLight> point_lights;
   ImageCube env_map;
   Image2D dfg;
   Sampler env_sampler;
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\renderer.odin
+//
+enum DebugView : u32 {
+  Test,
 };
 
 struct GlobalData {
@@ -313,13 +322,19 @@ struct SkinningPushConstants {
 //
 // Generated from C:\Repos\odin\vulkan-playground\src\render_pass_skinning.odin
 //
+enum UI_Mode : u32 {
+  Color,
+  Image,
+  Glyph,
+};
+
 
 
 //
 // Generated from C:\Repos\odin\vulkan-playground\src\render_pass_ui.odin
 //
 struct UI_Command {
-  u32 mode;
+  UI_Mode mode;
   Vec2 pos;
   f32 angle;
   Vec2 size;

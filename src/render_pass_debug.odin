@@ -37,7 +37,7 @@ record_debug_rt_pass :: proc(cmd: gfx.CommandBuffer) {
 			geometries = current_frame_game().rt.geometries_buffer.ptr,
 			materials = game.render_state.material_store.materials_buffer.ptr,
 			tlas = current_frame_game().rt.tlas.address,
-			out_image = game.render_state.temp_resources.resolved_image_id,
+			out_image = gfx.r_ctx.resolve_image,
 		},
 	)
 

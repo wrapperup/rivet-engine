@@ -33,7 +33,7 @@ record_post_process_pass :: proc(cmd: gfx.CommandBuffer) {
 	gfx.cmd_push_constants(
 		cmd,
 		GPUPostProcessingPushConstants {
-			resolved_image = game.render_state.temp_resources.resolved_image_id,
+			resolved_image = gfx.r_ctx.resolve_image,
 			tony_mc_mapface = game.render_state.post_process_rp.tony_mc_mapface_id,
 			sampler = game.render_state.temp_resources.default_sampler_id,
 		},

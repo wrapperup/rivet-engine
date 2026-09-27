@@ -63,7 +63,7 @@ main :: proc() {
 		os.exit(1)
 	}
 
-	if !livepatch && !build_meta.generate() {
+	if patch_directory == "" && !build_meta.generate() {
 		fmt.eprintln("Source generation failed.")
 		os.exit(1)
 	}

@@ -67,7 +67,6 @@ RenderState :: struct {
 		dfg_id:             ImageId,
 		default_sampler_id: SamplerId,
 		env_sampler_id:     SamplerId,
-		resolved_image_id:  ImageId,
 	},
 	material_store:                  Material_Store,
 	shader_manager:                  ShaderManager,
@@ -154,8 +153,6 @@ init_test_resources :: proc() {
 
 		tr.default_sampler_id = default_sampler
 		tr.env_sampler_id = env_sampler
-
-		tr.resolved_image_id = gfx.r_ctx.resolve_image
 	}
 }
 
