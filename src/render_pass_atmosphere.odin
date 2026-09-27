@@ -12,7 +12,7 @@ AtmosphereSettings :: struct {
 	mie_density:      f32,
 	ozone_density:    f32,
 	ground_albedo:    f32,
-	ground_height:    f32, // World-space metres; atmosphere uses kilometres internally.
+	ground_height:    f32,
 }
 
 default_atmosphere_settings :: proc() -> AtmosphereSettings {

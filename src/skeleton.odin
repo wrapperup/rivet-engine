@@ -3,7 +3,7 @@ package game
 import "core:math"
 import "core:math/linalg"
 
-JointId :: u32
+JointId :: distinct u32
 JointMatrix :: Mat4x4
 
 // Coordinate Systems:

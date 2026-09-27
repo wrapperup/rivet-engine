@@ -4,6 +4,8 @@ import "core:encoding/json"
 import "core:os"
 import "gfx"
 
+MaterialId :: distinct u32
+
 Material_JSON :: struct {
 	using base:             Asset_Base,
 	base_color:             string,

@@ -12,9 +12,6 @@ import vk "vendor:vulkan"
 import "gfx"
 import im_gfx "gfx/imgui_backend"
 
-// TODO: Make this into proper assets?
-MaterialId :: u32
-
 NUM_CASCADES: u32 : 4
 
 @(private = "file")
@@ -28,11 +25,6 @@ GPUEnvironment :: struct #max_field_align(16) {
 	env_map:      ImageId `ImageCube`,
 	dfg:          ImageId `Image2D`,
 	env_sampler:  SamplerId `Sampler`,
-}
-
-@(shader_shared)
-GPUDebugView :: enum u32 {
-	Test,
 }
 
 @(shader_shared)

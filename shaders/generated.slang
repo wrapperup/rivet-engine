@@ -112,10 +112,6 @@ struct Environment {
 //
 // Generated from C:\Repos\odin\vulkan-playground\src\renderer.odin
 //
-enum DebugView : u32 {
-  Test,
-};
-
 struct GlobalData {
   Mat4x4 view_to_clip;
   Mat4x4 world_to_view;
@@ -230,6 +226,20 @@ struct DebugRTPushConstants {
 //
 // Generated from C:\Repos\odin\vulkan-playground\src\render_pass_debug.odin
 //
+enum GeometryDebugView : u32 {
+  None,
+  Normal,
+  Tangent,
+  Bitangent,
+  Specular,
+  Irradiance,
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_geometry.odin
+//
 struct DrawPushConstants {
   GlobalData* global_data_buffer;
   Vertex* vertex_buffer;
@@ -242,11 +252,6 @@ struct DrawPushConstants {
   SamplerComparison shadow_sampler;
 };
 
-
-
-//
-// Generated from C:\Repos\odin\vulkan-playground\src\render_pass_geometry.odin
-//
 struct PostProcessingPushConstants {
   RWImage2D resolved_image;
   Image3D<Vec3> tony_mc_mapface;

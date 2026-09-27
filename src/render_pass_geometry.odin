@@ -5,6 +5,16 @@ import vk "vendor:vulkan"
 import "gfx"
 
 @(shader_shared)
+GPUGeometryDebugView :: enum u32 {
+	None,
+    Normal,
+    Tangent,
+    Bitangent,
+    Specular,
+    Irradiance,
+}
+
+@(shader_shared)
 GPUDrawPushConstants :: struct #max_field_align(16) {
 	global_data_buffer: gfx.Ptr(GPUGlobalData),
 	vertex_buffer:      gfx.Ptr(Vertex),

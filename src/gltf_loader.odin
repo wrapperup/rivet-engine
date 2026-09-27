@@ -1,7 +1,6 @@
 package game
 
 import "base:intrinsics"
-import "core:fmt"
 
 import "deps:gltf2"
 import vk "vendor:vulkan"
@@ -611,10 +610,10 @@ parse_gltf_mesh_into_skel_mesh :: proc(
 			append(&skeleton.inverse_bind_matrices, val)
 		}
 
-		joint_remap: map[u32]u32
+		joint_remap: map[u32]JointId
 
 		for joint_i, i in skin.joints {
-			joint_remap[joint_i] = u32(i)
+			joint_remap[joint_i] = JointId(i)
 		}
 
 		for &joint_i in skin.joints {

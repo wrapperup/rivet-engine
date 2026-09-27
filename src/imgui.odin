@@ -1,16 +1,17 @@
 package game
 
-import "core:os"
-import "base:intrinsics"
 import "base:runtime"
 import "core:c"
 import "core:fmt"
+import "core:io"
 import "core:math"
 import "core:math/linalg"
 import "core:math/linalg/hlsl"
+import "core:mem"
 import "core:reflect"
 import "core:slice"
 import "core:strings"
+import "core:unicode"
 
 import im "deps:odin-imgui"
 import b3 "vendor:box3d"
@@ -46,13 +47,7 @@ configure_im :: proc() {
 	font_config.RasterizerMultiply = 1.0
 	font_config.GlyphOffset = {0.0, -1.0}
 
-	im.FontAtlas_AddFontFromFileTTF(
-		io.Fonts,
-		"assets/fonts/f_fa_regular_400.ttf",
-		14.0,
-		&font_config,
-		slice.as_ptr(FA_RANGES[:]),
-	)
+	im.FontAtlas_AddFontFromFileTTF(io.Fonts, "assets/fonts/f_fa_regular_400.ttf", 14.0, &font_config, slice.as_ptr(FA_RANGES[:]))
 
 	font_config.MergeMode = false
 
@@ -398,7 +393,8 @@ update_imgui :: proc() {
 	im.End()
 
 	if im.Begin("Environment V2") {
-		inspector_draw_struct(&game.state.environment)
+		info := type_info_of(Environment)
+		inspector_draw_any(&game.state.environment, info)
 	}
 	im.End()
 
@@ -443,146 +439,295 @@ update_imgui :: proc() {
 	// im.End()
 }
 
-// ---------------------------------------------------------------------------
-// Box3D debug draw (replaces the PhysX render-buffer line loop)
-// ---------------------------------------------------------------------------
-
-inspector_draw_struct :: proc(data: ^$T) where intrinsics.type_is_struct(T) {
-	for field in reflect.struct_fields_zipped(T) {
-		tag_value, is_inspectable := reflect.struct_tag_lookup(field.tag, "edit")
-
-		if tag_value == "-" {
-			continue
-		}
-		if !is_inspectable {
-			continue
-		}
-
-		field_value := reflect.struct_field_value(any{data, typeid_of(T)}, field)
-        label := strings.clone_to_cstring(field.name, context.temp_allocator)
-
-		switch v in field.type.variant {
-		case runtime.Type_Info_Named:
-			unimplemented("Named")
-		case runtime.Type_Info_Integer:
-			if !reflect.is_endian_platform(field.type) || field.type.size > 8 {
-				continue
-			}
-			if v.signed {
-				edit_value, ok := reflect.as_i64(field_value)
-				assert(ok)
-				min_value, max_value: i64 = 0, 20
-				if im.SliderScalar(label, .S64, &edit_value, &min_value, &max_value, flags = {.AlwaysClamp}) {
-					switch &dst in field_value {
-					case i8:
-						dst = i8(edit_value)
-					case i16:
-						dst = i16(edit_value)
-					case i32:
-						dst = i32(edit_value)
-					case i64:
-						dst = edit_value
-					case int:
-						dst = int(edit_value)
-					}
-				}
-			} else {
-				edit_value, ok := reflect.as_u64(field_value)
-				assert(ok)
-				min_value, max_value: u64 = 0, 20
-				if im.SliderScalar(label, .U64, &edit_value, &min_value, &max_value, flags = {.AlwaysClamp}) {
-					switch &dst in field_value {
-					case u8:
-						dst = u8(edit_value)
-					case u16:
-						dst = u16(edit_value)
-					case u32:
-						dst = u32(edit_value)
-					case u64:
-						dst = edit_value
-					case uint:
-						dst = uint(edit_value)
-					case uintptr:
-						dst = uintptr(edit_value)
-					}
-				}
-			}
-
-		case runtime.Type_Info_Rune:
-			unimplemented("Rune")
-		case runtime.Type_Info_Float:
-			if !reflect.is_endian_platform(field.type) || field.type.size > 8 {
-				continue
-			}
-			edit_value, ok := reflect.as_f64(field_value)
-			assert(ok)
-			min_value, max_value: f64 = 0, 20
-			if im.SliderScalar(label, .Double, &edit_value, &min_value, &max_value, flags = {.AlwaysClamp}) {
-				switch &dst in field_value {
-				case f16: dst = f16(edit_value)
-				case f32: dst = f32(edit_value)
-				case f64: dst = f64(edit_value)
-				}
-			}
-		case runtime.Type_Info_Complex:
-			unimplemented("Complex")
-		case runtime.Type_Info_Quaternion:
-			unimplemented("Quaternion")
-		case runtime.Type_Info_String:
-			unimplemented("String")
-		case runtime.Type_Info_Boolean:
-			edit_value, ok := reflect.as_f64(field_value)
-			assert(ok)
-			min_value, max_value: f64 = 0, 20
-			if im.SliderScalar(label, .Double, &edit_value, &min_value, &max_value, flags = {.AlwaysClamp}) {
-				switch &dst in field_value {
-				case f16: dst = f16(edit_value)
-				case f32: dst = f32(edit_value)
-				case f64: dst = f64(edit_value)
-				}
-			}
-		case runtime.Type_Info_Any:
-			unimplemented("Any")
-		case runtime.Type_Info_Type_Id:
-			unimplemented("Type_Id")
-		case runtime.Type_Info_Pointer:
-			unimplemented("Pointer")
-		case runtime.Type_Info_Multi_Pointer:
-			unimplemented("Multi_Pointer")
-		case runtime.Type_Info_Procedure:
-			unimplemented("Procedure")
-		case runtime.Type_Info_Array:
-			unimplemented("Array")
-		case runtime.Type_Info_Enumerated_Array:
-			unimplemented("Enumerated_Array")
-		case runtime.Type_Info_Dynamic_Array:
-			unimplemented("Dynamic_Array")
-		case runtime.Type_Info_Slice:
-			unimplemented("Slice")
-		case runtime.Type_Info_Parameters:
-			unimplemented("Parameters")
-		case runtime.Type_Info_Struct:
-			unimplemented("Struct (recurse)")
-		case runtime.Type_Info_Union:
-			unimplemented("Union")
-		case runtime.Type_Info_Enum:
-			unimplemented("Enum")
-		case runtime.Type_Info_Map:
-			unimplemented("Map")
-		case runtime.Type_Info_Bit_Set:
-			unimplemented("Bit_Set")
-		case runtime.Type_Info_Simd_Vector:
-			unimplemented("Simd_Vector")
-		case runtime.Type_Info_Matrix:
-			unimplemented("Matrix")
-		case runtime.Type_Info_Soa_Pointer:
-			unimplemented("Soa_Pointer")
-		case runtime.Type_Info_Bit_Field:
-			unimplemented("Bit_Field")
-		case runtime.Type_Info_Fixed_Capacity_Dynamic_Array:
-			unimplemented("Fixed_Capacity_Dynamic_Array")
-		}
+inspector_label :: proc(label: string) {
+	if label != "" {
+		im.SameLine()
+		im.TextUnformatted(fmt.ctprintf(label))
 	}
+}
+
+to_pretty_case :: proc(
+	s: string,
+	allocator := context.allocator,
+) -> (
+	res: string,
+	err: runtime.Allocator_Error,
+) #optional_allocator_error {
+	s := s
+	s = strings.trim_space(s)
+	b: strings.Builder
+	strings.builder_init(&b, 0, len(s), allocator) or_return
+	w := strings.to_writer(&b)
+
+	strings.string_case_iterator(w, s, proc(w: io.Writer, prev, curr, next: rune) {
+		if !strings.is_delimiter(curr) {
+			if strings.is_delimiter(prev) || prev == 0 || (unicode.is_lower(prev) && unicode.is_upper(curr)) {
+				if prev != 0 {
+					io.write_rune(w, ' ')
+				}
+				io.write_rune(w, unicode.to_upper(curr))
+			} else {
+				io.write_rune(w, unicode.to_lower(curr))
+			}
+		}
+	})
+
+	return strings.to_string(b), nil
+}
+
+inspector_draw_any :: proc(base: rawptr, type_info: ^reflect.Type_Info) -> bool {
+	im.PushIDPtr(base)
+	defer im.PopID()
+
+	value := any{base, type_info.id}
+
+	#partial switch &v in type_info.variant {
+	case runtime.Type_Info_Integer, runtime.Type_Info_Float:
+		if !reflect.is_endian_platform(type_info) {
+			return false
+		}
+
+		data_type: im.DataType
+		speed: f32 = 1.0
+
+		integer_info, is_integer := type_info.variant.(runtime.Type_Info_Integer)
+
+		if is_integer {
+			switch type_info.size {
+			case 1:
+				data_type = integer_info.signed ? .S8 : .U8
+			case 2:
+				data_type = integer_info.signed ? .S16 : .U16
+			case 4:
+				data_type = integer_info.signed ? .S32 : .U32
+			case 8:
+				data_type = integer_info.signed ? .S64 : .U64
+			case:
+				return false
+			}
+		} else {
+			switch type_info.size {
+			case 4:
+				data_type = .Float
+			case 8:
+				data_type = .Double
+			case:
+				return false
+			}
+			speed = 0.01
+		}
+
+		im.DragScalar("##value", data_type, base, speed)
+
+	case runtime.Type_Info_Boolean:
+		edit_value, ok := reflect.as_bool(value)
+		assert(ok)
+		if im.Checkbox("##value", &edit_value) {
+			switch &dst in value {
+			case bool:
+				dst = edit_value
+			}
+		}
+
+	case runtime.Type_Info_Enum:
+		if len(v.names) == 0 {
+			return false
+		}
+
+		enum_info := v.base
+
+		for {
+			named, ok := enum_info.variant.(runtime.Type_Info_Named)
+			if !ok {
+				break
+			}
+			enum_info = named.base
+		}
+
+		curr: runtime.Type_Info_Enum_Value
+		switch type_info.size {
+		case 1:
+			curr = runtime.Type_Info_Enum_Value((^u8)(base)^)
+		case 2:
+			curr = runtime.Type_Info_Enum_Value((^u16)(base)^)
+		case 4:
+			curr = runtime.Type_Info_Enum_Value((^u32)(base)^)
+		case 8:
+			curr = runtime.Type_Info_Enum_Value((^u64)(base)^)
+		}
+
+		selected: int
+
+		for value, i in v.values {
+			if value == curr {
+				selected = i
+			}
+		}
+
+		if im.BeginCombo("##value", fmt.ctprint(to_pretty_case(v.names[selected]))) {
+			for name, i in v.names {
+				is_selected := i == selected
+
+				if im.Selectable(strings.clone_to_cstring(to_pretty_case(name), context.temp_allocator), is_selected) {
+					selected = i
+					value := v.values[i]
+					switch type_info.size {
+					case 1:
+						(^u8)(base)^ = u8(value)
+					case 2:
+						(^u16)(base)^ = u16(value)
+					case 4:
+						(^u32)(base)^ = u32(value)
+					case 8:
+						(^u64)(base)^ = u64(value)
+					}
+				}
+
+				if is_selected {
+					im.SetItemDefaultFocus()
+				}
+			}
+			im.EndCombo()
+		}
+
+	case runtime.Type_Info_Array:
+		if v.count == 0 {
+			return false
+		}
+
+		is_scalar := reflect.is_float(v.elem) || reflect.is_integer(v.elem)
+
+		if v.count <= 4 && is_scalar {
+			im.PushItemWidth(75)
+
+			im.BeginGroup()
+			for i in 0 ..< v.count {
+				if i != 0 {
+					im.SameLine()
+				}
+				elem_base := rawptr(uintptr(base) + uintptr(i * v.elem_size))
+				inspector_draw_any(elem_base, v.elem)
+			}
+			im.EndGroup()
+			im.PopItemWidth()
+		} else {
+			for i in 0 ..< v.count {
+				elem_base := rawptr(uintptr(base) + uintptr(i * v.elem_size))
+				inspector_draw_any(elem_base, v.elem)
+			}
+		}
+
+	case runtime.Type_Info_Dynamic_Array:
+		array := cast(^runtime.Raw_Dynamic_Array)base
+
+		for i in 0 ..< array.len {
+			elem_base := rawptr(uintptr(array.data) + uintptr(i * v.elem_size))
+			inspector_draw_any(elem_base, v.elem)
+			inspector_label(fmt.tprint(i))
+		}
+
+	case runtime.Type_Info_Struct:
+		zipped := soa_zip(
+			name = v.names[:v.field_count],
+			type = v.types[:v.field_count],
+			tag = ([^]reflect.Struct_Tag)(v.tags)[:v.field_count],
+			offset = v.offsets[:v.field_count],
+			is_using = v.usings[:v.field_count],
+		)
+
+		for field in zipped {
+			tag_value, has_tag := reflect.struct_tag_lookup(field.tag, "edit")
+
+			if tag_value == "-" {
+				continue
+			}
+
+			field_base := rawptr(uintptr(base) + field.offset)
+			field_value := any{field_base, field.type.id}
+			field_info := field.type
+
+			for {
+				named, ok := field_info.variant.(runtime.Type_Info_Named)
+				if !ok {
+					break
+				}
+				field_info = named.base
+			}
+
+			label: string
+			if label_value, has_label := reflect.struct_tag_lookup(field.tag, "label"); has_label {
+				label = label_value
+			} else {
+				label = to_pretty_case(field.name)
+			}
+
+
+			if array_info, is_array := field_info.variant.(runtime.Type_Info_Dynamic_Array); is_array {
+				array := (^runtime.Raw_Dynamic_Array)(field_base)
+				im.PushIDPtr(field_base)
+
+				button_size := im.GetFrameHeight()
+				spacing := im.GetStyle().ItemSpacing.x
+				count_label := fmt.ctprintf("%d entries", array.len)
+				controls_width := im.CalcTextSize(count_label).x + 2 * button_size + 2 * spacing
+				controls_x := im.GetCursorPosX() + max(0, im.GetContentRegionAvail().x - controls_width)
+				open := im.TreeNodeEx(
+					strings.clone_to_cstring(label, context.temp_allocator),
+					{.SpanAvailWidth, .AllowOverlap, .FramePadding, .NoTreePushOnOpen},
+				)
+
+				im.SameLine(controls_x)
+				im.TextUnformatted(count_label)
+				im.SameLine()
+				if im.Button("+", {button_size, button_size}) {
+					zero, alloc_err := mem.alloc(array_info.elem.size, array_info.elem.align, context.temp_allocator)
+					if alloc_err == nil {
+						appended, append_err := runtime._append_elems(
+							array,
+							array_info.elem.size,
+							array_info.elem.align,
+							should_zero = true,
+							args = zero,
+							arg_len = 1,
+						)
+						if append_err != nil || appended != 1 {
+							fmt.eprintln("Failed to append inspector array element:", append_err)
+						}
+					} else {
+						fmt.eprintln("Failed to allocate inspector array element:", alloc_err)
+					}
+				}
+				im.SameLine()
+				im.BeginDisabled(array.len == 0)
+				if im.Button("-", {button_size, button_size}) && array.len > 0 {
+					array.len -= 1
+				}
+				im.EndDisabled()
+
+				if open {
+					im.TreePush("contents")
+					inspector_draw_any(field_base, field.type)
+					im.TreePop()
+				}
+				im.PopID()
+			} else if reflect.is_struct(field_info) {
+				if im.TreeNode(strings.clone_to_cstring(label, context.temp_allocator)) {
+					inspector_draw_any(field_base, field.type)
+					im.TreePop()
+				}
+			} else if inspector_draw_any(field_base, field.type) {
+				inspector_label(label)
+			}
+		}
+
+		return false
+	case runtime.Type_Info_Named:
+		return inspector_draw_any(base, v.base)
+	case:
+		return false
+	}
+
+	return true
 }
 
 g_show_physics_debug: bool

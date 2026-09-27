@@ -114,11 +114,6 @@ Environment :: struct {
 	sun_direction: Vec3,
 }
 
-InspectorTestStruct :: struct {
-	test_int:   int `edit:"chud"`,
-	test_float: int `edit:"chud"`,
-}
-
 PlayerController :: struct {
 	input: struct {
 		forward: bool,
