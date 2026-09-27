@@ -14,6 +14,12 @@ Vec3 tony_mc_mapface(Vec3 stimulus) {
   return pc.tony_mc_mapface.sample_level(pc.sampler, uv, 0);
 }
 
+/* Gradient noise from Jorge Jimenez's presentation: */
+/* http://www.iryoku.com/next-generation-post-processing-in-call-of-duty-advanced-warfare */
+f32 gradient_noise(Vec2 pixel) {
+  return frac(52.9829189 * frac(dot(pixel, Vec2(0.06711056, 0.00583715))));
+}
+
 [vk_push_constant]
 PostProcessingPushConstants pc;
 
@@ -30,9 +36,9 @@ void compute_main(Vec3u32 dispatchThreadID: SV_DispatchThreadID) {
     let hdr_color = pc.resolved_image.load(texel_coord).rgb * exposure;
     let mapped = tony_mc_mapface(hdr_color);
 
-    let gamma_corrected = Vec4(pow(mapped, Vec3(1.0/2.2)), 1.0);
-    let linear_color = Vec4(mapped, 1.0);
+    let encoded = pow(max(mapped, Vec3(0.0)), Vec3(1.0 / 2.2));
+    let dithered = encoded + ((2.0 / 255.0) * gradient_noise(texel_coord) - (1.0 / 255.0));
 
-    pc.resolved_image.store(texel_coord, gamma_corrected);
+    pc.resolved_image.store(texel_coord, Vec4(dithered, 1.0));
   }
 }
