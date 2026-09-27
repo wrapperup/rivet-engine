@@ -18,17 +18,16 @@ GPUDrawShadowDepthPushConstants :: struct #max_field_align(16) {
 
 @(shader_shared)
 GPUCascadeConfig :: struct #max_field_align(16) {
-	split_dist: f32,
+	split_dist:           f32,
 	depth_per_texel:      f32, // One world-space shadow texel expressed in normalized depth.
 	raster_subpixel_size: f32,
 }
 
 ShadowRenderPass :: struct {
 	mesh_shadow_pipeline:            ^gfx.GraphicsPipeline,
-	shadow_depth_image:              gfx.Image,
-	shadow_depth_image_id:           gfx.ImageId,
-	shadow_sampler_id:               gfx.SamplerId,
-	shadow_depth_attach_image_views: [NUM_CASCADES]vk.ImageView,
+	shadow_depth_image:              gfx.ImageId,
+	shadow_sampler:                  gfx.SamplerId,
+	shadow_depth_attach_image_views: [NUM_CASCADES]gfx.ImageId,
 	cascade_world_to_shadows:        [NUM_CASCADES]Mat4x4,
 	cascade_configs:                 [NUM_CASCADES]GPUCascadeConfig,
 }
@@ -44,17 +43,13 @@ init_shadow_maps :: proc() {
 		{.DEPTH_STENCIL_ATTACHMENT, .SAMPLED},
 		array_layers = NUM_CASCADES,
 	)
+    gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image)
 
-	shadow_rp.shadow_depth_image_id = gfx.add_image(shadow_rp.shadow_depth_image)
-	sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_BORDER, compare_op = .LESS_OR_EQUAL, border_color = .FLOAT_OPAQUE_WHITE)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, sampler)
-	shadow_rp.shadow_sampler_id = gfx.add_sampler(sampler)
-
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image.image_view)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image.image, shadow_rp.shadow_depth_image.allocation)
+	shadow_rp.shadow_sampler = gfx.create_sampler(.LINEAR, .CLAMP_TO_BORDER, compare_op = .LESS_OR_EQUAL, border_color = .FLOAT_OPAQUE_WHITE)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_sampler)
 
 	for &view, i in shadow_rp.shadow_depth_attach_image_views {
-		view = gfx.create_image_view(shadow_rp.shadow_depth_image.image, shadow_rp.shadow_depth_image.format, .D2, 0, 1, i, 1)
+		view = gfx.create_image_view(shadow_rp.shadow_depth_image, .D32_SFLOAT, .D2, 0, 1, i, 1)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, view)
 	}
 }
@@ -74,7 +69,7 @@ init_shadow_rp :: proc() {
 			// Keep distant casters beyond the depth slab without expanding its range.
 			depth_clamp = true,
 			front_face = .COUNTER_CLOCKWISE,
-			depth = {format = gfx.r_ctx.depth_image.format, compare_op = .LESS_OR_EQUAL, write_enabled = true},
+			depth = {format = .D32_SFLOAT, compare_op = .LESS_OR_EQUAL, write_enabled = true},
 			push_constants = GPUDrawShadowDepthPushConstants,
 		)
 	},
@@ -95,16 +90,15 @@ shadow_prepare :: proc() {
 }
 
 record_shadow_pass :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDraw) {
-	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
+	gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
 	for cascade in u32(0) ..< NUM_CASCADES {
 		record_shadow_cascade(cmd, cascade, mesh_draws)
 	}
 }
 
-@(private = "file")
 record_shadow_cascade :: proc(cmd: gfx.CommandBuffer, cascade: u32, mesh_draws: []MeshDraw) {
 	image_view := game.render_state.shadow_rp.shadow_depth_attach_image_views[cascade]
-	extent := game.render_state.shadow_rp.shadow_depth_image.extent
+	extent := gfx.image_meta(game.render_state.shadow_rp.shadow_depth_image).extent
 
 	width := extent.width
 	height := extent.height
@@ -114,7 +108,7 @@ record_shadow_cascade :: proc(cmd: gfx.CommandBuffer, cascade: u32, mesh_draws: 
 		area = {width, height},
 		depth_attachment = &{view = image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL, clear_value = &{depthStencil = {depth = 1.0}}},
 	)
-	gfx.set_viewport_and_scissor(cmd, game.render_state.shadow_rp.shadow_depth_image.extent)
+	gfx.set_viewport_and_scissor(cmd, extent)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.shadow_rp.mesh_shadow_pipeline)
 
@@ -221,7 +215,7 @@ calculate_shadow_view_projection_matrices :: proc(near: f32 = 0.1, far: f32 = 12
 		)
 		game.render_state.shadow_rp.cascade_world_to_shadows[i] = world_to_shadow
 		game.render_state.shadow_rp.cascade_configs[i] = {
-			split_dist = test_far,
+			split_dist           = test_far,
 			depth_per_texel      = depth_per_texel,
 			raster_subpixel_size = 1 / f32(u64(1) << min(gfx.r_ctx.limits.subPixelPrecisionBits, 24)),
 		}

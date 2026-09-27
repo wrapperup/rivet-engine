@@ -45,7 +45,7 @@ init_geometry_rp :: proc() {
 				polygon_mode = .FILL,
 				cull_mode = {.BACK},
 				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
+				depth = {format = gfx.image_meta(gfx.r_ctx.depth_image).format, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
 				multisampling_samples = gfx.msaa_samples(),
 				push_constants = GPUDrawPushConstants,
 			)
@@ -61,8 +61,8 @@ init_geometry_rp :: proc() {
 				polygon_mode = .FILL,
 				cull_mode = {.BACK},
 				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .EQUAL, write_enabled = false},
-				color_format = gfx.r_ctx.draw_image.format,
+				depth = {format = gfx.image_meta(gfx.r_ctx.depth_image).format, compare_op = .EQUAL, write_enabled = false},
+				color_format = gfx.image_meta(gfx.r_ctx.draw_image).format,
 				multisampling_samples = gfx.msaa_samples(),
 				push_constants = GPUDrawPushConstants,
 			)
@@ -84,11 +84,11 @@ geometry_prepare :: proc() {
 }
 
 record_geometry_pass :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDraw) {
-	gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .COLOR_ATTACHMENT_OPTIMAL)
-	gfx.transition_image(cmd, &gfx.r_ctx.depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
-	gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .DEPTH_READ_ONLY_OPTIMAL)
+	gfx.transition_image(cmd, gfx.r_ctx.draw_image, .COLOR_ATTACHMENT_OPTIMAL)
+	gfx.transition_image(cmd, gfx.r_ctx.depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
+	gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .DEPTH_READ_ONLY_OPTIMAL)
 	record_geometry_depth_pass(cmd, mesh_draws)
-	gfx.image_barrier(cmd, &gfx.r_ctx.depth_image, src_access = .DepthAttachmentReadWrite, dst_access = .DepthAttachmentReadWrite)
+	gfx.image_barrier(cmd, gfx.r_ctx.depth_image, src_access = .DepthAttachmentReadWrite, dst_access = .DepthAttachmentReadWrite)
 
 	if game.render_state.draw_sky {
 		record_atmosphere_background(cmd)
@@ -101,11 +101,11 @@ record_geometry_pass :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDraw) {
 		cmd,
 		area = gfx.r_ctx.draw_extent,
 		color_attachment = &{
-			view = gfx.r_ctx.draw_image.image_view,
+			view = gfx.r_ctx.draw_image,
 			layout = .COLOR_ATTACHMENT_OPTIMAL,
 			clear_value = game.render_state.draw_sky ? nil : &background_clear,
 		},
-		depth_attachment = &{view = gfx.r_ctx.depth_image.image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL},
+		depth_attachment = &{view = gfx.r_ctx.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
 	)
 	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
 
@@ -119,7 +119,7 @@ record_geometry_depth_pass :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDra
 		cmd,
 		area = gfx.r_ctx.draw_extent,
 		depth_attachment = &{
-			view = gfx.r_ctx.depth_image.image_view,
+			view = gfx.r_ctx.depth_image,
 			clear_value = &{depthStencil = {depth = 0.0}},
 			layout = .DEPTH_ATTACHMENT_OPTIMAL,
 		},
@@ -143,8 +143,8 @@ record_geometry_draws :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDraw) {
 				model_index = mesh_draw.model_index,
 				material_index = mesh_draw.material_index,
 				num_cascades = NUM_CASCADES,
-				shadow_depth = game.render_state.shadow_rp.shadow_depth_image_id,
-				shadow_sampler = game.render_state.shadow_rp.shadow_sampler_id,
+				shadow_depth = game.render_state.shadow_rp.shadow_depth_image,
+				shadow_sampler = game.render_state.shadow_rp.shadow_sampler,
 			},
 		)
 

@@ -43,7 +43,7 @@ UI_Push :: struct #max_field_align(16) {
 
 UIRenderPass :: struct {
 	pipeline:        ^gfx.GraphicsPipeline,
-	sampler_id:      gfx.SamplerId,
+	sampler:      gfx.SamplerId,
 	commands:        [dynamic]UI_Command,
 	num_commands:    int,
 	command_buffers: [gfx.FRAME_OVERLAP]gfx.Buffer(UI_Command),
@@ -112,18 +112,7 @@ load_font :: proc(image_path: string, json_path: string, allocator := context.al
 	assert(parsed.atlas.width > 0 && parsed.atlas.height > 0 && parsed.atlas.distance_range > 0, "Invalid font atlas dimensions or range.")
 	assert(len(parsed.glyphs) > 0 && parsed.metrics.line_height > 0, "Font has no glyphs or an invalid line height.")
 
-	image := gfx.load_image_from_file(image_path)
-
-	assert(
-		image.format == .R8G8B8A8_UNORM || image.format == .B8G8R8A8_UNORM || image.format == .BC7_UNORM_BLOCK,
-		"MTSDF atlas must use linear RGBA8, BGRA8, or BC7. Export with a non-sRGB format.",
-	)
-	assert(
-		image.extent.width == parsed.atlas.width && image.extent.height == parsed.atlas.height,
-		"Font atlas dimensions do not match its JSON.",
-	)
-
-	font.image = gfx.add_image(image)
+	font.image = gfx.load_image_from_file(image_path)
 	font.line_height = parsed.metrics.line_height
 	font.ascender = parsed.metrics.ascender
 	font.descender = parsed.metrics.descender
@@ -162,18 +151,15 @@ init_ui_rp :: proc() {
 			polygon_mode = .FILL,
 			cull_mode = {},
 			front_face = .CLOCKWISE,
-			color_format = gfx.r_ctx.draw_image.format,
+			color_format = gfx.image_meta(gfx.r_ctx.draw_image).format,
 			multisampling_samples = ._1,
 			push_constants = UI_Push,
 			blend_mode = .Alpha,
 		)
 	})
 
-	// TODO: improve api ergonomics, there's no need for us to manage vk images/samplers.
-	sampler := gfx.create_sampler(.LINEAR, .REPEAT)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, sampler)
-	sampler_id := gfx.add_sampler(sampler)
-	ui_rp.sampler_id = sampler_id
+    ui_rp.sampler = gfx.create_sampler(.LINEAR, .REPEAT)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, ui_rp.sampler)
 
 	ui_rp.font = load_font(
 		"assets/fonts/msdf/f_nunito_regular_mtsdf.ktx2",
@@ -441,14 +427,14 @@ ui_prepare :: proc() {
 record_ui_pass :: proc(cmd: gfx.CommandBuffer) {
 	ui_rp := &game.render_state.ui_rp
 
-	gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .COLOR_ATTACHMENT_OPTIMAL)
+	gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .COLOR_ATTACHMENT_OPTIMAL)
 
 	{
 		gfx.cmd_begin_label(cmd, "UI")
 		gfx.cmd_begin_rendering(
 			cmd,
 			area = gfx.r_ctx.draw_extent,
-			color_attachment = &{view = gfx.r_ctx.resolve_image.image_view, layout = .COLOR_ATTACHMENT_OPTIMAL},
+			color_attachment = &{view = gfx.r_ctx.resolve_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
 		)
 
 		gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
@@ -461,7 +447,7 @@ record_ui_pass :: proc(cmd: gfx.CommandBuffer) {
 			UI_Push {
 				commands = commands,
 				viewport_size = auto_cast (transmute([2]u32)game.renderer.draw_extent),
-				sampler = ui_rp.sampler_id,
+				sampler = ui_rp.sampler,
 			},
 		)
 

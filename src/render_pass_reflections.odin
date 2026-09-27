@@ -66,8 +66,8 @@ init_reflection_probe_rp :: proc() {
 				polygon_mode = .FILL,
 				cull_mode = {},
 				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.r_ctx.depth_image.format, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
-				color_format = gfx.r_ctx.draw_image.format,
+				depth = {format = gfx.image_meta(gfx.r_ctx.depth_image).format, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
+				color_format = gfx.image_meta(gfx.r_ctx.draw_image).format,
 				multisampling_samples = gfx.msaa_samples(),
 				push_constants = GPUReflectionProbeDebugPush,
 			)
@@ -129,8 +129,8 @@ record_reflection_probe_debug_pass :: proc(cmd: gfx.CommandBuffer, probes: []Ref
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = gfx.r_ctx.draw_extent,
-		color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .COLOR_ATTACHMENT_OPTIMAL},
-		depth_attachment = &{view = gfx.r_ctx.depth_image.image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL},
+		color_attachment = &{view = gfx.r_ctx.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
+		depth_attachment = &{view = gfx.r_ctx.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
 	)
 	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_probe_debug_pipeline)
@@ -176,7 +176,7 @@ reflection_probe_debug_draw_box :: proc(probe: ^ReflectionProbe) {
 record_reflection_probe_capture :: proc(cmd: gfx.CommandBuffer, probe: ^ReflectionProbe) {
 	gfx.image_barrier(
 		cmd,
-		&probe.cube_image,
+		probe.cube_image_id,
 		src_access = .AllReadsWrites,
 		dst_access = .ComputeShaderWrite,
 	)
@@ -200,7 +200,7 @@ record_reflection_probe_capture :: proc(cmd: gfx.CommandBuffer, probe: ^Reflecti
 
 	gfx.image_barrier(
 		cmd,
-		&probe.cube_image,
+		probe.cube_image_id,
 		src_access = .ComputeShaderWrite,
 		dst_access = .ComputeShaderRead,
 	)
@@ -212,7 +212,7 @@ record_reflection_probe_capture :: proc(cmd: gfx.CommandBuffer, probe: ^Reflecti
 		gfx.cmd_push_constants(
 			cmd,
 			GPUReflectionPrefilterPush {
-				src_cube = probe.cube_sampled_id,
+				src_cube = probe.cube_image_id,
 				sampler = probe.gpu_sampler_id,
 				out_mip = probe.cube_mip_storage_ids[mip],
 				face_size = mip_size,
@@ -226,7 +226,7 @@ record_reflection_probe_capture :: proc(cmd: gfx.CommandBuffer, probe: ^Reflecti
 
 	gfx.image_barrier(
 		cmd,
-		&probe.cube_image,
+		probe.cube_image_id,
 		src_access = .ComputeShaderWrite,
 		dst_access = .ComputeFragmentShaderRead,
 	)

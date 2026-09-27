@@ -3,8 +3,6 @@ package gfx
 import "base:runtime"
 import "core:dynlib"
 import "core:fmt"
-import "core:log"
-import "core:mem"
 import "core:os"
 import "core:reflect"
 import "core:strings"
@@ -13,9 +11,6 @@ import "core:time"
 import vma "deps:odin-vma"
 import "vendor:glfw"
 import vk "vendor:vulkan"
-
-import im "deps:odin-imgui"
-import im_glfw "deps:odin-imgui/imgui_impl_glfw"
 
 log_normal :: proc(args: ..any) {
 	if r_ctx.enable_logs {
@@ -70,9 +65,9 @@ Renderer :: struct {
 	allocator:                   vma.Allocator,
 
 	// Draw resources
-	draw_image:                  Image,
-	resolve_image:               Image,
-	depth_image:                 Image,
+	draw_image:                  ImageId,
+	resolve_image:               ImageId,
+	depth_image:                 ImageId,
 	draw_extent:                 vk.Extent2D,
 	msaa_samples:                vk.SampleCountFlag,
 
@@ -94,9 +89,8 @@ Renderer :: struct {
 
 Swapchain :: struct {
 	swapchain:              vk.SwapchainKHR,
-	swapchain_images:       []vk.Image,
+	swapchain_images:       []ImageId,
 	swapchain_image_index:  u32,
-	swapchain_image_views:  []vk.ImageView,
 	swapchain_image_format: vk.Format,
 	swapchain_extent:       vk.Extent2D,
 	arena:                  ResourceArena,
@@ -146,7 +140,7 @@ create_swapchain :: proc(old_swapchain: vk.SwapchainKHR = 0) {
 		imageColorSpace       = surface_format.colorSpace,
 		imageExtent           = extent,
 		imageArrayLayers      = 1,
-		imageUsage            = {.COLOR_ATTACHMENT, .TRANSFER_DST},
+		imageUsage            = {.COLOR_ATTACHMENT, .TRANSFER_DST, .SAMPLED},
 
 		// TODO: Support multiple queues?
 		imageSharingMode      = .EXCLUSIVE,
@@ -164,27 +158,22 @@ create_swapchain :: proc(old_swapchain: vk.SwapchainKHR = 0) {
 	vk_check(vk.CreateSwapchainKHR(r_ctx.device, &create_info, nil, &swapchain.swapchain))
 	defer_destroy(&swapchain.arena, swapchain.swapchain)
 
-	vk.GetSwapchainImagesKHR(r_ctx.device, swapchain.swapchain, &image_count, nil)
-	swapchain.swapchain_images = make([]vk.Image, image_count)
-	vk.GetSwapchainImagesKHR(r_ctx.device, swapchain.swapchain, &image_count, raw_data(swapchain.swapchain_images))
-
 	swapchain.swapchain_image_format = surface_format.format
 	swapchain.swapchain_extent = extent
 
-	swapchain.swapchain_image_views = make([]vk.ImageView, len(swapchain.swapchain_images))
+	vk.GetSwapchainImagesKHR(r_ctx.device, swapchain.swapchain, &image_count, nil)
+	vk_swapchain_images := make([]vk.Image, image_count)
+	vk.GetSwapchainImagesKHR(r_ctx.device, swapchain.swapchain, &image_count, raw_data(vk_swapchain_images))
 
+	swapchain.swapchain_images = make([]ImageId, image_count)
 	for i in 0 ..< len(swapchain.swapchain_images) {
-		create_info := vk.ImageViewCreateInfo {
-			sType = .IMAGE_VIEW_CREATE_INFO,
-			image = swapchain.swapchain_images[i],
-			viewType = .D2,
-			format = swapchain.swapchain_image_format,
-			components = {r = .IDENTITY, g = .IDENTITY, b = .IDENTITY, a = .IDENTITY},
-			subresourceRange = {aspectMask = {.COLOR}, baseMipLevel = 0, levelCount = 1, baseArrayLayer = 0, layerCount = 1},
-		}
-
-		vk_check(vk.CreateImageView(r_ctx.device, &create_info, nil, &swapchain.swapchain_image_views[i]))
-		defer_destroy(&swapchain.arena, swapchain.swapchain_image_views[i])
+		swapchain.swapchain_images[i] = wrap_image(
+			vk_swapchain_images[i],
+			swapchain.swapchain_image_format,
+			{swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 0},
+			{.COLOR_ATTACHMENT, .TRANSFER_DST, .SAMPLED},
+		)
+		defer_destroy(&swapchain.arena, swapchain.swapchain_images[i])
 	}
 
 	draw_image_format: vk.Format = .R32G32B32A32_SFLOAT
@@ -201,14 +190,13 @@ create_swapchain :: proc(old_swapchain: vk.SwapchainKHR = 0) {
 	r_ctx.depth_image = create_image(.D32_SFLOAT, draw_image_extent, {.DEPTH_STENCIL_ATTACHMENT}, msaa_samples = r_ctx.msaa_samples)
 	defer_destroy(&swapchain.arena, r_ctx.depth_image)
 
-	r_ctx.draw_extent.width = r_ctx.draw_image.extent.width
-	r_ctx.draw_extent.height = r_ctx.draw_image.extent.height
+	r_ctx.draw_extent.width = draw_image_extent.width
+	r_ctx.draw_extent.height = draw_image_extent.height
 }
 
 destroy_swapchain_resources :: proc(swapchain: ^Swapchain) {
 	flush_vk_arena(&swapchain.arena)
 	delete_vk_arena(swapchain.arena)
-	delete(swapchain.swapchain_image_views)
 	delete(swapchain.swapchain_images)
 	swapchain^ = {}
 }
@@ -500,10 +488,6 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 
 	r_ctx.msaa_samples = config.msaa_samples
 
-	if r_ctx.window != nil {
-		create_swapchain()
-	}
-
 	{
 		command_pool_info := vk.CommandPoolCreateInfo{}
 		command_pool_info.sType = .COMMAND_POOL_CREATE_INFO
@@ -558,6 +542,10 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 	}
 
 	init_bindless_descriptors()
+
+	if r_ctx.window != nil {
+		create_swapchain()
+	}
 
 	return true
 }
@@ -675,9 +663,6 @@ begin_command_buffer :: proc() -> (cmd: CommandBuffer, ready, swapchain_resized:
 		vk_check(acquire_image_result)
 	}
 
-	r_ctx.draw_extent.width = r_ctx.draw_image.extent.width
-	r_ctx.draw_extent.height = r_ctx.draw_image.extent.height
-
 	vk_check(vk.ResetFences(r_ctx.device, 1, &current_frame().render_fence))
 
 	// now that we are sure that the commands finished executing, we can safely
@@ -695,12 +680,12 @@ begin_command_buffer :: proc() -> (cmd: CommandBuffer, ready, swapchain_resized:
 	return cmd, true, false
 }
 
-copy_image_to_swapchain :: proc(cmd: CommandBuffer, source: vk.Image, src_size: vk.Extent2D) {
-	transition_vk_image(cmd, r_ctx.swapchain.swapchain_images[r_ctx.swapchain.swapchain_image_index], .UNDEFINED, .TRANSFER_DST_OPTIMAL)
+copy_image_to_swapchain :: proc(cmd: CommandBuffer, image_id: ImageId, src_size: vk.Extent2D) {
+	transition_image(cmd, r_ctx.swapchain.swapchain_images[r_ctx.swapchain.swapchain_image_index], .TRANSFER_DST_OPTIMAL)
 
 	copy_image_to_image(
 		cmd,
-		source,
+		image_id,
 		r_ctx.swapchain.swapchain_images[r_ctx.swapchain.swapchain_image_index],
 		src_size,
 		r_ctx.swapchain.swapchain_extent,
@@ -710,12 +695,7 @@ copy_image_to_swapchain :: proc(cmd: CommandBuffer, source: vk.Image, src_size: 
 // Called by the user when they end drawing to the screen.
 submit :: proc(cmd: CommandBuffer) -> (swapchain_resized: bool) {
 	// set swapchain image layout to Present so we can show it on the screen
-	transition_vk_image(
-		cmd,
-		r_ctx.swapchain.swapchain_images[r_ctx.swapchain.swapchain_image_index],
-		.TRANSFER_DST_OPTIMAL,
-		.PRESENT_SRC_KHR,
-	)
+	transition_image(cmd, r_ctx.swapchain.swapchain_images[r_ctx.swapchain.swapchain_image_index], .PRESENT_SRC_KHR)
 
 	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	vk_check(vk.EndCommandBuffer(cmd))

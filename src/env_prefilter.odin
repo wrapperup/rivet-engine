@@ -21,9 +21,9 @@ PrefilteredCubeMapPass :: struct {
 	pipeline:                      gfx.ComputePipeline,
 
 	// Resources
-	cube_image:                    gfx.Image,
-	cube_sampler:                  vk.Sampler,
-	prefilter_image:               gfx.Image,
+	cube_image:                    gfx.ImageId,
+	cube_sampler:                  gfx.SamplerId,
+	prefilter_image:               gfx.ImageId,
 	prefilter_image_views:         [MAX_ROUGHNESS_LEVELS]vk.ImageView,
 	prefilter_image_mapped_buffer: gfx.Buffer(u8),
 	width:                         u32,
@@ -41,8 +41,12 @@ create_prefiltered_cubemap_pipeline :: proc(filename: string, out_width, out_hei
 
 	pass.descriptor_set = gfx.allocate_descriptor_set(&gfx.r_ctx.global_descriptor_allocator, gfx.r_ctx.device, pass.descriptor_set_layout)
 
-	width, height: u32
-	pass.cube_image = gfx.load_image_from_file(filename, .D2, .CUBE, &width, &height)
+	pass.cube_image = gfx.load_image_from_file(filename)
+    meta := gfx.image_meta(pass.cube_image)
+    assert(meta.view_type == .CUBE)
+    width := meta.extent.width
+    height := meta.extent.height
+
 	pass.cube_sampler = gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE)
 
 	if pass.width <= 0 do pass.width = width
@@ -63,8 +67,8 @@ create_prefiltered_cubemap_pipeline :: proc(filename: string, out_width, out_hei
 			{
 				binding      = 0,
 				type         = .COMBINED_IMAGE_SAMPLER, // We know this
-				image_view   = pass.cube_image.image_view,
-				sampler      = pass.cube_sampler,
+				image_view   = gfx.image_meta(pass.cube_image).image_view,
+				sampler      = gfx.sampler_meta(pass.cube_sampler),
 				image_layout = .SHADER_READ_ONLY_OPTIMAL,
 			},
 		},
@@ -72,8 +76,8 @@ create_prefiltered_cubemap_pipeline :: proc(filename: string, out_width, out_hei
 
 	for i in 0 ..< MAX_ROUGHNESS_LEVELS {
 		dview_info := gfx.init_imageview_create_info(
-			pass.prefilter_image.format,
-			pass.prefilter_image.image,
+			gfx.image_meta(pass.prefilter_image).format,
+			gfx.image_meta(pass.prefilter_image).image,
 			{.COLOR},
 			.D2_ARRAY,
 			i,

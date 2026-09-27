@@ -54,10 +54,20 @@ shutdown_bindless_descriptors :: proc() {
 	r_ctx.bindless_system = {}
 }
 
+image_meta :: proc(id: ImageId) -> ^Image {
+	bindless_system := &r_ctx.bindless_system
+    return &bindless_system.images[id]
+}
+
+sampler_meta :: proc(id: SamplerId) -> vk.Sampler {
+	bindless_system := &r_ctx.bindless_system
+    return bindless_system.samplers[id]
+}
+
 add_image_impl :: proc(image: Image) -> ImageId {
 	bindless_system := &r_ctx.bindless_system
 
-	assert(.STORAGE in image.usage || .SAMPLED in image.usage)
+	// assert(.STORAGE in image.usage || .SAMPLED in image.usage)
 
 	image_id: ImageId
 	if len(bindless_system.free_images) > 0 {
@@ -102,15 +112,11 @@ add_image_impl :: proc(image: Image) -> ImageId {
 	return image_id
 }
 
-add_image_with_view :: proc(image: Image, view: vk.ImageView) -> ImageId {
+add_image_with_view_impl :: proc(image: Image, view: vk.ImageView) -> ImageId {
     image := image
     image.image_view = view
+    image.owns_image = false
     return add_image_impl(image)
-}
-
-add_image :: proc {
-    add_image_impl,
-    add_image_with_view
 }
 
 add_sampler :: proc(sampler: vk.Sampler) -> SamplerId {
@@ -134,40 +140,10 @@ add_sampler :: proc(sampler: vk.Sampler) -> SamplerId {
 	return sampler_id
 }
 
-// Free a bindless slot for reuse. Does NOT destroy the underlying image/sampler — the caller owns
-// that (e.g. via a ResourceArena flush). The slot is recycled by the next add_image/add_sampler.
-remove_image :: proc(id: ImageId) {
+_remove_image :: proc(id: ImageId) {
 	append(&r_ctx.bindless_system.free_images, id)
 }
 
-remove_sampler :: proc(id: SamplerId) {
+_remove_sampler :: proc(id: SamplerId) {
 	append(&r_ctx.bindless_system.free_samplers, id)
 }
-
-// // Writes a image to the bindless ID and updates the descriptor.
-// set_image :: proc(image: Image, image_id: ImageId) -> (resized: bool) {
-// 	bindless_system := &r_ctx.bindless_system
-//
-// 	// Ensure our image id can fit
-// 	if ImageId(len(bindless_system.bindless_images)) <= image_id {
-// 		resize(&bindless_system.bindless_images, image_id + 1)
-// 		resized = true
-// 	}
-//
-// 	bindless_system.bindless_images[image_id] = image
-//
-// 	write_descriptor_set(
-// 		bindless_system.descriptor_set,
-// 		{
-// 			{
-// 				binding = 0,
-// 				type = .SAMPLED_IMAGE,
-// 				image_view = image.image_view,
-// 				image_layout = .READ_ONLY_OPTIMAL,
-// 				array_index = u32(image_id),
-// 			},
-// 		},
-// 	)
-//
-// 	return
-// }

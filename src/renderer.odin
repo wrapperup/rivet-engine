@@ -30,13 +30,10 @@ GPUEnvironment :: struct #max_field_align(16) {
 	env_sampler:  SamplerId `Sampler`,
 }
 
-#assert(offset_of(GPUEnvironment, point_lights) == 0)
-#assert(offset_of(GPUEnvironment, env_map) == 16)
-#assert(offset_of(GPUEnvironment, dfg) == 20)
-#assert(offset_of(GPUEnvironment, env_sampler) == 24)
-
 @(shader_shared)
-GPUDebugView :: enum u32 {}
+GPUDebugView :: enum u32 {
+	Test,
+}
 
 @(shader_shared)
 GPUGlobalData :: struct #max_field_align(16) {
@@ -56,17 +53,6 @@ GPUGlobalData :: struct #max_field_align(16) {
 	atmosphere:               GPUAtmosphere,
 	mesh_debug_view:          u32,
 }
-
-#assert(offset_of(GPUGlobalData, environment) == 192)
-#assert(offset_of(GPUGlobalData, cascade_world_to_shadows) == 224)
-#assert(offset_of(GPUGlobalData, cascade_configs) == 232)
-#assert(offset_of(GPUGlobalData, sun_color) == 240)
-#assert(offset_of(GPUGlobalData, sky_color) == 252)
-#assert(offset_of(GPUGlobalData, camera_pos) == 264)
-#assert(offset_of(GPUGlobalData, sun_direction) == 276)
-#assert(offset_of(GPUGlobalData, default_sampler) == 288)
-#assert(offset_of(GPUGlobalData, ddgi_volumes) == 296)
-#assert(offset_of(GPUGlobalData, reflection_probes) == 312)
 
 RenderState :: struct {
 	frame_data:                      [gfx.FRAME_OVERLAP]GameFrameData,
@@ -150,11 +136,7 @@ init_imgui :: proc() {
 }
 
 init_test_resources :: proc() {
-	tony_mc_mapface := gfx.load_image_from_file("assets/textures/tonemapping/t_tony_mc_mapface.ktx2", .D3, .D3)
-
-	dfg := gfx.load_image_from_file("assets/gen/t_dfg.ktx2")
-
-	// Default Imageture Sampler
+	// Default Image Sampler
 	default_sampler := gfx.create_sampler(.LINEAR, .REPEAT, max_lod = 10.0, max_anisotropy = gfx.r_ctx.limits.maxSamplerAnisotropy)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, default_sampler)
 
@@ -165,28 +147,30 @@ init_test_resources :: proc() {
 		rs := &game.render_state
 		tr := &rs.temp_resources
 
-		rs.post_process_rp.tony_mc_mapface_id = gfx.add_image(tony_mc_mapface)
-		tr.dfg_id = gfx.add_image(dfg)
+		// dfg_asset := load_asset(Image_Asset, "assets/gen/t_dfg.ktx2")
 
-		tr.default_sampler_id = gfx.add_sampler(default_sampler)
-		tr.env_sampler_id = gfx.add_sampler(env_sampler)
+		rs.post_process_rp.tony_mc_mapface_id = gfx.load_image_from_file("assets/textures/tonemapping/t_tony_mc_mapface.ktx2")
+		tr.dfg_id = gfx.load_image_from_file("assets/gen/t_dfg.ktx2")
 
-		tr.resolved_image_id = gfx.add_image(gfx.r_ctx.resolve_image)
+		tr.default_sampler_id = default_sampler
+		tr.env_sampler_id = env_sampler
+
+		tr.resolved_image_id = gfx.r_ctx.resolve_image
 	}
 }
 
 init_material_store :: proc() {
-    material_store := &game.render_state.material_store
+	material_store := &game.render_state.material_store
 
 	material_store.materials_buffer = gfx.create_buffer(GPUMaterial, 20)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, material_store.materials_buffer)
 
-    test_material := load_material_from_file("assets/materials/test.sjson")
+	test_material := load_material_from_file("assets/materials/test.sjson")
 
 	add_material(test_material)
 	add_material(test_material)
 
-    materialball_material := load_material_from_file("assets/materials/materialball2.sjson")
+	materialball_material := load_material_from_file("assets/materials/materialball2.sjson")
 	add_material(materialball_material)
 }
 
@@ -262,9 +246,6 @@ draw :: proc() {
 
 	// Wait for this frame slot before writing any of its CPU-visible buffers.
 	cmd, frame_ready, swapchain_resized := gfx.begin_command_buffer()
-	if swapchain_resized {
-		refresh_resolved_image_descriptor()
-	}
 	if !frame_ready {
 		clear_frame_submission_data()
 		return
@@ -298,8 +279,8 @@ draw :: proc() {
 	// TODO: this means you can't enable/disable MSAA at runtime until this hack is fixed.
 	if gfx.msaa_enabled() {
 		// resolve MSAA
-		gfx.transition_image(cmd, &gfx.r_ctx.draw_image, .TRANSFER_SRC_OPTIMAL)
-		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_DST_OPTIMAL)
+		gfx.transition_image(cmd, gfx.r_ctx.draw_image, .TRANSFER_SRC_OPTIMAL)
+		gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .TRANSFER_DST_OPTIMAL)
 
 		ex := gfx.r_ctx.draw_extent
 
@@ -311,84 +292,53 @@ draw :: proc() {
 			extent = {ex.width, ex.height, 1},
 		}
 
-		vk.CmdResolveImage(
-			cmd,
-			gfx.r_ctx.draw_image.image,
-			.TRANSFER_SRC_OPTIMAL,
-			gfx.r_ctx.resolve_image.image,
-			.TRANSFER_DST_OPTIMAL,
-			1,
-			&resolve_region,
-		)
+		gfx.cmd_resolve_image(cmd, gfx.r_ctx.draw_image, gfx.r_ctx.resolve_image, {resolve_region})
 	} else {
 		// HACK: here's that hack i mentioned. TODO: this needs to be fixed in the api.
 		gfx.r_ctx.resolve_image = gfx.r_ctx.draw_image
 	}
 
-	final_image: vk.Image
+	final_image: gfx.ImageId
 	switch game.view_state {
 	case .SceneDepth:
-		gfx.transition_image(cmd, &gfx.r_ctx.depth_image, .TRANSFER_SRC_OPTIMAL)
-		final_image = gfx.r_ctx.depth_image.image
+		gfx.transition_image(cmd, gfx.r_ctx.depth_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = gfx.r_ctx.depth_image
 	case .ShadowDepth:
-		gfx.transition_image(cmd, &game.render_state.shadow_rp.shadow_depth_image, .TRANSFER_SRC_OPTIMAL)
-		final_image = game.render_state.shadow_rp.shadow_depth_image.image
+		gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = game.render_state.shadow_rp.shadow_depth_image
 	case .Raytracing:
 		record_debug_rt_pass(cmd)
-		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
-		final_image = gfx.r_ctx.resolve_image.image
+		gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = gfx.r_ctx.resolve_image
 	case .DDGIAtlas:
 		if len(volumes) > 0 {
 			idx := clamp(int(game.render_state.ddgi_rp.debug_volume), 0, len(volumes) - 1)
 			record_ddgi_debug_atlas_pass(cmd, &volumes[idx].volume)
 		}
-		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
-		final_image = gfx.r_ctx.resolve_image.image
+		gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = gfx.r_ctx.resolve_image
 	case .SceneColor:
 		record_post_process_pass(cmd)
 		record_ui_pass(cmd)
 
 		// Prepare swapchain image
-		gfx.transition_image(cmd, &gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
-		final_image = gfx.r_ctx.resolve_image.image
+		gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = gfx.r_ctx.resolve_image
 	}
 
 	gfx.copy_image_to_swapchain(cmd, final_image, gfx.r_ctx.draw_extent)
 
 	sc := &gfx.r_ctx.swapchain
 	sc_image := sc.swapchain_images[sc.swapchain_image_index]
-	sc_view := sc.swapchain_image_views[sc.swapchain_image_index]
 
-	gfx.transition_vk_image(cmd, sc_image, .TRANSFER_DST_OPTIMAL, .COLOR_ATTACHMENT_OPTIMAL)
-	im_gfx.gfx_imgui_render(cmd, sc_view, sc.swapchain_extent)
-	// submit() expects the swapchain image in TRANSFER_DST before it
-	// transitions to PRESENT, so hand it back in that layout.
-	gfx.transition_vk_image(cmd, sc_image, .COLOR_ATTACHMENT_OPTIMAL, .TRANSFER_DST_OPTIMAL)
+	gfx.transition_image(cmd, sc_image, .COLOR_ATTACHMENT_OPTIMAL)
+	im_gfx.gfx_imgui_render(cmd, sc_image, sc.swapchain_extent)
+
+	gfx.transition_image(cmd, sc_image, .TRANSFER_DST_OPTIMAL)
 
 	swapchain_resized = gfx.submit(cmd)
 
-	if swapchain_resized {
-		refresh_resolved_image_descriptor()
-	}
-
 	clear_frame_submission_data()
-}
-
-refresh_resolved_image_descriptor :: proc() {
-	resolved_id := game.render_state.temp_resources.resolved_image_id
-	gfx.r_ctx.bindless_system.images[resolved_id] = gfx.r_ctx.resolve_image
-	gfx.write_descriptor_set(
-		gfx.r_ctx.bindless_system.descriptor_set,
-		{
-			{
-				binding = gfx.BINDLESS_STORAGE_IMAGES,
-				type = .STORAGE_IMAGE,
-				image_view = gfx.r_ctx.resolve_image.image_view,
-				image_layout = .GENERAL,
-				array_index = u32(resolved_id),
-			},
-		},
-	)
 }
 
 clear_frame_submission_data :: proc() {

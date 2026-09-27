@@ -21,8 +21,7 @@ GfxImgui :: struct {
 	ibuffers:      [gfx.FRAME_OVERLAP]gfx.Buffer(im.DrawIdx),
 	vbuffer_sizes: [gfx.FRAME_OVERLAP]int,
 	ibuffer_sizes: [gfx.FRAME_OVERLAP]int,
-	font_image:    gfx.Image,
-	font_sheet:    gfx.ImageId,
+	font_image:    gfx.ImageId,
 	font_sampler:  gfx.SamplerId,
 }
 
@@ -43,9 +42,8 @@ gfx_imgui_init :: proc() {
 	io.BackendRendererName = "imgui_impl_gfx"
 	io.BackendFlags += {.RendererHasVtxOffset}
 
-	sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, max_lod = 10.0, max_anisotropy = gfx.r_ctx.limits.maxSamplerAnisotropy)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, sampler)
-	this.font_sampler = gfx.add_sampler(sampler)
+	this.font_sampler = gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, max_lod = 10.0, max_anisotropy = gfx.r_ctx.limits.maxSamplerAnisotropy)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, this.font_sampler)
 
 	shader_module, sm_ok := gfx.load_shader_module_from_bytes(IMGUI_SPV)
 	assert(sm_ok, "Failed to create imgui shader module from embedded SPIR-V.")
@@ -76,7 +74,7 @@ gfx_imgui_create_fonts_texture :: proc(this: ^GfxImgui) {
 	atlas_bytes := int(fw) * int(fh) * 4
 
 	this.font_image = gfx.create_image(.R8G8B8A8_UNORM, {u32(fw), u32(fh), 1}, {.SAMPLED, .TRANSFER_DST}, debug_name = "imgui_font_atlas")
-    // TODO: Make an arena just for imgui?
+	// TODO: Make an arena just for imgui?
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, this.font_image)
 
 	{
@@ -86,20 +84,20 @@ gfx_imgui_create_fonts_texture :: proc(this: ^GfxImgui) {
 		gfx.write_buffer_slice(&staging, slice.from_ptr(pixels, atlas_bytes))
 
 		if cmd, ok := gfx.immediate_submit(); ok {
-			gfx.transition_image(cmd, &this.font_image, .TRANSFER_DST_OPTIMAL)
+			gfx.transition_image(cmd, this.font_image, .TRANSFER_DST_OPTIMAL)
 
-			region := vk.BufferImageCopy {
-				imageSubresource = {aspectMask = {.COLOR}, layerCount = 1},
-				imageExtent = {u32(fw), u32(fh), 1},
-			}
-			vk.CmdCopyBufferToImage(cmd, staging.buffer, this.font_image.image, .TRANSFER_DST_OPTIMAL, 1, &region)
+			gfx.cmd_copy_buffer_to_image(
+				cmd,
+				staging,
+				this.font_image,
+				{vk.BufferImageCopy{imageSubresource = {aspectMask = {.COLOR}, layerCount = 1}, imageExtent = {u32(fw), u32(fh), 1}}},
+			)
 
-			gfx.transition_image(cmd, &this.font_image, .SHADER_READ_ONLY_OPTIMAL)
+			gfx.transition_image(cmd, this.font_image, .SHADER_READ_ONLY_OPTIMAL)
 		}
 	}
 
-	this.font_sheet = gfx.add_image(this.font_image)
-	im.FontAtlas_SetTexID(io.Fonts, transmute(im.TextureID)uintptr(this.font_sheet))
+	im.FontAtlas_SetTexID(io.Fonts, transmute(im.TextureID)uintptr(this.font_image))
 }
 
 gfx_imgui_new_frame :: proc() {
@@ -130,7 +128,7 @@ gfx_imgui_destroy :: proc() {
 	free(this)
 }
 
-gfx_imgui_render :: proc(cmd: gfx.CommandBuffer, target_view: vk.ImageView, target_extent: vk.Extent2D) {
+gfx_imgui_render :: proc(cmd: gfx.CommandBuffer, target_view: gfx.ImageId, target_extent: vk.Extent2D) {
 	this := gfx_imgui_backend_data()
 	assert(this != nil, "Imgui renderer backend not initialized! Call gfx_imgui_init first.")
 
@@ -167,8 +165,8 @@ gfx_imgui_render :: proc(cmd: gfx.CommandBuffer, target_view: vk.ImageView, targ
 
 	cmd_lists := slice.from_ptr(draw_data.CmdLists.Data, int(draw_data.CmdLists.Size))
 	{
-        vertices_off: int
-        indices_off: int
+		vertices_off: int
+		indices_off: int
 		for list in cmd_lists {
 			vert_buf_size := int(list.VtxBuffer.Size)
 			idx_buf_size := int(list.IdxBuffer.Size)

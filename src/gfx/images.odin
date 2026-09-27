@@ -1,8 +1,8 @@
 package gfx
 
-import "core:os"
 import "core:fmt"
 import "core:mem"
+import "core:os"
 
 import vk "vendor:vulkan"
 
@@ -19,6 +19,8 @@ Image :: struct {
 	array_layers:   u32,
 	current_layout: vk.ImageLayout,
 	usage:          vk.ImageUsageFlags,
+	view_type:      vk.ImageViewType,
+	owns_image:     bool,
 }
 
 ImageAccess :: enum {
@@ -60,7 +62,7 @@ create_image :: proc(
 	usage: vma.MemoryUsage = .GPU_ONLY,
 	debug_name: cstring = nil,
 	loc := #caller_location,
-) -> Image {
+) -> ImageId {
 	img_alloc_info := vma.AllocationCreateInfo {
 		usage         = usage,
 		requiredFlags = {.DEVICE_LOCAL},
@@ -79,20 +81,9 @@ create_image :: proc(
 		tiling,
 	)
 
-	image := Image {
-		extent       = extent,
-		format       = format,
-		mip_levels   = mip_levels,
-		array_layers = array_layers,
-		usage        = image_usage_flags,
-	}
-
-	vk_check(vma.CreateImage(r_ctx.allocator, &img_info, &img_alloc_info, &image.image, &image.allocation, nil))
-
-	// We also create a default image view for convenience:
 	view_type: vk.ImageViewType = .D1
 	if .CUBE_COMPATIBLE in flags {
-        view_type = .CUBE
+		view_type = .CUBE
 	} else {
 		view_type += cast(vk.ImageViewType)image_type // Adding dimension
 
@@ -101,7 +92,19 @@ create_image :: proc(
 		}
 	}
 
-	image.image_view = create_image_view(
+	image := Image {
+		extent       = extent,
+		format       = format,
+		mip_levels   = mip_levels,
+		array_layers = array_layers,
+		usage        = image_usage_flags,
+		view_type    = view_type,
+		owns_image   = true,
+	}
+
+	vk_check(vma.CreateImage(r_ctx.allocator, &img_info, &img_alloc_info, &image.image, &image.allocation, nil))
+
+	image.image_view = _create_image_view_impl(
 		image.image,
 		image.format,
 		view_type,
@@ -121,10 +124,101 @@ create_image :: proc(
 		}
 	}
 
-	return image
+	return add_image_impl(image)
+}
+
+wrap_image :: proc(
+	vk_image: vk.Image,
+	format: vk.Format,
+	extent: vk.Extent3D,
+	image_usage_flags: vk.ImageUsageFlags,
+	mip_levels: u32 = 1,
+	array_layers: u32 = 1,
+	image_type: vk.ImageType = .D2,
+	msaa_samples: vk.SampleCountFlag = ._1,
+	tiling: vk.ImageTiling = .OPTIMAL,
+	flags: vk.ImageCreateFlags = {},
+	alloc_flags: vma.AllocationCreateFlags = {},
+	usage: vma.MemoryUsage = .GPU_ONLY,
+	debug_name: cstring = nil,
+	loc := #caller_location,
+) -> ImageId {
+	view_type: vk.ImageViewType = .D1
+	if .CUBE_COMPATIBLE in flags {
+		view_type = .CUBE
+	} else {
+		view_type += cast(vk.ImageViewType)image_type // Adding dimension
+
+		if array_layers > 1 {
+			view_type += cast(vk.ImageViewType)4
+		}
+	}
+
+	image := Image {
+		image        = vk_image,
+		extent       = extent,
+		format       = format,
+		mip_levels   = mip_levels,
+		array_layers = array_layers,
+		usage        = image_usage_flags,
+		view_type    = view_type,
+	}
+
+	image.image_view = _create_image_view_impl(
+		image.image,
+		image.format,
+		view_type,
+		base_mip_level = 0,
+		mip_levels = image.mip_levels,
+		base_array_layer = 0,
+		array_layers = image.array_layers,
+	)
+
+	when ODIN_DEBUG {
+		if debug_name == nil {
+			debug_set_object_name(image.image, fmt.ctprint(loc))
+			debug_set_object_name(image.image_view, fmt.ctprint(loc))
+		} else {
+			debug_set_object_name(image.image, debug_name)
+			debug_set_object_name(image.image_view, debug_name)
+		}
+	}
+
+	return add_image_impl(image)
 }
 
 create_image_view :: proc(
+	id: ImageId,
+	format: vk.Format,
+	view_type: vk.ImageViewType = .D2,
+	#any_int base_mip_level: u32 = 0,
+	#any_int mip_levels: u32 = 1,
+	#any_int base_array_layer: u32 = 0,
+	#any_int array_layers: u32 = 1,
+) -> ImageId {
+	image := image_meta(id)
+
+	info := vk.ImageViewCreateInfo {
+		sType = .IMAGE_VIEW_CREATE_INFO,
+		viewType = view_type,
+		image = image.image,
+		format = format,
+		subresourceRange = {
+			baseMipLevel = base_mip_level,
+			levelCount = mip_levels,
+			baseArrayLayer = base_array_layer,
+			layerCount = array_layers,
+			aspectMask = vk_aspect_of_format(format),
+		},
+	}
+
+	image_view: vk.ImageView
+	vk_check(vk.CreateImageView(r_ctx.device, &info, nil, &image_view))
+
+	return add_image_with_view_impl(image^, image_view)
+}
+
+_create_image_view_impl :: proc(
 	image: vk.Image,
 	format: vk.Format,
 	view_type: vk.ImageViewType = .D2,
@@ -209,7 +303,7 @@ create_sampler :: proc(
 	border_color: vk.BorderColor = .FLOAT_TRANSPARENT_BLACK,
 	max_lod: f32 = 1.0,
 	max_anisotropy: f32 = 1.0,
-) -> vk.Sampler {
+) -> SamplerId {
 	sampler_create_info := vk.SamplerCreateInfo {
 		sType            = .SAMPLER_CREATE_INFO,
 		magFilter        = filter,
@@ -231,7 +325,13 @@ create_sampler :: proc(
 	sampler: vk.Sampler
 	vk_check(vk.CreateSampler(r_ctx.device, &sampler_create_info, nil, &sampler))
 
-	return sampler
+	return add_sampler(sampler)
+}
+
+destroy_sampler :: proc(id: SamplerId) {
+	sampler := sampler_meta(id)
+	vk.DestroySampler(r_ctx.device, sampler, nil)
+	_remove_sampler(id)
 }
 
 image_access_masks :: proc(access: ImageAccess) -> (vk.PipelineStageFlags2, vk.AccessFlags2) {
@@ -269,16 +369,16 @@ image_access_masks :: proc(access: ImageAccess) -> (vk.PipelineStageFlags2, vk.A
 
 image_barrier :: proc(
 	cmd: CommandBuffer,
-	image: ^Image,
+	image_id: ImageId,
 	src_access: ImageAccess,
 	dst_access: ImageAccess,
 	new_layout: vk.ImageLayout = .UNDEFINED,
 	range: ImageSubresourceRange = {},
 ) -> bool {
-	assert(image != nil)
-
 	src_stage_mask, src_access_mask := image_access_masks(src_access)
 	dst_stage_mask, dst_access_mask := image_access_masks(dst_access)
+
+	image := image_meta(image_id)
 
 	target_layout := image.current_layout
 	if new_layout != .UNDEFINED {
@@ -298,31 +398,31 @@ image_barrier :: proc(
 	if new_layout != .UNDEFINED {
 		assert(
 			range.base_mip_level == 0 &&
-				(range.mip_count == 0 || range.mip_count == image.mip_levels) &&
-				range.base_array_layer == 0 &&
-				(range.layer_count == 0 || range.layer_count == image.array_layers),
+			(range.mip_count == 0 || range.mip_count == image.mip_levels) &&
+			range.base_array_layer == 0 &&
+			(range.layer_count == 0 || range.layer_count == image.array_layers),
 			"Image only tracks whole-image layouts",
 		)
 	}
 
 	barrier := vk.ImageMemoryBarrier2 {
-		sType               = .IMAGE_MEMORY_BARRIER_2,
-		pNext               = nil,
-		srcStageMask        = src_stage_mask,
-		srcAccessMask       = src_access_mask,
-		dstStageMask        = dst_stage_mask,
-		dstAccessMask       = dst_access_mask,
-		oldLayout           = image.current_layout,
-		newLayout           = target_layout,
+		sType = .IMAGE_MEMORY_BARRIER_2,
+		pNext = nil,
+		srcStageMask = src_stage_mask,
+		srcAccessMask = src_access_mask,
+		dstStageMask = dst_stage_mask,
+		dstAccessMask = dst_access_mask,
+		oldLayout = image.current_layout,
+		newLayout = target_layout,
 		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
 		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
-		image               = image.image,
-		subresourceRange    = {
-			aspectMask     = vk_aspect_of_format(image.format),
-			baseMipLevel   = range.base_mip_level,
-			levelCount     = mip_count,
+		image = image.image,
+		subresourceRange = {
+			aspectMask = vk_aspect_of_format(image.format),
+			baseMipLevel = range.base_mip_level,
+			levelCount = mip_count,
 			baseArrayLayer = range.base_array_layer,
-			layerCount     = layer_count,
+			layerCount = layer_count,
 		},
 	}
 
@@ -342,47 +442,14 @@ image_barrier :: proc(
 	return true
 }
 
-transition_vk_image :: proc(cmd: CommandBuffer, image: vk.Image, current_layout: vk.ImageLayout, new_layout: vk.ImageLayout) {
-	image_barrier := vk.ImageMemoryBarrier2 {
-		sType               = .IMAGE_MEMORY_BARRIER_2,
-		pNext               = nil,
-		srcStageMask        = {.ALL_COMMANDS},
-		srcAccessMask       = {.MEMORY_WRITE},
-		dstStageMask        = {.ALL_COMMANDS},
-		dstAccessMask       = {.MEMORY_WRITE, .MEMORY_READ},
-		oldLayout           = current_layout,
-		newLayout           = new_layout,
-		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
-		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
-	}
-
-	aspect_mask: vk.ImageAspectFlags =
-		(new_layout == .DEPTH_ATTACHMENT_OPTIMAL || new_layout == .DEPTH_READ_ONLY_OPTIMAL) ? {.DEPTH} : {.COLOR}
-
-	image_barrier.subresourceRange = init_image_subresource_range(aspect_mask)
-	image_barrier.image = image
-
-	dep_info := vk.DependencyInfo {
-		sType                   = .DEPENDENCY_INFO,
-		pNext                   = nil,
-		imageMemoryBarrierCount = 1,
-		pImageMemoryBarriers    = &image_barrier,
-	}
-
-	vk.CmdPipelineBarrier2(cmd, &dep_info)
+transition_image :: proc(cmd: CommandBuffer, image: ImageId, new_layout: vk.ImageLayout) -> bool {
+	return image_barrier(cmd, image, src_access = .AllWrites, dst_access = .AllReadsWrites, new_layout = new_layout)
 }
 
-transition_image :: proc(cmd: CommandBuffer, image: ^Image, new_layout: vk.ImageLayout) -> bool {
-	return image_barrier(
-		cmd,
-		image,
-		src_access = .AllWrites,
-		dst_access = .AllReadsWrites,
-		new_layout = new_layout,
-	)
-}
+copy_image_to_image :: proc(cmd: CommandBuffer, src_id: ImageId, dst_id: ImageId, src_size: vk.Extent2D, dst_size: vk.Extent2D) {
+    source := image_meta(src_id)
+    destination := image_meta(dst_id)
 
-copy_image_to_image :: proc(cmd: CommandBuffer, source: vk.Image, destination: vk.Image, src_size: vk.Extent2D, dst_size: vk.Extent2D) {
 	blit_region := vk.ImageBlit2 {
 		sType = .IMAGE_BLIT_2,
 		pNext = nil,
@@ -409,9 +476,9 @@ copy_image_to_image :: proc(cmd: CommandBuffer, source: vk.Image, destination: v
 	blit_info := vk.BlitImageInfo2 {
 		sType          = .BLIT_IMAGE_INFO_2,
 		pNext          = nil,
-		dstImage       = destination,
+		dstImage       = destination.image,
 		dstImageLayout = .TRANSFER_DST_OPTIMAL,
-		srcImage       = source,
+		srcImage       = source.image,
 		srcImageLayout = .TRANSFER_SRC_OPTIMAL,
 		filter         = .LINEAR,
 		regionCount    = 1,
@@ -421,56 +488,50 @@ copy_image_to_image :: proc(cmd: CommandBuffer, source: vk.Image, destination: v
 	vk.CmdBlitImage2(cmd, &blit_info)
 }
 
-destroy_image :: proc(gpu_image: Image) {
-	vk.DestroyImageView(r_ctx.device, gpu_image.image_view, nil)
-	vma.DestroyImage(r_ctx.allocator, gpu_image.image, gpu_image.allocation)
+destroy_image :: proc(id: ImageId) {
+	image := image_meta(id)
+
+	vk.DestroyImageView(r_ctx.device, image.image_view, nil)
+
+	if image.owns_image {
+		vma.DestroyImage(r_ctx.allocator, image.image, image.allocation)
+	}
+
+	_remove_image(id)
 }
 
-load_image_from_file :: proc(
-	filename: string,
-	image_type: vk.ImageType = .D2,
-	image_view_type: vk.ImageViewType = .D2,
-	out_width: ^u32 = nil,
-	out_height: ^u32 = nil,
-	out_depth: ^u32 = nil,
-    allocator := context.allocator,
-) -> Image {
+load_image_from_file :: proc(filename: string, image_type: vk.ImageType = .D2, allocator := context.allocator) -> ImageId {
 	bytes, read_err := os.read_entire_file(filename, allocator)
 	assert(read_err == nil, "Failed to read file")
 	defer delete(bytes)
 
-    return load_image_from_memory(bytes, image_type, image_view_type, out_width, out_height, out_depth)
+	return load_image_from_memory(bytes, image_type)
 }
 
-load_image_from_memory :: proc(
-	mem: []u8,
-	image_type: vk.ImageType = .D2,
-	image_view_type: vk.ImageViewType = .D2,
-	out_width: ^u32 = nil,
-	out_height: ^u32 = nil,
-	out_depth: ^u32 = nil,
-	loc := #caller_location,
-) -> Image {
+load_image_from_memory :: proc(mem: []u8, image_type: vk.ImageType = .D2, loc := #caller_location) -> ImageId {
 	ktx_texture: ^ktx.Texture2
 	ktx_result := ktx.Texture2_CreateFromMemory(raw_data(mem), len(mem), {.TEXTURE_CREATE_LOAD_IMAGE_DATA}, &ktx_texture)
 
 	assert(ktx_result == .SUCCESS, "Failed to load image.")
 
-	return load_image_from_ktx_texture(ktx_texture, image_type, image_view_type, out_width, out_height, out_depth, loc = loc)
+	return load_image_from_ktx_texture(ktx_texture, loc = loc)
 }
 
-load_image_from_ktx_texture :: proc(
-	ktx_texture: ^ktx.Texture2,
-	image_type: vk.ImageType = .D2,
-	image_view_type: vk.ImageViewType = .D2,
-	out_width: ^u32 = nil,
-	out_height: ^u32 = nil,
-	out_depth: ^u32 = nil,
-    loc := #caller_location,
-) -> Image {
+load_image_from_ktx_texture :: proc(ktx_texture: ^ktx.Texture2, loc := #caller_location) -> ImageId {
+	num_dims := ktx_texture.numDimensions // Dimensions
 	num_faces := ktx_texture.numFaces // Faces (cubemap)
 	num_levels := ktx_texture.numLevels // Mip levels
 	num_layers := ktx_texture.numLayers // Array levels
+
+	image_type: vk.ImageType
+	switch num_dims {
+	case 1:
+		image_type = .D1
+	case 2:
+		image_type = .D2
+	case 3:
+		image_type = .D3
+	}
 
 	is_array := ktx_texture.isArray
 	is_cubemap := ktx_texture.isCubemap
@@ -495,7 +556,7 @@ load_image_from_ktx_texture :: proc(
 		mip_levels = num_levels,
 		array_layers = num_layers,
 		flags = is_cubemap ? {.CUBE_COMPATIBLE} : {},
-        loc = loc
+		loc = loc,
 	)
 
 	// Next, upload image data to vk Image
@@ -532,25 +593,14 @@ load_image_from_ktx_texture :: proc(
 	}
 
 	if cmd, ok := immediate_submit(); ok {
-		transition_image(cmd, &image, .TRANSFER_DST_OPTIMAL)
-		vk.CmdCopyBufferToImage(cmd, staging.buffer, image.image, .TRANSFER_DST_OPTIMAL, u32(len(copy_regions)), raw_data(copy_regions))
-		transition_image(cmd, &image, .SHADER_READ_ONLY_OPTIMAL)
+		transition_image(cmd, image, .TRANSFER_DST_OPTIMAL)
+		cmd_copy_buffer_to_image(cmd, staging, image, copy_regions[:])
+		transition_image(cmd, image, .SHADER_READ_ONLY_OPTIMAL)
 	}
 
 	destroy_buffer(&staging)
 
-	defer_destroy(&r_ctx.global_arena, image.image_view)
-	defer_destroy(&r_ctx.global_arena, image.image, image.allocation)
-
-	if out_width != nil {
-		out_width^ = ktx_texture.baseWidth
-	}
-	if out_height != nil {
-		out_height^ = ktx_texture.baseHeight
-	}
-	if out_depth != nil {
-		out_depth^ = ktx_texture.baseDepth
-	}
+	defer_destroy(&r_ctx.global_arena, image)
 
 	return image
 }

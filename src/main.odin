@@ -128,6 +128,8 @@ main :: proc() {
 		}
 
 		{
+			// register asset types
+			register_asset_type(Image_Asset, {load = load_image_asset})
 			register_entity_subtypes()
 		}
 

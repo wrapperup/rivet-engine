@@ -61,12 +61,11 @@ GPUAtmosphereDrawPush :: struct #max_field_align(16) {
 }
 
 AtmosphereRenderPass :: struct {
-	transmittance:                gfx.Image,
-	multiple_scattering:          gfx.Image,
-	sky_view:                     gfx.Image,
-	aerial_scattering:            gfx.Image,
-	aerial_transmittance:         gfx.Image,
-	environment:                  gfx.Image,
+	transmittance:                gfx.ImageId,
+	multiple_scattering:          gfx.ImageId,
+	sky_view:                     gfx.ImageId,
+	aerial_scattering:            gfx.ImageId,
+	aerial_transmittance:         gfx.ImageId,
 	environment_id:               gfx.ImageId,
 	environment_mips:             [9]gfx.ImageId,
 	parameters:                   GPUAtmosphere,
@@ -104,15 +103,15 @@ init_atmosphere_rp :: proc() {
 	rp.aerial_transmittance = gfx.create_image(.R16G16B16A16_SFLOAT, {32, 32, 32}, {.SAMPLED, .STORAGE}, image_type = .D3)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.aerial_transmittance)
 
-	a.transmittance = gfx.add_image(rp.transmittance)
-	a.multiple_scattering = gfx.add_image(rp.multiple_scattering)
-	a.sky_view = gfx.add_image(rp.sky_view)
-	a.aerial_scattering = gfx.add_image(rp.aerial_scattering)
-	a.aerial_transmittance = gfx.add_image(rp.aerial_transmittance)
+	a.transmittance = rp.transmittance
+	a.multiple_scattering = rp.multiple_scattering
+	a.sky_view = rp.sky_view
+	a.aerial_scattering = rp.aerial_scattering
+	a.aerial_transmittance = rp.aerial_transmittance
 	a.sampler = game.render_state.temp_resources.env_sampler_id
 	a.sun_radius = math.to_radians(f32(5))
 
-	rp.environment = gfx.create_image(
+	rp.environment_id = gfx.create_image(
 		.R16G16B16A16_SFLOAT,
 		{256, 256, 1},
 		{.SAMPLED, .STORAGE},
@@ -120,24 +119,19 @@ init_atmosphere_rp :: proc() {
 		array_layers = 6,
 		flags = {.CUBE_COMPATIBLE},
 	)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.environment)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.environment_id)
 
-	sampled := rp.environment
-	sampled.usage = {.SAMPLED}
-	rp.environment_id = gfx.add_image(sampled)
 	for &id, mip in rp.environment_mips {
 		view := gfx.create_image_view(
-			rp.environment.image,
-			rp.environment.format,
+			rp.environment_id,
+			.R16G16B16A16_SFLOAT,
 			.D2_ARRAY,
 			base_mip_level = u32(mip),
 			mip_levels = 1,
 			array_layers = 6,
 		)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, view)
-		storage := rp.environment
-		storage.usage = {.STORAGE}
-		id = gfx.add_image(storage, view)
+		id = view
 	}
 
 	rp.transmittance_pipeline = add_compute_shader(
@@ -177,7 +171,7 @@ init_atmosphere_rp :: proc() {
 			polygon_mode = .FILL,
 			cull_mode = {},
 			front_face = .COUNTER_CLOCKWISE,
-			color_format = gfx.r_ctx.draw_image.format,
+			color_format = .R32G32B32A32_SFLOAT,
 			multisampling_samples = gfx.msaa_samples(),
 			push_constants = GPUAtmosphereDrawPush,
 		)
@@ -225,14 +219,15 @@ atmosphere_prepare :: proc() {
 	game.render_state.global_data.atmosphere = a^
 }
 
-record_atmosphere_lut :: proc(cmd: gfx.CommandBuffer, pipeline: ^gfx.ComputePipeline, img: ^gfx.Image, id: gfx.ImageId) {
-    gfx.image_barrier(cmd, img, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
+record_atmosphere_lut :: proc(cmd: gfx.CommandBuffer, pipeline: ^gfx.ComputePipeline, img: gfx.ImageId, id: gfx.ImageId) {
+	gfx.image_barrier(cmd, img, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
 
 	gfx.cmd_bind_pipeline(cmd, pipeline)
 	gfx.cmd_push_constants(cmd, GPUAtmosphereLutPush{global = current_frame_game().global_buffer.ptr, output = id})
-	vk.CmdDispatch(cmd, (img.extent.width + 7) / 8, (img.extent.height + 7) / 8, 1)
+	meta := gfx.image_meta(img)
+	vk.CmdDispatch(cmd, (meta.extent.width + 7) / 8, (meta.extent.height + 7) / 8, 1)
 
-    gfx.image_barrier(cmd, img, .ComputeShaderWrite, .ComputeFragmentShaderRead)
+	gfx.image_barrier(cmd, img, .ComputeShaderWrite, .ComputeFragmentShaderRead)
 }
 
 record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
@@ -246,16 +241,16 @@ record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
 	environment_changed := sky_changed || rp.last_sun_color != env.sun_color
 
 	if medium_changed {
-		record_atmosphere_lut(cmd, rp.transmittance_pipeline, &rp.transmittance, rp.parameters.transmittance)
-		record_atmosphere_lut(cmd, rp.multiple_scattering_pipeline, &rp.multiple_scattering, rp.parameters.multiple_scattering)
+		record_atmosphere_lut(cmd, rp.transmittance_pipeline, rp.transmittance, rp.parameters.transmittance)
+		record_atmosphere_lut(cmd, rp.multiple_scattering_pipeline, rp.multiple_scattering, rp.parameters.multiple_scattering)
 	}
 
 	if sky_changed {
-		record_atmosphere_lut(cmd, rp.sky_view_pipeline, &rp.sky_view, rp.parameters.sky_view)
+		record_atmosphere_lut(cmd, rp.sky_view_pipeline, rp.sky_view, rp.parameters.sky_view)
 	}
 
 	if environment_changed {
-		gfx.image_barrier(cmd, &rp.environment, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
+		gfx.image_barrier(cmd, rp.environment_id, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
 
 		gfx.cmd_bind_pipeline(cmd, rp.environment_pipeline)
 		gfx.cmd_push_constants(
@@ -263,7 +258,7 @@ record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
 			GPUAtmosphereCubePush{global = current_frame_game().global_buffer.ptr, output = rp.environment_mips[0]},
 		)
 		vk.CmdDispatch(cmd, 32, 32, 6)
-		gfx.image_barrier(cmd, &rp.environment, .ComputeShaderWrite, .ComputeFragmentShaderRead)
+		gfx.image_barrier(cmd, rp.environment_id, .ComputeShaderWrite, .ComputeFragmentShaderRead)
 
 		gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_prefilter_pipeline)
 		for mip in u32(1) ..< 9 {
@@ -284,8 +279,8 @@ record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
 	}
 
 	// Rebuild view-dependent aerial perspective each frame.
-	gfx.image_barrier(cmd, &rp.aerial_scattering, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
-	gfx.image_barrier(cmd, &rp.aerial_transmittance, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
+	gfx.image_barrier(cmd, rp.aerial_scattering, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
+	gfx.image_barrier(cmd, rp.aerial_transmittance, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
 
 	gfx.cmd_bind_pipeline(cmd, rp.aerial_pipeline)
 	gfx.cmd_push_constants(
@@ -298,8 +293,8 @@ record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
 	)
 	vk.CmdDispatch(cmd, 8, 8, 8)
 
-	gfx.image_barrier(cmd, &rp.aerial_scattering, .ComputeShaderWrite, .ComputeFragmentShaderRead)
-	gfx.image_barrier(cmd, &rp.aerial_transmittance, .ComputeShaderWrite, .ComputeFragmentShaderRead)
+	gfx.image_barrier(cmd, rp.aerial_scattering, .ComputeShaderWrite, .ComputeFragmentShaderRead)
+	gfx.image_barrier(cmd, rp.aerial_transmittance, .ComputeShaderWrite, .ComputeFragmentShaderRead)
 
 	rp.initialized = true
 	rp.force_update = false
@@ -317,7 +312,7 @@ record_atmosphere_background :: proc(cmd: gfx.CommandBuffer) {
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = gfx.r_ctx.draw_extent,
-		color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .COLOR_ATTACHMENT_OPTIMAL},
+		color_attachment = &{view = gfx.r_ctx.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
 	)
 	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
 

@@ -45,9 +45,9 @@ DDGI_Volume_Resources :: struct {
 	gpu:             GPUDDGIVolume,
 	config_buffers:  [gfx.FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume),
 	radiance_buffer: gfx.Buffer(Vec4), // rays_per_probe * num_probes
-	irradiance:      gfx.Image,
-	depth:           gfx.Image,
-	offset:          gfx.Image,
+	irradiance:      gfx.ImageId,
+	depth:           gfx.ImageId,
+	offset:          gfx.ImageId,
 }
 
 @(entity)
@@ -78,9 +78,9 @@ ddgi_volume_resources_init :: proc(
 	gfx.defer_destroy(arena, volume.offset)
 
 	if cmd, ok := gfx.immediate_submit(); ok {
-		gfx.transition_image(cmd, &volume.irradiance, .GENERAL)
-		gfx.transition_image(cmd, &volume.depth, .GENERAL)
-		gfx.transition_image(cmd, &volume.offset, .GENERAL)
+		gfx.transition_image(cmd, volume.irradiance, .GENERAL)
+		gfx.transition_image(cmd, volume.depth, .GENERAL)
+		gfx.transition_image(cmd, volume.offset, .GENERAL)
 
 		range := vk.ImageSubresourceRange {
 			aspectMask = {.COLOR},
@@ -97,9 +97,9 @@ ddgi_volume_resources_init :: proc(
 		offset_init := vk.ClearColorValue {
 			float32 = {0, 0, 0, 1},
 		}
-		vk.CmdClearColorImage(cmd, volume.irradiance.image, .GENERAL, &zero, 1, &range)
-		vk.CmdClearColorImage(cmd, volume.depth.image, .GENERAL, &far, 1, &range)
-		vk.CmdClearColorImage(cmd, volume.offset.image, .GENERAL, &offset_init, 1, &range)
+		gfx.cmd_clear_color_image(cmd, volume.irradiance, &zero, {range})
+		gfx.cmd_clear_color_image(cmd, volume.depth, &far, {range})
+		gfx.cmd_clear_color_image(cmd, volume.offset, &offset_init, {range})
 	}
 
 	sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE)
@@ -110,10 +110,10 @@ ddgi_volume_resources_init :: proc(
 		probe_spacing  = spacing,
 		grid_counts    = counts,
 		rays_per_probe = DDGI_RAYS_PER_PROBE,
-		irradiance     = gfx.add_image(volume.irradiance),
-		depth          = gfx.add_image(volume.depth),
-		offset         = gfx.add_image(volume.offset),
-		sampler        = gfx.add_sampler(sampler),
+		irradiance     = volume.irradiance,
+		depth          = volume.depth,
+		offset         = volume.offset,
+		sampler        = sampler,
 		hysteresis     = 0.99,
 		max_distance   = 1.5 * linalg.length(spacing),
 		normal_bias    = 0.2 * min(spacing.x, spacing.y, spacing.z),
@@ -141,12 +141,12 @@ ddgi_volume_resources_init :: proc(
 }
 
 ddgi_volume_resources_destroy :: proc(volume: ^DDGI_Volume_Resources) {
-	gfx.remove_image(volume.gpu.irradiance)
-	gfx.remove_image(volume.gpu.depth)
-	gfx.remove_image(volume.gpu.offset)
-	gfx.remove_sampler(volume.gpu.sampler)
+	gfx.destroy_image(volume.gpu.irradiance)
+	gfx.destroy_image(volume.gpu.depth)
+	gfx.destroy_image(volume.gpu.offset)
+	gfx.destroy_sampler(volume.gpu.sampler)
 }
 
 ddgi_volume_destroy :: proc(volume: ^DDGIVolume) {
-    ddgi_volume_resources_destroy(&volume.volume)
+	ddgi_volume_resources_destroy(&volume.volume)
 }

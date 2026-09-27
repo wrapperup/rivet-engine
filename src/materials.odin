@@ -36,9 +36,9 @@ load_material_from_file :: proc(path: string, allocator := context.allocator) ->
 
 	// TODO: asset system...
 	gpu_material := GPUMaterial {
-		base_color_id            = gfx.add_image(gfx.load_image_from_file(parsed.base_color)),
-		normal_map_id            = gfx.add_image(gfx.load_image_from_file(parsed.normal_map)),
-		ao_roughness_metallic_id = gfx.add_image(gfx.load_image_from_file(parsed.proughness_metallic_ao)),
+		base_color_id            = gfx.load_image_from_file(parsed.base_color),
+		normal_map_id            = gfx.load_image_from_file(parsed.normal_map),
+		ao_roughness_metallic_id = gfx.load_image_from_file(parsed.proughness_metallic_ao),
 	}
 
 	return gpu_material

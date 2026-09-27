@@ -68,7 +68,7 @@ cmd_draw_indexed :: #force_inline proc(
 }
 
 RenderingAttachmentInfo :: struct {
-	view:        vk.ImageView,
+	view:        ImageId,
 	clear_value: ^vk.ClearValue,
 	layout:      vk.ImageLayout,
 }
@@ -86,12 +86,14 @@ cmd_begin_rendering :: proc(
 	b_ok := false
 
 	if color_attachment != nil {
-		vk_color_attachment = init_attachment_info(color_attachment.view, color_attachment.clear_value, color_attachment.layout)
+		color_attachment_meta := image_meta(color_attachment.view)
+		vk_color_attachment = init_attachment_info(color_attachment_meta.image_view, color_attachment.clear_value, color_attachment.layout)
 		a_ok = true
 	}
 
 	if depth_attachment != nil {
-		vk_depth_attachment = init_attachment_info(depth_attachment.view, depth_attachment.clear_value, depth_attachment.layout)
+		depth_attachment_meta := image_meta(depth_attachment.view)
+		vk_depth_attachment = init_attachment_info(depth_attachment_meta.image_view, depth_attachment.clear_value, depth_attachment.layout)
 		b_ok = true
 	}
 
@@ -118,5 +120,42 @@ cmd_begin_label :: proc(cmd: CommandBuffer, label: cstring, color: [4]f32 = 1) {
 }
 
 cmd_end_label :: #force_inline proc(cmd: CommandBuffer) {
-    vk.CmdEndDebugUtilsLabelEXT(cmd)
+	vk.CmdEndDebugUtilsLabelEXT(cmd)
+}
+
+cmd_copy_buffer_to_image :: proc(cmd: CommandBuffer, src_buffer: Buffer($T), dst_image_id: ImageId, buffer_copies: []vk.BufferImageCopy) {
+	dst_image := image_meta(dst_image_id)
+	vk.CmdCopyBufferToImage(
+		cmd,
+		src_buffer.buffer,
+		dst_image.image,
+		dst_image.current_layout,
+		u32(len(buffer_copies)),
+		raw_data(buffer_copies),
+	)
+}
+
+cmd_clear_color_image :: proc(
+	cmd: CommandBuffer,
+	image_id: ImageId,
+	clear_value: ^vk.ClearColorValue,
+	ranges: []vk.ImageSubresourceRange,
+) {
+	image := image_meta(image_id)
+	vk.CmdClearColorImage(cmd, image.image, image.current_layout, clear_value, u32(len(ranges)), raw_data(ranges))
+}
+
+cmd_resolve_image :: proc(cmd: CommandBuffer, src_image_id: ImageId, dst_image_id: ImageId, resolves: []vk.ImageResolve) {
+	src_image := image_meta(src_image_id)
+	dst_image := image_meta(dst_image_id)
+
+	vk.CmdResolveImage(
+		cmd,
+		src_image.image,
+		src_image.current_layout,
+		dst_image.image,
+		dst_image.current_layout,
+		u32(len(resolves)),
+		raw_data(resolves),
+	)
 }
