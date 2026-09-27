@@ -1,7 +1,6 @@
 package game
 
 import "core:encoding/json"
-import "core:fmt"
 import "core:math"
 import "core:mem/virtual"
 import "core:os"
@@ -21,7 +20,7 @@ UI_Mode :: enum u32 {
 
 @(shader_shared)
 UI_Command :: struct #max_field_align(16) {
-	mode:          u32, // TODO: support enums. this is UI_Mode.
+	mode:          UI_Mode,
 	pos:           Vec2,
 	angle:         f32,
 	size:          Vec2,
@@ -410,7 +409,7 @@ ui_command_absolute :: proc(
 	}
 
 	command := UI_Command {
-		mode          = u32(mode),
+		mode          = mode,
 		pos           = pos,
 		size          = size,
 		color         = color,

@@ -243,6 +243,12 @@ get_type_string :: proc(expr: ^ast.Expr, file: ^ast.File) -> (type_name: string,
 	return strings.to_string(builder), strings.to_string(arr_builder)
 }
 
+Thing :: enum {
+    Hello = 12,
+    Hi,
+    Hey,
+}
+
 generate_shader_bindings :: proc(files: []^ast.File) {
 	b: strings.Builder
 	strings.builder_init(&b)
@@ -266,32 +272,6 @@ generate_shader_bindings :: proc(files: []^ast.File) {
 					i, iok := elem.derived.(^ast.Ident)
 					if iok {
 						switch i.name {
-						case "entity":
-							if len(value.values) != 1 {
-								report_error("Declaration has multiple values. This is not supported with @shader_shared.", value, file)
-								continue
-							}
-							if len(value.names) != 1 {
-								report_error("Declaration has names. This is not supported with @shader_shared.", value, file)
-								continue
-							}
-
-							ident, nok := value.names[0].derived.(^ast.Ident)
-							if !nok {
-								report_error("Declaration name must be an identifier.", value.names[0], file)
-								continue
-							}
-
-							struct_type, s_ok := value.values[0].derived_expr.(^ast.Struct_Type)
-							if !nok {
-								report_error("Declaration must be a struct.", value.values[0], file)
-								continue
-							}
-
-							append(&entity_kinds, struct_type)
-
-							continue
-
 						case "shader_shared":
 							if len(value.values) != 1 {
 								report_error("Declaration has multiple values. This is not supported with @shader_shared.", value, file)
@@ -372,6 +352,36 @@ generate_shader_bindings :: proc(files: []^ast.File) {
 									strings.write_string(&b, "}")
 								}
 								strings.write_string(&b, ";\n\n")
+							case ^ast.Enum_Type:
+								strings.write_string(&b, "enum ")
+								strings.write_string(&b, strip_gpu_name(name))
+								strings.write_string(&b, " : ")
+								type_string := "int"
+								if expr.base_type != nil {
+									type_string, _ = get_type_string(expr.base_type, file)
+								}
+								strings.write_string(&b, type_string)
+								strings.write_string(&b, " {\n")
+
+								for field in expr.fields {
+									#partial switch member in field.derived_expr {
+									case ^ast.Ident:
+										fmt.sbprintf(&b, "  %s,\n", member.name)
+									case ^ast.Field_Value:
+										member_name, ok := member.field.derived_expr.(^ast.Ident)
+										if !ok {
+											report_error("Enum member name must be an identifier.", member.field, file)
+											continue
+										}
+										// Preserve the initializer for Slang to evaluate.
+										initializer := file.src[member.value.pos.offset:member.value.end.offset]
+										fmt.sbprintf(&b, "  %s = %s,\n", member_name.name, initializer)
+									case:
+										report_error("Unsupported enum member.", field, file)
+									}
+								}
+								strings.write_string(&b, "};\n\n")
+
 							case ^ast.Basic_Lit:
 								if value.type != nil {
 									report_warning("Shader shared define will ignore the type.", value, file)
