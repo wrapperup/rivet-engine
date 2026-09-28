@@ -154,7 +154,7 @@ update_imgui :: proc() {
 
 	bl := im.GetBackgroundDrawList()
 
-	if g_show_physics_debug {
+	if game.phys.show_debug {
 		physics_debug_draw(view_projection, bl)
 	}
 
@@ -196,12 +196,10 @@ update_imgui :: proc() {
 		im.DrawList_AddLine(dl, origin, x_pos, red, 2)
 		im.DrawList_AddLine(dl, origin, y_pos, green, 2)
 		im.DrawList_AddLine(dl, origin, z_pos, blue, 2)
-
 	}
 
 	if im.Begin("Physics") {
-		im.Checkbox("Enable Tick", &game.update_physics)
-		im.Checkbox("Enable debug view", &g_show_physics_debug)
+        inspector_draw_any(game.phys)
 	}
 	im.End()
 
@@ -365,36 +363,35 @@ update_imgui :: proc() {
 		}
 	}
 
+	// if im.Begin("Environment") {
+	// 	im.Checkbox("Draw sky", &game.render_state.draw_sky)
+	// 	dir_vec := game.state.environment.sun_direction
+	// 	azimuth := math.to_degrees(math.atan2(dir_vec.x, dir_vec.z))
+	// 	elevation := math.to_degrees(math.asin(clamp(dir_vec.y, -1, 1)))
+	// 	lighting_changed := im.SliderFloat("Sun azimuth", &azimuth, -180, 180, "%.1f deg")
+	// 	lighting_changed = im.SliderFloat("Sun elevation", &elevation, -90, 90, "%.1f deg") || lighting_changed
+	// 	if lighting_changed {
+	// 		az := math.to_radians(azimuth)
+	// 		el := math.to_radians(elevation)
+	// 		dir_vec = {math.cos(el) * math.sin(az), math.sin(el), math.cos(el) * math.cos(az)}
+	// 	}
+	// 	game.state.environment.sun_direction = dir_vec
+	// 	im.ColorEdit3("Sun irradiance", &game.state.environment.sun_color, {.Float, .HDR})
+	// 	im.ColorEdit3("Sky tint", &game.state.environment.sky_color, {.Float, .HDR})
+	// 	atmosphere := &game.state.environment.atmosphere
+	// 	im.SliderFloat("Rayleigh density", &atmosphere.rayleigh_density, 0, 4)
+	// 	im.SliderFloat("Haze (Mie density)", &atmosphere.mie_density, 0, 10)
+	// 	im.SliderFloat("Ozone density", &atmosphere.ozone_density, 0, 4)
+	// 	im.SliderFloat("Ground albedo", &atmosphere.ground_albedo, 0, 0.95)
+	// 	im.InputFloat("Ground height (m)", &atmosphere.ground_height)
+	//
+	// 	mesh_views := [?]cstring{"Shaded", "Shadow visibility", "Mesh normals", "Shading normals", "Shaded without shadows"}
+	// 	im.ComboChar("Mesh diagnostic", &game.render_state.mesh_debug_view, raw_data(&mesh_views), len(mesh_views))
+	// }
+	// im.End()
+
 	if im.Begin("Environment") {
-		im.Checkbox("Draw sky", &game.render_state.draw_sky)
-		dir_vec := game.state.environment.sun_direction
-		azimuth := math.to_degrees(math.atan2(dir_vec.x, dir_vec.z))
-		elevation := math.to_degrees(math.asin(clamp(dir_vec.y, -1, 1)))
-		lighting_changed := im.SliderFloat("Sun azimuth", &azimuth, -180, 180, "%.1f deg")
-		lighting_changed = im.SliderFloat("Sun elevation", &elevation, -90, 90, "%.1f deg") || lighting_changed
-		if lighting_changed {
-			az := math.to_radians(azimuth)
-			el := math.to_radians(elevation)
-			dir_vec = {math.cos(el) * math.sin(az), math.sin(el), math.cos(el) * math.cos(az)}
-		}
-		game.state.environment.sun_direction = dir_vec
-		im.ColorEdit3("Sun irradiance", &game.state.environment.sun_color, {.Float, .HDR})
-		im.ColorEdit3("Sky tint", &game.state.environment.sky_color, {.Float, .HDR})
-		atmosphere := &game.state.environment.atmosphere
-		im.SliderFloat("Rayleigh density", &atmosphere.rayleigh_density, 0, 4)
-		im.SliderFloat("Haze (Mie density)", &atmosphere.mie_density, 0, 10)
-		im.SliderFloat("Ozone density", &atmosphere.ozone_density, 0, 4)
-		im.SliderFloat("Ground albedo", &atmosphere.ground_albedo, 0, 0.95)
-		im.InputFloat("Ground height (m)", &atmosphere.ground_height)
-
-		mesh_views := [?]cstring{"Shaded", "Shadow visibility", "Mesh normals", "Shading normals", "Shaded without shadows"}
-		im.ComboChar("Mesh diagnostic", &game.render_state.mesh_debug_view, raw_data(&mesh_views), len(mesh_views))
-	}
-	im.End()
-
-	if im.Begin("Environment V2") {
-		info := type_info_of(Environment)
-		inspector_draw_any(&game.state.environment, info)
+		inspector_draw_any(game.state.environment)
 	}
 	im.End()
 
@@ -475,11 +472,22 @@ to_pretty_case :: proc(
 	return strings.to_string(b), nil
 }
 
-inspector_draw_any :: proc(base: rawptr, type_info: ^reflect.Type_Info) -> bool {
+Inspector_Draw_Proc :: #type proc(base: rawptr) -> (draw_label: bool)
+
+Inspector :: struct {
+    registered_types: map[typeid]Inspector_Draw_Proc
+}
+
+register_custom_inspector :: proc(draw: proc(base: ^$T) -> (draw_label: bool)) {
+    game.inspector.registered_types[T] = draw
+}
+
+inspector_draw_any :: proc(value: any) -> bool {
+	base := value.data
+	type_info := type_info_of(value.id)
+
 	im.PushIDPtr(base)
 	defer im.PopID()
-
-	value := any{base, type_info.id}
 
 	#partial switch &v in type_info.variant {
 	case runtime.Type_Info_Integer, runtime.Type_Info_Float:
@@ -606,14 +614,14 @@ inspector_draw_any :: proc(base: rawptr, type_info: ^reflect.Type_Info) -> bool 
 					im.SameLine()
 				}
 				elem_base := rawptr(uintptr(base) + uintptr(i * v.elem_size))
-				inspector_draw_any(elem_base, v.elem)
+				inspector_draw_any({elem_base, v.elem.id})
 			}
 			im.EndGroup()
 			im.PopItemWidth()
 		} else {
 			for i in 0 ..< v.count {
 				elem_base := rawptr(uintptr(base) + uintptr(i * v.elem_size))
-				inspector_draw_any(elem_base, v.elem)
+				inspector_draw_any({elem_base, v.elem.id})
 			}
 		}
 
@@ -622,7 +630,7 @@ inspector_draw_any :: proc(base: rawptr, type_info: ^reflect.Type_Info) -> bool 
 
 		for i in 0 ..< array.len {
 			elem_base := rawptr(uintptr(array.data) + uintptr(i * v.elem_size))
-			inspector_draw_any(elem_base, v.elem)
+			inspector_draw_any({elem_base, v.elem.id})
 			inspector_label(fmt.tprint(i))
 		}
 
@@ -706,31 +714,41 @@ inspector_draw_any :: proc(base: rawptr, type_info: ^reflect.Type_Info) -> bool 
 
 				if open {
 					im.TreePush("contents")
-					inspector_draw_any(field_base, field.type)
+					inspector_draw_any(field_value)
 					im.TreePop()
 				}
 				im.PopID()
 			} else if reflect.is_struct(field_info) {
 				if im.TreeNode(strings.clone_to_cstring(label, context.temp_allocator)) {
-					inspector_draw_any(field_base, field.type)
+					inspector_draw_any(field_value)
 					im.TreePop()
 				}
-			} else if inspector_draw_any(field_base, field.type) {
+			} else if inspector_draw_any(field_value) {
 				inspector_label(label)
 			}
 		}
 
 		return false
 	case runtime.Type_Info_Named:
-		return inspector_draw_any(base, v.base)
+		return inspector_draw_any({base, v.base.id})
+    case runtime.Type_Info_Pointer:
+        if v.elem == nil {
+            return false
+        }
+
+        if base != nil {
+            im.TextUnformatted("nil")
+            return true
+        }
+
+        dest := (cast(^rawptr)base)^
+		return inspector_draw_any({dest, v.elem.id})
 	case:
 		return false
 	}
 
 	return true
 }
-
-g_show_physics_debug: bool
 
 Phys_Debug_Ctx :: struct {
 	view_projection: Mat4x4,
