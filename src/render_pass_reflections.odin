@@ -9,7 +9,7 @@ import "gfx"
 @(shader_shared)
 GPUReflectionCapturePush :: struct #max_field_align(16) {
 	global:     gfx.Ptr(GPUGlobalData),
-	geometries: gfx.Ptr(GPUGeometry),
+	instances: gfx.Ptr(GPURenderInstance),
 	materials:  gfx.Ptr(GPUMaterial),
 	tlas:       vk.DeviceAddress `AccelerationStructure`,
 	out_cube:   gfx.ImageId `RWImage2DArray`,
@@ -171,7 +171,6 @@ reflection_probe_debug_draw_box :: proc(probe: ^ReflectionProbe) {
 	}
 }
 
-// Uses the per-frame scene TLAS, so call after record_rt_scene_pass + DDGI update.
 @(private = "file")
 record_reflection_probe_capture :: proc(cmd: gfx.CommandBuffer, probe: ^ReflectionProbe) {
 	gfx.image_barrier(
@@ -186,7 +185,7 @@ record_reflection_probe_capture :: proc(cmd: gfx.CommandBuffer, probe: ^Reflecti
 		cmd,
 		GPUReflectionCapturePush {
 			global = current_frame_game().global_buffer.ptr,
-			geometries = current_frame_game().rt.geometries_buffer.ptr,
+			instances = current_frame_game().instances_buffer.ptr,
 			materials = game.render_state.material_store.materials_buffer.ptr,
 			tlas = current_frame_game().rt.tlas.address,
 			out_cube = probe.cube_mip_storage_ids[0],

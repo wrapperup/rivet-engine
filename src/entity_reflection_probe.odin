@@ -106,14 +106,6 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe, position: Vec3, half_exte
 	}
 }
 
-reflection_probe_destroy :: proc(probe: ^ReflectionProbe) {
-	gfx.destroy_image(probe.cube_image_id)
-	for mip in u32(0) ..< probe.mip_count {
-		gfx.destroy_image(probe.cube_mip_storage_ids[mip])
-	}
-	gfx.destroy_sampler(probe.gpu_sampler_id)
-}
-
 reflection_probe_to_gpu :: proc(probe: ^ReflectionProbe) -> GPUReflectionProbe {
 	return GPUReflectionProbe {
 		center = probe.translation,

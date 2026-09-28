@@ -88,12 +88,12 @@ RenderState :: struct {
 
 GameFrameData :: struct {
 	global_buffer:           gfx.Buffer(GPUGlobalData),
-	model_matrices_buffer:   gfx.Buffer(Mat4x4),
+	instances_buffer:        gfx.Buffer(GPURenderInstance),
 	cascade_matrices_buffer: gfx.Buffer(Mat4x4),
 	cascade_configs_buffer:  gfx.Buffer(GPUCascadeConfig),
-	mesh_draws:              [dynamic]MeshDraw,
+	instances:              [dynamic]RenderInstance,
 	skel_instances:          [dynamic]^SkeletalMeshInstance,
-	rt:                      RaytracingScene,
+	rt:                      RaytracingResources,
 }
 
 GPU_Font_Instance :: struct {
@@ -174,12 +174,14 @@ init_render_passes :: proc() {
 	init_debug_rt_rp()
 	init_ddgi_rp()
 	init_reflection_probe_rp()
-	init_rt_scene_pass()
+	init_raytracing()
 	init_ui_rp()
 }
 
 init_shared_buffers :: proc() {
 	for &frame in game.render_state.frame_data {
+		frame.instances_buffer = gfx.create_buffer(GPURenderInstance, MAX_RENDER_INSTANCES, .DynUniform)
+		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.instances_buffer)
 		frame.global_buffer = gfx.create_buffer(GPUGlobalData, 1, .DynUniform)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.global_buffer)
 	}
@@ -242,22 +244,21 @@ draw :: proc() {
 
 	// CPU preparation and uploads happen before command recording.
 	atmosphere_prepare()
-	geometry_prepare()
+	prepare_render_instances(frame)
 	shadow_prepare()
 	skinning_prepare(frame.skel_instances[:])
-	rt_scene_prepare(&frame.rt)
-	ddgi_prepare(volumes, game.state.update_ddgi && len(frame.rt.instances) > 0)
+	ddgi_prepare(volumes, game.state.update_ddgi && frame.rt.instance_count > 0)
 	reflection_probe_prepare(probes)
 	ui_prepare()
 	prepare_shared_frame_data()
 
 	record_atmosphere_pass(cmd)
-	record_rt_scene_pass(cmd, &frame.rt)
+	record_raytracing(cmd, &frame.rt)
 	record_ddgi_pass(cmd, volumes)
 	record_reflection_probe_pass(cmd, probes, volumes)
 	record_skinning_pass(cmd, frame.skel_instances[:])
-	record_shadow_pass(cmd, frame.mesh_draws[:])
-	record_geometry_pass(cmd, frame.mesh_draws[:])
+	record_shadow_pass(cmd, frame.instances[:])
+	record_geometry_pass(cmd, frame.instances[:])
 	record_ddgi_debug_probes_pass(cmd, volumes)
 	record_reflection_probe_debug_pass(cmd, probes)
 
@@ -331,10 +332,8 @@ draw :: proc() {
 }
 
 clear_frame_submission_data :: proc() {
-	clear(&current_frame_game().mesh_draws)
+	clear(&current_frame_game().instances)
 	clear(&current_frame_game().skel_instances)
-	rt_scene_reset(&current_frame_game().rt)
-	clear(&game.render_state.geometry_rp.model_matrices)
 }
 
 draw_mesh :: proc(
@@ -345,25 +344,17 @@ draw_mesh :: proc(
 	scale: [3]f32,
 	include_in_raytracing := true,
 ) {
-	model_index := len(game.render_state.geometry_rp.model_matrices)
-	model := linalg.matrix4_from_trs_f32(translation, rotation, scale)
-
-	append(
-		&current_frame_game().mesh_draws,
-		MeshDraw {
+	submit_render_instance(RenderInstance {
+		data = {
+			model_to_world = linalg.matrix4_from_trs_f32(translation, rotation, scale),
 			vertex_buffer = mesh.vertex_buffer.ptr,
-			index_buffer = mesh.index_buffer.buffer,
-			index_count = mesh.index_count,
-			model_index = u32(model_index),
+			index_buffer = mesh.index_buffer.ptr,
 			material_index = material,
 		},
-	)
-
-	append(&game.render_state.geometry_rp.model_matrices, model)
-
-	if include_in_raytracing {
-		rt_scene_add(&current_frame_game().rt, mesh, material, model)
-	}
+		index_buffer = mesh.index_buffer.buffer,
+		index_count = mesh.index_count,
+		blas_address = include_in_raytracing ? mesh.blas.address : 0,
+	})
 }
 
 draw_skeletal_mesh :: proc(
@@ -373,21 +364,17 @@ draw_skeletal_mesh :: proc(
 	rotation: quaternion128,
 	scale: Vec3,
 ) {
-	model_index := len(game.render_state.geometry_rp.model_matrices)
-
 	append(&current_frame_game().skel_instances, instance)
-	append(
-		&current_frame_game().mesh_draws,
-		MeshDraw {
+	submit_render_instance(RenderInstance {
+		data = {
+			model_to_world = linalg.matrix4_from_trs_f32(translation, rotation, scale),
 			vertex_buffer = instance.preskinned_vertex_buffers[gfx.current_frame_index()].ptr,
-			index_buffer = instance.skel.buffers.index_buffer.buffer,
-			index_count = instance.skel.buffers.index_count,
-			model_index = u32(model_index),
+			index_buffer = instance.skel.buffers.index_buffer.ptr,
 			material_index = material,
 		},
-	)
-
-	append(&game.render_state.geometry_rp.model_matrices, linalg.matrix4_from_trs_f32(translation, rotation, scale))
+		index_buffer = instance.skel.buffers.index_buffer.buffer,
+		index_count = instance.skel.buffers.index_count,
+	})
 }
 
 prepare_shared_frame_data :: proc() {
@@ -435,11 +422,9 @@ renderer_shutdown :: proc() {
 	shutdown_shader_manager()
 
 	for &frame in game.render_state.frame_data {
-		delete(frame.mesh_draws)
+		delete(frame.instances)
 		// Replaced TLASes are retired per frame; the last one still needs retiring on shutdown.
 		gfx.defer_destroy_accel(&gfx.r_ctx.global_arena, frame.rt.tlas)
 		delete(frame.skel_instances)
-		delete(frame.rt.instances)
-		delete(frame.rt.geometries)
 	}
 }

@@ -552,7 +552,6 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 
 cleanup_vulkan :: proc() {
 	vk.DeviceWaitIdle(r_ctx.device)
-	shutdown_bindless_descriptors()
 
 	// Cleanup queued resources
 	flush_vk_arena(&r_ctx.global_arena)
@@ -575,6 +574,8 @@ cleanup_vulkan :: proc() {
 	if r_ctx.swapchain.swapchain != 0 {
 		destroy_swapchain_resources(&r_ctx.swapchain)
 	}
+	// Deferred image/sampler destruction resolves IDs through these tables.
+	shutdown_bindless_descriptors()
 
 	// Headless mode
 	if r_ctx.surface != 0 {

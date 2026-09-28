@@ -130,6 +130,18 @@ struct GlobalData {
   u32 mesh_debug_view;
 };
 
+struct RenderInstance {
+  Mat4x4 model_to_world;
+  Vertex* vertex_buffer;
+  u32* index_buffer;
+  MaterialId material_index;
+};
+
+
+
+//
+// Generated from C:\Repos\odin\vulkan-playground\src\render_instances.odin
+//
 struct Atmosphere {
   Image2D transmittance;
   Image2D multiple_scattering;
@@ -173,7 +185,7 @@ struct AtmosphereDrawPush {
 
 struct DDGITracePush {
   DDGIVolume* volume;
-  Geometry* geometries;
+  RenderInstance* instances;
   Material* materials;
   GlobalData* global;
   Vec4* radiance;
@@ -215,7 +227,7 @@ struct DDGIProbePush {
 
 struct DebugRTPushConstants {
   GlobalData* global;
-  Geometry* geometries;
+  RenderInstance* instances;
   Material* materials;
   AccelerationStructure tlas;
   RWImage2D out_image;
@@ -242,11 +254,9 @@ enum GeometryDebugView : u32 {
 //
 struct DrawPushConstants {
   GlobalData* global_data_buffer;
-  Vertex* vertex_buffer;
-  Mat4x4* model_matrices;
+  RenderInstance* instances;
   Material* materials;
-  u32 model_index;
-  MaterialId material_index;
+  u32 instance_index;
   u32 num_cascades;
   Image2DArray<f32> shadow_depth;
   SamplerComparison shadow_sampler;
@@ -265,7 +275,7 @@ struct PostProcessingPushConstants {
 //
 struct ReflectionCapturePush {
   GlobalData* global;
-  Geometry* geometries;
+  RenderInstance* instances;
   Material* materials;
   AccelerationStructure tlas;
   RWImage2DArray out_cube;
@@ -297,10 +307,9 @@ struct ReflectionPrefilterPush {
 };
 
 struct DrawShadowDepthPushConstants {
-  Vertex* vertex_buffer;
-  Mat4x4* model_matrices;
+  RenderInstance* instances;
   GlobalData* global_data;
-  u32 model_index;
+  u32 instance_index;
   u32 cascade_index;
 };
 
@@ -358,16 +367,3 @@ struct UI_Push {
   Vec2 viewport_size;
   Sampler sampler;
 };
-
-struct Geometry {
-  Vertex* vertex_buffer;
-  u32* index_buffer;
-  MaterialId material_index;
-  u32 _pad[3];
-};
-
-
-
-//
-// Generated from C:\Repos\odin\vulkan-playground\src\rt_scene.odin
-//

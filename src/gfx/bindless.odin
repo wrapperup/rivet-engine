@@ -141,9 +141,11 @@ add_sampler :: proc(sampler: vk.Sampler) -> SamplerId {
 }
 
 _remove_image :: proc(id: ImageId) {
+	r_ctx.bindless_system.images[id] = {}
 	append(&r_ctx.bindless_system.free_images, id)
 }
 
 _remove_sampler :: proc(id: SamplerId) {
+	r_ctx.bindless_system.samplers[id] = 0
 	append(&r_ctx.bindless_system.free_samplers, id)
 }

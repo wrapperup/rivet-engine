@@ -9,11 +9,10 @@ import "gfx"
 
 @(shader_shared)
 GPUDrawShadowDepthPushConstants :: struct #max_field_align(16) {
-	vertex_buffer:  gfx.Ptr(Vertex),
-	model_matrices: gfx.Ptr(Mat4x4),
-	global_data:    gfx.Ptr(GPUGlobalData),
-	model_index:    u32,
-	cascade_index:  u32,
+	instances:     gfx.Ptr(GPURenderInstance),
+	global_data:   gfx.Ptr(GPUGlobalData),
+	instance_index: u32,
+	cascade_index: u32,
 }
 
 @(shader_shared)
@@ -89,14 +88,14 @@ shadow_prepare :: proc() {
 	gfx.write_buffer_slice(&current_frame_game().cascade_configs_buffer, game.render_state.shadow_rp.cascade_configs[:])
 }
 
-record_shadow_pass :: proc(cmd: gfx.CommandBuffer, mesh_draws: []MeshDraw) {
+record_shadow_pass :: proc(cmd: gfx.CommandBuffer, instances: []RenderInstance) {
 	gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
 	for cascade in u32(0) ..< NUM_CASCADES {
-		record_shadow_cascade(cmd, cascade, mesh_draws)
+		record_shadow_cascade(cmd, cascade, instances)
 	}
 }
 
-record_shadow_cascade :: proc(cmd: gfx.CommandBuffer, cascade: u32, mesh_draws: []MeshDraw) {
+record_shadow_cascade :: proc(cmd: gfx.CommandBuffer, cascade: u32, instances: []RenderInstance) {
 	image_view := game.render_state.shadow_rp.shadow_depth_attach_image_views[cascade]
 	extent := gfx.image_meta(game.render_state.shadow_rp.shadow_depth_image).extent
 
@@ -112,21 +111,20 @@ record_shadow_cascade :: proc(cmd: gfx.CommandBuffer, cascade: u32, mesh_draws: 
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.shadow_rp.mesh_shadow_pipeline)
 
-	for mesh_draw in mesh_draws {
-		gfx.cmd_bind_index_buffer(cmd, mesh_draw.index_buffer)
+	for instance, instance_index in instances {
+		gfx.cmd_bind_index_buffer(cmd, instance.index_buffer)
 
 		gfx.cmd_push_constants(
 			cmd,
 			GPUDrawShadowDepthPushConstants {
-				vertex_buffer = mesh_draw.vertex_buffer,
-				model_matrices = current_frame_game().model_matrices_buffer.ptr,
+				instances = current_frame_game().instances_buffer.ptr,
 				global_data = current_frame_game().global_buffer.ptr,
-				model_index = mesh_draw.model_index,
+				instance_index = u32(instance_index),
 				cascade_index = cascade,
 			},
 		)
 
-		gfx.cmd_draw_indexed(cmd, mesh_draw.index_count)
+		gfx.cmd_draw_indexed(cmd, instance.index_count)
 	}
 
 	gfx.cmd_end_rendering(cmd)

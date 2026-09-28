@@ -77,3 +77,6 @@ entity_type_to_kind :: proc($T: typeid) -> Entity_Kind {
 #assert(offset_of(GPUGlobalData, view_to_clip) == 0)
 #assert(offset_of(GPUGlobalData, world_to_view) == (offset_of(GPUGlobalData, view_to_clip) + size_of(type_of(GPUGlobalData{}.view_to_clip)) + 3) / 4 * 4)
 #assert(offset_of(GPUGlobalData, clip_to_world) == (offset_of(GPUGlobalData, world_to_view) + size_of(type_of(GPUGlobalData{}.world_to_view)) + 3) / 4 * 4)
+
+// GPURenderInstance
+#assert(offset_of(GPURenderInstance, model_to_world) == 0)

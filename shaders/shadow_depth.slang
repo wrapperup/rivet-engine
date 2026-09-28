@@ -14,9 +14,10 @@ struct V2PShadow {
 
 [shader("vertex")]
 V2PShadow vertex_main(VertexInput input) {
-  let vertex = pc.vertex_buffer[input.vertex_index];
+  let instance = pc.instances[pc.instance_index];
+  let vertex = instance.vertex_buffer[input.vertex_index];
 
-  let model_to_world = pc.model_matrices[pc.model_index];
+  let model_to_world = instance.model_to_world;
   let world_to_clip = pc.global_data.cascade_world_to_shadows[pc.cascade_index];
 
   V2PShadow output;

@@ -173,7 +173,6 @@ init_ui_rp :: proc() {
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, buffer)
 	}
 
-	reserve(&game.render_state.geometry_rp.model_matrices, 16_000)
 }
 
 ui_rect :: proc(

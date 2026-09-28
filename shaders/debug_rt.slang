@@ -27,7 +27,7 @@ void compute_main(Vec3u32 dispatchThreadID: SV_DispatchThreadID) {
   let origin = p_near.xyz / p_near.w;
   let dir = normalize(p_mid.xyz / p_mid.w - origin);
 
-  let s = rt_trace_surface_detailed(pc.tlas.get(), pc.geometries, pc.materials, pc.global, origin, dir, 1e-3, 1e4);
+  let s = rt_trace_surface_detailed(pc.tlas.get(), pc.instances, pc.materials, pc.global, origin, dir, 1e-3, 1e4);
 
   Vec4 color;
   if (s.kind == RTHitKind.Hit) {

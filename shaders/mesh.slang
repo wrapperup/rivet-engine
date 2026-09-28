@@ -9,6 +9,7 @@ import shadows;
 import standard_brdf;
 import types;
 import world_space;
+import material_common;
 
 // Naming convention:
 // *_ws: World space
@@ -24,16 +25,17 @@ struct VertexInput {
 
 [shader("vertex")]
 FragmentInput vertex_main(VertexInput input) {
-  let vertex = pc.vertex_buffer[input.vertex_index];
+  let instance = pc.instances[pc.instance_index];
+  let vertex = instance.vertex_buffer[input.vertex_index];
 
-  let model_to_world = pc.model_matrices[pc.model_index];
+  let model_to_world = instance.model_to_world;
 
   let pos_ws = mul(model_to_world, Vec4(vertex.position, 1.0));
   let uv = Vec2(vertex.uv_x, vertex.uv_y);
 
   let N = normalize(mul((Mat3x3)model_to_world, -vertex.normal));
   var tangent = vertex.tangent;
-  if (pc.material_index == 0) {
+  if (instance.material_index == 0) {
     tangent = get_world_space_tangent(N);
   }
 
@@ -85,12 +87,13 @@ FragmentOutput fragment_main(FragmentInput in) {
   let pos_ws = in.pos_ws.xyz;
   let camera_pos_ws = pc.global_data_buffer.camera_pos;
 
-  let material = pc.materials[pc.material_index];
+  let instance = pc.instances[pc.instance_index];
+  let material = pc.materials[instance.material_index];
 
   let receiver_normal = normalize(in.shadow_normal);
 
   Vec2 uv = in.uv;
-  if (pc.material_index == 0) {
+  if (instance.material_index == 0) {
     uv = get_world_space_uv(pos_ws, in.tbn[2]) / 4.f;
   }
 
@@ -102,10 +105,8 @@ FragmentOutput fragment_main(FragmentInput in) {
 
   Vec3 base_color =
       material.base_color_id.sample(pc.global_data_buffer.default_sampler, uv).xyz * in.color;
-
   f32 reflectance = 0.5f;
 
-  // ORM is linear data in a BC7_UNORM texture — read raw, no transfer function.
   let ao_roughness_metallic =
       material.ao_roughness_metallic_id.sample(pc.global_data_buffer.default_sampler, uv).rgb;
 
@@ -170,16 +171,10 @@ FragmentOutput fragment_main(FragmentInput in) {
     }
   }
 
-  // DDGI diffuse indirect (replaces the static SH/IBL ambient). Budget-fills the
-  // priority-sorted volume array; per-volume intensity is applied inside. camera_pos drives
-  // the view-aware surface bias (kills Chebyshev self-shadow splotches at grazing angles).
   frag_color += diffuse * ao *
                 ddgi_sample_volumes(pc.global_data_buffer.ddgi_volumes, pos_ws, n,
                           receiver_normal, pc.global_data_buffer.camera_pos);
 
-  // Specular reflections. The split-sum BRDF (DFG) weighting is shared; the reflected
-  // *radiance* comes from the reflection probe (box-parallax + edge blend) where one
-  // influences this pixel, else the global environment map. Diffuse comes from DDGI above.
   let env = pc.global_data_buffer.environment;
   PBR_Params ibl_params;
   ibl_params.env_map = env.env_map;
@@ -193,8 +188,6 @@ FragmentOutput fragment_main(FragmentInput in) {
   let dfg = sample_dfg(ibl_params, NoV, proughness).rg;
   let spec_brdf = f0 * dfg.r + f90 * dfg.g;
 
-  // Blended reflection radiance: probes (box-parallax + inward blend) where they cover this
-  // pixel, env map elsewhere. Factored into ibl.slang so debug views / other passes reuse it.
   Vec3 refl = sample_reflection_probes(pc.global_data_buffer, pos_ws, r, proughness);
 
   frag_color += spec_brdf * refl * ao;

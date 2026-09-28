@@ -75,22 +75,47 @@ parse_gltf_mesh_into_mesh :: proc(
 		delete(parts)
 	}
 
-	total_indices := 0
-	total_vertices := 0
 	for _, primitive_idx in data.meshes[mesh_idx].primitives {
 		part, ok := parse_gltf_primitive_into_mesh(data, mesh_idx, primitive_idx, allocator)
 		if !ok do return {}, false
 		append(&parts, part)
+	}
+	return combine_meshes(parts[:], allocator)
+}
+
+// Static asset exports store their parts in a common local coordinate system.
+// This combines mesh payloads, not a glTF scene hierarchy or node transforms.
+parse_gltf_asset_into_mesh :: proc(data: ^gltf2.Data, allocator := context.allocator) -> (Mesh, bool) {
+	if len(data.meshes) == 1 do return parse_gltf_mesh_into_mesh(data, 0, allocator)
+
+	parts := make([dynamic]Mesh, 0, len(data.meshes), allocator)
+	defer {
+		for part in parts {
+			delete(part.indices, allocator)
+			delete(part.vertices, allocator)
+		}
+		delete(parts)
+	}
+	for _, mesh_idx in data.meshes {
+		part, ok := parse_gltf_mesh_into_mesh(data, mesh_idx, allocator)
+		if !ok do return {}, false
+		append(&parts, part)
+	}
+	return combine_meshes(parts[:], allocator)
+}
+
+// Copies parts into owned buffers and rebases indices into the combined vertices.
+combine_meshes :: proc(parts: []Mesh, allocator := context.allocator) -> (Mesh, bool) {
+	total_indices := 0
+	total_vertices := 0
+	for part in parts {
 		total_indices += len(part.indices)
 		total_vertices += len(part.vertices)
 	}
-
-	if total_indices == 0 || total_vertices == 0 {
-		return {}, false
-	}
+	if total_indices == 0 || total_vertices == 0 do return {}, false
 
 	mesh := Mesh {
-		indices  = make([]u32, total_indices, allocator),
+		indices = make([]u32, total_indices, allocator),
 		vertices = make([]Vertex, total_vertices, allocator),
 	}
 	index_offset := 0
@@ -103,7 +128,6 @@ parse_gltf_mesh_into_mesh :: proc(
 		index_offset += len(part.indices)
 		vertex_offset += len(part.vertices)
 	}
-
 	return mesh, true
 }
 
@@ -533,7 +557,7 @@ load_mesh_from_file :: proc(path: string, allocator := context.allocator, loc :=
 	// if there are no errors we want to free memory when we are done with processing gltf/glb file.
 	defer gltf2.unload(data)
 
-	return parse_gltf_mesh_into_mesh(data, 0, allocator)
+	return parse_gltf_asset_into_mesh(data, allocator)
 }
 
 load_gpu_mesh_from_file :: proc(

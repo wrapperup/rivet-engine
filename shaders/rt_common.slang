@@ -3,6 +3,7 @@ import atmosphere_common;
 import common;
 import types;
 import world_space;
+import material_common;
 import lights;
 
 enum RTHitKind {
@@ -21,17 +22,17 @@ struct RTSurface {
   u32 material_index;
 }
 
-RTSurface rt_trace_surface(RaytracingAccelerationStructure tlas, Geometry* geometries, Material* materials, GlobalData* g,
+RTSurface rt_trace_surface(RaytracingAccelerationStructure tlas, RenderInstance* instances, Material* materials, GlobalData* g,
                            Vec3 origin, Vec3 dir, f32 tmin, f32 tmax) {
-  return _rt_trace_surface(false, tlas, geometries, materials, g, origin, dir, tmin, tmax);
+  return _rt_trace_surface(false, tlas, instances, materials, g, origin, dir, tmin, tmax);
 }
 
-RTSurface rt_trace_surface_detailed(RaytracingAccelerationStructure tlas, Geometry* geometries, Material* materials, GlobalData* g,
+RTSurface rt_trace_surface_detailed(RaytracingAccelerationStructure tlas, RenderInstance* instances, Material* materials, GlobalData* g,
                                     Vec3 origin, Vec3 dir, f32 tmin, f32 tmax) {
-  return _rt_trace_surface(true, tlas, geometries, materials, g, origin, dir, tmin, tmax);
+  return _rt_trace_surface(true, tlas, instances, materials, g, origin, dir, tmin, tmax);
 }
 
-RTSurface _rt_trace_surface(bool detailed, RaytracingAccelerationStructure tlas, Geometry* geometries, Material* materials, GlobalData* g,
+RTSurface _rt_trace_surface(bool detailed, RaytracingAccelerationStructure tlas, RenderInstance* instances, Material* materials, GlobalData* g,
                             Vec3 origin, Vec3 dir, f32 tmin, f32 tmax) {
   RayDesc r;
   r.Origin = origin;
@@ -65,14 +66,14 @@ RTSurface _rt_trace_surface(bool detailed, RaytracingAccelerationStructure tlas,
   s.kind = RTHitKind.Hit;
   s.pos_ws = origin + dir * s.hit_t;
 
-  let geo = geometries[q.CommittedInstanceID()];
+  let instance = instances[q.CommittedInstanceID()];
   let prim = q.CommittedPrimitiveIndex();
-  let i0 = geo.index_buffer[prim * 3 + 0];
-  let i1 = geo.index_buffer[prim * 3 + 1];
-  let i2 = geo.index_buffer[prim * 3 + 2];
-  let v0 = geo.vertex_buffer[i0];
-  let v1 = geo.vertex_buffer[i1];
-  let v2 = geo.vertex_buffer[i2];
+  let i0 = instance.index_buffer[prim * 3 + 0];
+  let i1 = instance.index_buffer[prim * 3 + 1];
+  let i2 = instance.index_buffer[prim * 3 + 2];
+  let v0 = instance.vertex_buffer[i0];
+  let v1 = instance.vertex_buffer[i1];
+  let v2 = instance.vertex_buffer[i2];
 
   let bc = q.CommittedTriangleBarycentrics();
   let bary = Vec3(1.0 - bc.x - bc.y, bc.x, bc.y);
@@ -80,18 +81,18 @@ RTSurface _rt_trace_surface(bool detailed, RaytracingAccelerationStructure tlas,
   let n_interp = v0.normal * bary.x + v1.normal * bary.y + v2.normal * bary.z;
   s.normal = normalize(mul(n_interp,(Mat3x3)q.CommittedWorldToObject3x4()));
   s.normal_mapped = s.normal;
-  s.material_index = geo.material_index;
+  s.material_index = instance.material_index;
 
   let vcolor = v0.color * bary.x + v1.color * bary.y + v2.color * bary.z;
   var uv = Vec2(v0.uv_x, v0.uv_y) * bary.x + Vec2(v1.uv_x, v1.uv_y) * bary.y + Vec2(v2.uv_x, v2.uv_y) * bary.z;
-  let material = materials[geo.material_index];
+  let material = materials[instance.material_index];
 
   if (detailed) {
     let n_raster = -s.normal;
     var tangent = v0.tangent * bary.x + v1.tangent * bary.y + v2.tangent * bary.z;
-    if (geo.material_index == 0) {
+    if (instance.material_index == 0) {
       tangent = get_world_space_tangent(n_raster);
-      uv = get_world_space_uv(s.pos_ws, n_raster) / 4.0;
+      uv = material_uv(instance.material_index, uv, s.pos_ws, n_raster);
     }
 
     let T = normalize(mul(o2w, tangent.xyz));
@@ -99,14 +100,14 @@ RTSurface _rt_trace_surface(bool detailed, RaytracingAccelerationStructure tlas,
     let tbn = Mat3x3(T, B, n_raster);
 
     // Compute shader: no derivatives, so explicit LOD 0 (sample_level, not sample).
-    var tex_normal = material.normal_map_id.sample_level(g.default_sampler, uv, 0).rgb * 2.0 - 1.0;
-    tex_normal.y *= -1;
-    s.normal_mapped = normalize(mul(tex_normal, tbn));
-  } else if (geo.material_index == 0) {
-    uv = get_world_space_uv(s.pos_ws, s.normal) / 4.0;
+    s.normal_mapped = material_normal(
+        material.normal_map_id.sample_level(g.default_sampler, uv, 0).rgb, tbn);
+  } else if (instance.material_index == 0) {
+    uv = material_uv(instance.material_index, uv, s.pos_ws, s.normal);
   }
 
-  s.albedo = material.base_color_id.sample_level(g.default_sampler, uv, 0).xyz * vcolor.xyz;
+  s.albedo = material_base_color(
+      material.base_color_id.sample_level(g.default_sampler, uv, 0).xyz, vcolor.xyz);
   return s;
 }
 

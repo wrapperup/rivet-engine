@@ -12,7 +12,7 @@ ImageId :: gfx.ImageId
 @(shader_shared)
 GPUDebugRTPushConstants :: struct #max_field_align(16) {
 	global:     gfx.Ptr(GPUGlobalData),
-	geometries: gfx.Ptr(GPUGeometry),
+	instances: gfx.Ptr(GPURenderInstance),
 	materials:  gfx.Ptr(GPUMaterial),
 	tlas:       vk.DeviceAddress `AccelerationStructure`,
 	out_image:  ImageId `RWImage2D`,
@@ -34,7 +34,7 @@ record_debug_rt_pass :: proc(cmd: gfx.CommandBuffer) {
 		cmd,
 		GPUDebugRTPushConstants {
 			global = current_frame_game().global_buffer.ptr,
-			geometries = current_frame_game().rt.geometries_buffer.ptr,
+			instances = current_frame_game().instances_buffer.ptr,
 			materials = game.render_state.material_store.materials_buffer.ptr,
 			tlas = current_frame_game().rt.tlas.address,
 			out_image = gfx.r_ctx.resolve_image,

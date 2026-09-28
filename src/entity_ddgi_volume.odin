@@ -139,14 +139,3 @@ ddgi_volume_resources_init :: proc(
 	volume.radiance_buffer = gfx.create_buffer(Vec4, num_probes * DDGI_RAYS_PER_PROBE, .Storage)
 	gfx.defer_destroy(arena, volume.radiance_buffer)
 }
-
-ddgi_volume_resources_destroy :: proc(volume: ^DDGI_Volume_Resources) {
-	gfx.destroy_image(volume.gpu.irradiance)
-	gfx.destroy_image(volume.gpu.depth)
-	gfx.destroy_image(volume.gpu.offset)
-	gfx.destroy_sampler(volume.gpu.sampler)
-}
-
-ddgi_volume_destroy :: proc(volume: ^DDGIVolume) {
-	ddgi_volume_resources_destroy(&volume.volume)
-}

@@ -13,7 +13,7 @@ ImageId :: gfx.ImageId
 @(shader_shared)
 GPUDDGITracePush :: struct #max_field_align(16) {
 	volume:     gfx.Ptr(GPUDDGIVolume),
-	geometries: gfx.Ptr(GPUGeometry),
+	instances: gfx.Ptr(GPURenderInstance),
 	materials:  gfx.Ptr(GPUMaterial),
 	global:     gfx.Ptr(GPUGlobalData),
 	radiance:   gfx.Ptr(Vec4),
@@ -253,7 +253,7 @@ record_ddgi_volume :: proc(cmd: gfx.CommandBuffer, volume: ^DDGI_Volume_Resource
 		cmd,
 		GPUDDGITracePush {
 			volume = ddgi_current_config(volume).ptr,
-			geometries = current_frame_game().rt.geometries_buffer.ptr,
+			instances = current_frame_game().instances_buffer.ptr,
 			materials = game.render_state.material_store.materials_buffer.ptr,
 			global = current_frame_game().global_buffer.ptr,
 			radiance = volume.radiance_buffer.ptr,

@@ -28,8 +28,9 @@ ResourceHandle :: struct {
 }
 
 ResourceType :: enum {
+	BindlessImage,
+	BindlessSampler,
 	VmaBuffer,
-	VmaImage,
 	CommandPool,
 	DescriptorPool,
 	DescriptorSetLayout,
@@ -37,7 +38,6 @@ ResourceType :: enum {
 	ImageView,
 	Pipeline,
 	PipelineLayout,
-	Sampler,
 	AccelerationStructure,
 	Swapchain,
 }
@@ -52,10 +52,12 @@ vk_destroy_resource_by_handle :: proc(resource: ResourceHandle) {
 	}
 
 	switch resource.ty {
+	case .BindlessImage:
+		destroy_image(ImageId(resource.handle))
+	case .BindlessSampler:
+		destroy_sampler(SamplerId(resource.handle))
 	case .VmaBuffer:
 		vma.DestroyBuffer(r_ctx.allocator, cast(vk.Buffer)resource.handle, resource.allocation)
-	case .VmaImage:
-		vma.DestroyImage(r_ctx.allocator, cast(vk.Image)resource.handle, resource.allocation)
 	case .CommandPool:
 		vk.DestroyCommandPool(r_ctx.device, cast(vk.CommandPool)resource.handle, nil)
 	case .DescriptorPool:
@@ -70,8 +72,6 @@ vk_destroy_resource_by_handle :: proc(resource: ResourceHandle) {
 		vk.DestroyPipeline(r_ctx.device, cast(vk.Pipeline)resource.handle, nil)
 	case .PipelineLayout:
 		vk.DestroyPipelineLayout(r_ctx.device, cast(vk.PipelineLayout)resource.handle, nil)
-	case .Sampler:
-		vk.DestroySampler(r_ctx.device, cast(vk.Sampler)resource.handle, nil)
 	case .AccelerationStructure:
 		vk.DestroyAccelerationStructureKHR(r_ctx.device, cast(vk.AccelerationStructureKHR)resource.handle, nil)
 	case .Swapchain:
@@ -83,7 +83,8 @@ resource_type_of_handle :: proc($T: typeid) -> ResourceType {
 	//odinfmt: disable
 	return \
 		.VmaBuffer when T == vk.Buffer else
-		.VmaImage when T == vk.Image else
+		.BindlessImage when T == ImageId else
+		.BindlessSampler when T == SamplerId else
 		.ImageView when T == vk.ImageView else
 		.CommandPool when T == vk.CommandPool else
 		.DescriptorPool when T == vk.DescriptorPool else
@@ -91,7 +92,6 @@ resource_type_of_handle :: proc($T: typeid) -> ResourceType {
 		.Fence when T == vk.Fence else
 		.Pipeline when T == vk.Pipeline else
 		.PipelineLayout when T == vk.PipelineLayout else
-		.Sampler when T == vk.Sampler else
 		.AccelerationStructure when T == vk.AccelerationStructureKHR else
 		.Swapchain when T == vk.SwapchainKHR else
 		#panic("Handle type is not a valid resource")
@@ -99,15 +99,13 @@ resource_type_of_handle :: proc($T: typeid) -> ResourceType {
 }
 
 type_requires_allocation :: proc($T: typeid) -> bool {
-	return true when T == vk.Buffer else true when T == vk.Image else false
+	return T == vk.Buffer
 	//odinfmt: enable
 }
 
 resource_requires_allocation :: proc(type: ResourceType) -> bool {
 	#partial switch type {
 	case .VmaBuffer:
-		return true
-	case .VmaImage:
 		return true
 	case:
 		return false
@@ -142,16 +140,13 @@ defer_destroy_buffer :: proc(arena: ^ResourceArena, buffer: Buffer($T), debug: s
 }
 
 defer_destroy_image :: proc(arena: ^ResourceArena, id: ImageId, debug: string = "UNKNOWN", loc := #caller_location) {
-	image := image_meta(id)
-	if image.owns_image {
-		defer_destroy_resource(arena, transmute(u64)image.image, .VmaImage, image.allocation, debug, loc)
-	}
-	defer_destroy_resource(arena, transmute(u64)image.image_view, .ImageView, nil, debug, loc)
+	// Keep the slot alive until the owning arena is safe to flush. destroy_image
+	// handles view-only IDs and releases the slot after destroying the resource.
+	defer_destroy_resource(arena, u64(id), .BindlessImage, nil, debug, loc)
 }
 
 defer_destroy_sampler :: proc(arena: ^ResourceArena, id: SamplerId, debug: string = "UNKNOWN", loc := #caller_location) {
-	sampler := sampler_meta(id)
-	defer_destroy_resource(arena, transmute(u64)sampler, .Sampler, nil, debug, loc)
+	defer_destroy_resource(arena, u64(id), .BindlessSampler, nil, debug, loc)
 }
 
 defer_destroy_graphics_pipeline :: proc(
@@ -213,10 +208,6 @@ defer_destroy_vk_pipeline_layout :: proc(
 	defer_destroy_resource(arena, transmute(u64)handle, .PipelineLayout, nil, debug, loc)
 }
 
-defer_destroy_vk_sampler :: proc(arena: ^ResourceArena, handle: vk.Sampler, debug: string = "UNKNOWN", loc := #caller_location) {
-	defer_destroy_resource(arena, transmute(u64)handle, .Sampler, nil, debug, loc)
-}
-
 defer_destroy_vk_swapchain :: proc(arena: ^ResourceArena, handle: vk.SwapchainKHR, debug := "", loc := #caller_location) {
 	defer_destroy_resource(arena, transmute(u64)handle, .Swapchain, nil, debug, loc)
 }
@@ -235,7 +226,6 @@ defer_destroy :: proc {
 	defer_destroy_vk_fence,
 	defer_destroy_vk_pipeline,
 	defer_destroy_vk_pipeline_layout,
-	defer_destroy_vk_sampler,
 	defer_destroy_vk_swapchain,
 }
 

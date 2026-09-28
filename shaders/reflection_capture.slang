@@ -35,7 +35,7 @@ void compute_main(uint3 tid: SV_DispatchThreadID) {
   let uv = (Vec2(tid.xy) + 0.5) / float(size) * 2.0 - 1.0;
   let dir = normalize(cube_face_dir(face, uv));
 
-  let s = rt_trace_surface(pc.tlas.get(), pc.geometries, pc.materials, pc.global, pc.center, dir, 0.0, pc.ray_max);
+  let s = rt_trace_surface(pc.tlas.get(), pc.instances, pc.materials, pc.global, pc.center, dir, 0.0, pc.ray_max);
 
   Vec3 radiance;
   if (s.kind == RTHitKind.Backface) {

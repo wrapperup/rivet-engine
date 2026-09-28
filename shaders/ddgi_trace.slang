@@ -46,7 +46,7 @@ void compute_main(uint3 group_id: SV_GroupID, uint3 thread_id: SV_GroupThreadID)
   // If we bump, we risk putting rays through walls when probes are close to walls.
   const float ray_min_distance = 0.000;
 
-  let s = rt_trace_surface(pc.tlas.get(), pc.geometries, pc.materials, pc.global, ddgi_probe_location(ddgi_volume, probe_id), direction, ray_min_distance, ray_max_distance);
+  let s = rt_trace_surface(pc.tlas.get(), pc.instances, pc.materials, pc.global, ddgi_probe_location(ddgi_volume, probe_id), direction, ray_min_distance, ray_max_distance);
 
   // Hit distance is negative on a backface hit, which DDGIVolume_computeProbeOffsets.glc and
   // DDGIVolume_updateProbes.glc read.
