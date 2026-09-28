@@ -1,17 +1,15 @@
 package game
 
-import "core:math/linalg/hlsl"
-
 import "gfx"
 
 @(shader_shared)
 Vertex :: struct #max_field_align(16) {
-	position: hlsl.float3,
+	position: Vec3,
 	uv_x:     f32,
-	normal:   hlsl.float3,
+	normal:   Vec3,
 	uv_y:     f32,
-	color:    hlsl.float4,
-	tangent:  hlsl.float4,
+	color:    Vec4,
+	tangent:  Vec4,
 }
 
 @(shader_shared)

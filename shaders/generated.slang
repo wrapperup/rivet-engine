@@ -71,12 +71,12 @@ struct ReflectionProbe {
 // Generated from C:\Repos\odin\vulkan-playground\src\entity_reflection_probe.odin
 //
 struct Vertex {
-  float3 position;
+  Vec3 position;
   f32 uv_x;
-  float3 normal;
+  Vec3 normal;
   f32 uv_y;
-  float4 color;
-  float4 tangent;
+  Vec4 color;
+  Vec4 tangent;
 };
 
 

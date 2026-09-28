@@ -58,16 +58,73 @@ staging_write_mesh_buffers :: proc(buffers: ^GPUMeshBuffers, mesh: Mesh, loc := 
 	gfx.destroy_buffer(&staging)
 }
 
-// Allocates two slices if successful. Make sure to free them when you're done.
+// Combines all primitives of one glTF mesh. The caller owns both output slices.
 parse_gltf_mesh_into_mesh :: proc(
 	data: ^gltf2.Data,
 	mesh_idx: int,
-	primitive_idx: int = 0,
+	allocator := context.allocator,
+) -> (Mesh, bool) {
+	if mesh_idx < 0 || mesh_idx >= len(data.meshes) do return {}, false
+
+	parts := make([dynamic]Mesh, 0, len(data.meshes[mesh_idx].primitives), allocator)
+	defer {
+		for part in parts {
+			delete(part.indices, allocator)
+			delete(part.vertices, allocator)
+		}
+		delete(parts)
+	}
+
+	total_indices := 0
+	total_vertices := 0
+	for _, primitive_idx in data.meshes[mesh_idx].primitives {
+		part, ok := parse_gltf_primitive_into_mesh(data, mesh_idx, primitive_idx, allocator)
+		if !ok do return {}, false
+		append(&parts, part)
+		total_indices += len(part.indices)
+		total_vertices += len(part.vertices)
+	}
+
+	if total_indices == 0 || total_vertices == 0 {
+		return {}, false
+	}
+
+	mesh := Mesh {
+		indices  = make([]u32, total_indices, allocator),
+		vertices = make([]Vertex, total_vertices, allocator),
+	}
+	index_offset := 0
+	vertex_offset := 0
+	for part in parts {
+		copy(mesh.vertices[vertex_offset:], part.vertices)
+		for index, i in part.indices {
+			mesh.indices[index_offset + i] = index + u32(vertex_offset)
+		}
+		index_offset += len(part.indices)
+		vertex_offset += len(part.vertices)
+	}
+
+	return mesh, true
+}
+
+// Allocates two slices if successful. Make sure to free them when you're done.
+parse_gltf_primitive_into_mesh :: proc(
+	data: ^gltf2.Data,
+	mesh_idx: int,
+	primitive_idx: int,
 	allocator := context.allocator,
 ) -> (
 	mesh: Mesh,
 	ok: bool,
 ) {
+	defer {
+		if !ok {
+			delete(mesh.indices, allocator)
+			delete(mesh.vertices, allocator)
+			mesh = {}
+		}
+	}
+
 	gltf_mesh := &data.meshes[mesh_idx]
 	primitive := &gltf_mesh.primitives[primitive_idx]
 
@@ -476,51 +533,7 @@ load_mesh_from_file :: proc(path: string, allocator := context.allocator, loc :=
 	// if there are no errors we want to free memory when we are done with processing gltf/glb file.
 	defer gltf2.unload(data)
 
-	// Scene-local exports bake transforms into the vertices. Flatten all primitives,
-	// including separate meshes produced by Geometry Nodes.
-	parts := make([dynamic]Mesh, 0, len(data.meshes), allocator)
-	defer {
-		for part in parts {
-			delete(part.indices, allocator)
-			delete(part.vertices, allocator)
-		}
-		delete(parts)
-	}
-
-	total_indices := 0
-	total_vertices := 0
-	for gltf_mesh, mesh_idx in data.meshes {
-		for _, primitive_idx in gltf_mesh.primitives {
-			part, ok := parse_gltf_mesh_into_mesh(data, mesh_idx, primitive_idx, allocator)
-			if !ok {
-				return {}, false
-			}
-			append(&parts, part)
-			total_indices += len(part.indices)
-			total_vertices += len(part.vertices)
-		}
-	}
-
-	if total_indices == 0 || total_vertices == 0 {
-		return {}, false
-	}
-
-	mesh := Mesh {
-		indices  = make([]u32, total_indices, allocator),
-		vertices = make([]Vertex, total_vertices, allocator),
-	}
-	index_offset := 0
-	vertex_offset := 0
-	for part in parts {
-		copy(mesh.vertices[vertex_offset:], part.vertices)
-		for index, i in part.indices {
-			mesh.indices[index_offset + i] = index + u32(vertex_offset)
-		}
-		index_offset += len(part.indices)
-		vertex_offset += len(part.vertices)
-	}
-
-	return mesh, true
+	return parse_gltf_mesh_into_mesh(data, 0, allocator)
 }
 
 load_gpu_mesh_from_file :: proc(
@@ -571,7 +584,7 @@ parse_gltf_mesh_into_skel_mesh :: proc(
 	skel_anim: SkeletalAnimation,
 	ok: bool,
 ) {
-	skel_mesh.mesh = parse_gltf_mesh_into_mesh(data, mesh_idx) or_return
+	skel_mesh.mesh = parse_gltf_primitive_into_mesh(data, mesh_idx, 0) or_return
 
 	gltf_mesh := &data.meshes[mesh_idx]
 	primitive := &gltf_mesh.primitives[0]
