@@ -223,7 +223,9 @@ draw :: proc() {
 	}
 
 	for static_mesh in get_entities(StaticMesh) {
-		draw_mesh(static_mesh.mesh, static_mesh.material, static_mesh.translation, static_mesh.rotation, static_mesh.scale)
+        mesh_asset := load_asset(static_mesh.mesh_asset)
+        material_asset := load_asset(static_mesh.material_asset)
+		draw_mesh(mesh_asset.gpu_buffers, material_asset.material_id, static_mesh.translation, static_mesh.rotation, static_mesh.scale)
 	}
 
 	for terrain in get_entities(Terrain) {

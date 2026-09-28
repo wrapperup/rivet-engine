@@ -1,11 +1,13 @@
 package game
 
-import "core:encoding/json"
-import "core:os"
 import "base:intrinsics"
 import "base:runtime"
+import "core:encoding/json"
 import "core:mem"
-import virtual "core:mem/virtual"
+import "core:mem/virtual"
+import "core:os"
+
+import b3 "vendor:box3d"
 
 import "gfx"
 
@@ -37,7 +39,7 @@ Asset_Base :: struct {
 
 Asset_Loaders :: struct {
 	load:    #type proc(path: string, allocator: mem.Allocator) -> bool,
-	destroy: #type proc(path: string, allocator: mem.Allocator) -> bool,
+	destroy: #type proc(asset: rawptr, allocator: mem.Allocator),
 	// TODO: unload...
 }
 
@@ -126,23 +128,25 @@ load_asset :: proc(
 	return
 }
 
-release_asset :: proc(id: Asset_Id($T)) -> bool {
+release_asset :: proc(id: Asset_Id($T)) -> (destroyed: bool) {
 	asset := get_asset(id)
 
-    // TODO: maybe warn?
 	if asset.ref_count > 0 {
 		asset.ref_count -= 1
 
 		if asset.ref_count == 0 {
 			_destroy_asset(id)
+			return true
 		}
 	}
+
+	return false
 }
 
 _destroy_asset :: proc(id: Asset_Id($T)) {
 	store := get_asset_store(T)
-
-	store.loaders.destroy(id.path)
+	asset := get_asset(id)
+	store.loaders.destroy(asset, context.allocator)
 }
 
 add_asset :: proc(path: string, asset: $T) -> Asset_Id(T) where intrinsics.type_is_subtype_of(T, Asset_Base) {
@@ -178,8 +182,9 @@ shutdown_asset_system :: proc() {
 }
 
 register_assets :: proc() {
-	register_asset_type(Image_Asset, {load = load_image_asset})
-	register_asset_type(Material_Asset, {load = load_material_asset})
+	register_asset_type(Image_Asset, {load = load_image_asset, destroy = destroy_image_asset})
+	register_asset_type(Material_Asset, {load = load_material_asset, destroy = destroy_material_asset})
+	register_asset_type(Static_Mesh_Asset, {load = load_static_mesh_asset, destroy = destroy_static_mesh_asset})
 }
 
 // asset types
@@ -202,9 +207,9 @@ load_image_asset :: proc(path: string, allocator: mem.Allocator) -> bool {
 	return true
 }
 
-destroy_image_asset :: proc(asset: ^Image_Asset, allocator: mem.Allocator) -> bool {
+destroy_image_asset :: proc(raw: rawptr, allocator: mem.Allocator) {
+	asset := cast(^Image_Asset)raw
 	gfx.destroy_image(asset.image_id)
-	return true
 }
 
 Material_JSON :: struct {
@@ -258,3 +263,66 @@ load_material_asset :: proc(path: string, allocator := context.allocator) -> boo
 	return true
 }
 
+destroy_material_asset :: proc(raw: rawptr, allocator: mem.Allocator) {
+	asset := cast(^Material_Asset)raw
+
+	delete(asset.base_color.path)
+	delete(asset.normal_map.path)
+	delete(asset.proughness_metallic_ao.path)
+	remove_material(asset.material_id)
+}
+
+Static_Mesh_Asset :: struct {
+	using base:     Asset_Base,
+	gpu_buffers:    GPUMeshBuffers,
+	body:           b3.BodyId,
+	phys_mesh_data: ^b3.MeshData,
+}
+
+load_static_mesh_asset :: proc(path: string, allocator := context.allocator) -> bool {
+	mesh, ok := load_mesh_from_file(path, context.temp_allocator)
+	assert(ok)
+
+	gpu_mesh := upload_mesh_to_gpu(mesh)
+
+	// Bake the triangle soup into a Box3D collision mesh (this is the "cook" step).
+	points := make([]b3.Vec3, len(mesh.vertices))
+	defer delete(points)
+	for vertex, i in mesh.vertices {
+		points[i] = transmute(b3.Vec3)vertex.position
+	}
+
+	indices := make([]i32, len(mesh.indices))
+	defer delete(indices)
+	for index, i in mesh.indices {
+		indices[i] = i32(index)
+	}
+
+	mesh_def := b3.MeshDef {
+		vertices      = raw_data(points),
+		vertexCount   = i32(len(points)),
+		indices       = raw_data(indices),
+		triangleCount = i32(len(indices) / 3),
+		identifyEdges = true, // smoother character collision across mesh edges
+	}
+
+	phys_mesh_data := b3.CreateMesh(mesh_def, nil, 0)
+	assert(phys_mesh_data != nil)
+
+	add_asset(path, Static_Mesh_Asset{gpu_buffers = gpu_mesh, phys_mesh_data = phys_mesh_data})
+
+	return true
+}
+
+destroy_static_mesh_asset :: proc(raw: rawptr, allocator: mem.Allocator) {
+	asset := cast(^Static_Mesh_Asset)raw
+
+	gfx.destroy_buffer(&asset.gpu_buffers.vertex_buffer)
+	gfx.destroy_buffer(&asset.gpu_buffers.index_buffer)
+	gfx.destroy_accel(&asset.gpu_buffers.blas)
+
+	if asset.phys_mesh_data != nil {
+		b3.DestroyMesh(asset.phys_mesh_data)
+		asset.phys_mesh_data = nil
+	}
+}

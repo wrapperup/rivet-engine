@@ -1,5 +1,6 @@
 package game
 
+import "core:strings"
 import "core:encoding/json"
 import "core:log"
 import "core:math"
@@ -149,14 +150,15 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 			probe.priority = json_f32(object["priority"], probe.priority)
 			append(&scene.entities, probe.id)
 		case "static_mesh":
-			asset, has_asset := object["asset"].(json.String)
-			if !has_asset || asset == "" {
-				log.warn("static_mesh node missing 'asset' path, skipping:", node.name.? or_else "<unnamed>")
-				continue
-			}
-            material := Asset_Id(Material_Asset) { object["material"].(json.String) }
+			asset := Asset_Id(Static_Mesh_Asset) { strings.clone(object["asset"].(json.String)) }
+            material := Asset_Id(Material_Asset) { strings.clone(object["material"].(json.String)) }
+
+            if asset.path == "" || material.path == "" {
+                continue
+            }
+
 			sm := new_entity(StaticMesh)
-			init_static_mesh(sm, asset, material, &scene.gpu_arena, node.translation, node.rotation, node.scale)
+			init_static_mesh(sm, asset, material, node.translation, node.rotation, node.scale)
 			append(&scene.entities, sm.id)
 		case "heightfield":
 			asset, has_asset := object["heightfield_asset"].(json.String)
