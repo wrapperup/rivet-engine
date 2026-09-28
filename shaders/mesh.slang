@@ -9,7 +9,6 @@ import shadows;
 import standard_brdf;
 import types;
 import world_space;
-import material_common;
 
 // Naming convention:
 // *_ws: World space

@@ -3,7 +3,6 @@ import atmosphere_common;
 import common;
 import types;
 import world_space;
-import material_common;
 import lights;
 
 enum RTHitKind {
@@ -92,7 +91,7 @@ RTSurface _rt_trace_surface(bool detailed, RaytracingAccelerationStructure tlas,
     var tangent = v0.tangent * bary.x + v1.tangent * bary.y + v2.tangent * bary.z;
     if (instance.material_index == 0) {
       tangent = get_world_space_tangent(n_raster);
-      uv = material_uv(instance.material_index, uv, s.pos_ws, n_raster);
+      uv = get_world_space_uv(s.pos_ws, n_raster) / 4.0;
     }
 
     let T = normalize(mul(o2w, tangent.xyz));
@@ -100,14 +99,14 @@ RTSurface _rt_trace_surface(bool detailed, RaytracingAccelerationStructure tlas,
     let tbn = Mat3x3(T, B, n_raster);
 
     // Compute shader: no derivatives, so explicit LOD 0 (sample_level, not sample).
-    s.normal_mapped = material_normal(
-        material.normal_map_id.sample_level(g.default_sampler, uv, 0).rgb, tbn);
+    var tex_normal = material.normal_map_id.sample_level(g.default_sampler, uv, 0).rgb * 2.0 - 1.0;
+    tex_normal.y *= -1;
+    s.normal_mapped = normalize(mul(tex_normal, tbn));
   } else if (instance.material_index == 0) {
-    uv = material_uv(instance.material_index, uv, s.pos_ws, s.normal);
+    uv = get_world_space_uv(s.pos_ws, s.normal) / 4.0;
   }
 
-  s.albedo = material_base_color(
-      material.base_color_id.sample_level(g.default_sampler, uv, 0).xyz, vcolor.xyz);
+  s.albedo = material.base_color_id.sample_level(g.default_sampler, uv, 0).xyz * vcolor.xyz;
   return s;
 }
 
