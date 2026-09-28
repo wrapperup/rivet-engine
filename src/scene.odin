@@ -154,7 +154,7 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 				log.warn("static_mesh node missing 'asset' path, skipping:", node.name.? or_else "<unnamed>")
 				continue
 			}
-			material := MaterialId(json_f32(object["material"], 0))
+            material := Asset_Id(Material_Asset) { object["material"].(json.String) }
 			sm := new_entity(StaticMesh)
 			init_static_mesh(sm, asset, material, &scene.gpu_arena, node.translation, node.rotation, node.scale)
 			append(&scene.entities, sm.id)
@@ -164,7 +164,7 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 				log.warn("heightfield node missing generated asset, skipping:", node.name.? or_else "<unnamed>")
 				continue
 			}
-			material := MaterialId(json_f32(object["material"], 0))
+            material := Asset_Id(Material_Asset) { object["material"].(json.String) }
 			uv_scale := json_f32(object["uv_scale"], 1.0)
 			terrain := new_entity(Terrain)
 			if !init_terrain(terrain, asset, material, uv_scale, &scene.gpu_arena, node.translation, node.rotation) {
