@@ -11,7 +11,9 @@ import gfx "gfx"
 NUM_FRAME_AVG_COUNT :: 10
 
 PhysicsContext :: struct {
-	world: b3.WorldId,
+	world:          b3.WorldId `edit:"-"`,
+	update_physics: bool,
+	show_debug:     bool,
 }
 
 ViewState :: enum {
@@ -59,6 +61,8 @@ Game :: struct {
 	view_state:         ViewState,
 	render_state:       RenderState,
 
+    inspector: Inspector,
+
 	// Physics
 	phys:               PhysicsContext,
 
@@ -75,7 +79,6 @@ Game :: struct {
 
 	// TEMP storage
 	ball_mesh:          GPUMeshBuffers,
-	update_physics:     bool,
 }
 
 FrameTimeStats :: enum {

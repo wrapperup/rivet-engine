@@ -180,7 +180,7 @@ heightfield_mesh :: proc(source: ^HeightfieldSource, uv_scale: f32, allocator :=
 init_terrain :: proc(
 	terrain: ^Terrain,
 	path: string,
-	material: MaterialId,
+	material: Asset_Id(Material_Asset),
 	uv_scale: f32,
 	gpu_arena: ^gfx.ResourceArena,
 	translation: Vec3 = {0, 0, 0},
@@ -210,11 +210,11 @@ init_terrain :: proc(
 		return false
 	}
 
-	// Box3D heightfields begin at local X/Z zero. The sidecar retains the centered Blender grid's
-	// local corner, so shift the entity/body while leaving the height samples densely packed.
 	terrain.translation = translation + Vec3{source.origin_x, 0, source.origin_z}
 	terrain.rotation = rotation
-	terrain.material = material
+
+    // TODO: store asset id
+	terrain.material = load_asset(material).material_id
 
 	body_def := b3.DefaultBodyDef()
 	body_def.type = .staticBody

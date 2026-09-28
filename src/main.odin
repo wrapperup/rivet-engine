@@ -92,12 +92,6 @@ main :: proc() {
 		// Physics
 		physics_init()
 
-		// Rendering
-		{
-			init_game_renderer()
-			configure_im()
-		}
-
 		if !init_entity_system() {
 			log.error("Entity storage could not be initialized.")
 			return
@@ -128,9 +122,14 @@ main :: proc() {
 		}
 
 		{
-			// register asset types
-			register_asset_type(Image_Asset, {load = load_image_asset})
+			register_assets()
 			register_entity_subtypes()
+		}
+
+		// Rendering
+		{
+			init_game_renderer()
+			configure_im()
 		}
 
 		// Scene
@@ -148,7 +147,7 @@ main :: proc() {
 			sound_source := new_entity(SoundSource)
 			init_sound_source(sound_source, "assets/audio/ambient/a_outdoors_birds.wav", true, 0.1, false, 0.5)
 
-			game.update_physics = false
+			game.phys.update_physics = false
 			game.state = GameState {
 				player_id = entity_id_of(player),
 				environment = Environment {
@@ -269,7 +268,7 @@ main :: proc() {
 			{
 				scope_stat_time(.Physics)
 
-				if game.update_physics {
+				if game.phys.update_physics {
 					physics_step(f32(dt))
 				}
 			}

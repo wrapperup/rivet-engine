@@ -6,18 +6,19 @@ import "gfx"
 
 @(entity)
 StaticMesh :: struct {
-	using entity: ^Entity,
-	mesh:         GPUMeshBuffers,
-	material:     MaterialId,
-	scale:        Vec3,
-	body:         b3.BodyId,
-	mesh_data:    ^b3.MeshData,
+	using entity:   ^Entity,
+	mesh:           GPUMeshBuffers,
+	material_asset: Asset_Id(Material_Asset),
+	material:       MaterialId,
+	scale:          Vec3,
+	body:           b3.BodyId,
+	mesh_data:      ^b3.MeshData,
 }
 
 init_static_mesh :: proc(
 	static_mesh: ^StaticMesh,
 	path: string,
-	material: MaterialId,
+	material: Asset_Id(Material_Asset),
 	gpu_arena: ^gfx.ResourceArena,
 	translation: Vec3 = {0, 0, 0},
 	rotation: Quat = Quat(1),
@@ -68,7 +69,9 @@ init_static_mesh :: proc(
 	static_mesh.rotation = rotation
 	static_mesh.scale = scale
 	static_mesh.mesh = gpu_mesh
-	static_mesh.material = material
+
+	static_mesh.material_asset = material
+	static_mesh.material = static_mesh.material_asset
 }
 
 static_mesh_destroy :: proc(static_mesh: ^StaticMesh) {

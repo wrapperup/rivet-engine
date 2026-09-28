@@ -91,7 +91,7 @@ GameFrameData :: struct {
 	instances_buffer:        gfx.Buffer(GPURenderInstance),
 	cascade_matrices_buffer: gfx.Buffer(Mat4x4),
 	cascade_configs_buffer:  gfx.Buffer(GPUCascadeConfig),
-	instances:              [dynamic]RenderInstance,
+	instances:               [dynamic]RenderInstance,
 	skel_instances:          [dynamic]^SkeletalMeshInstance,
 	rt:                      RaytracingResources,
 }
@@ -154,13 +154,12 @@ init_material_store :: proc() {
 	material_store.materials_buffer = gfx.create_buffer(GPUMaterial, 20)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, material_store.materials_buffer)
 
-	test_material := load_material_from_file("assets/materials/test.sjson")
+    test_mat_asset := load_asset(Asset_Id(Material_Asset){"assets/materials/test.sjson"})
 
-	add_material(test_material)
-	add_material(test_material)
+    // HACK: remove this.
+	add_material(game.render_state.material_store.materials_gpu[test_mat_asset.material_id])
 
-	materialball_material := load_material_from_file("assets/materials/materialball2.sjson")
-	add_material(materialball_material)
+    materialball_mat_asset := load_asset(Asset_Id(Material_Asset){"assets/materials/materialball2.sjson"})
 }
 
 init_render_passes :: proc() {
@@ -344,17 +343,19 @@ draw_mesh :: proc(
 	scale: [3]f32,
 	include_in_raytracing := true,
 ) {
-	submit_render_instance(RenderInstance {
-		data = {
-			model_to_world = linalg.matrix4_from_trs_f32(translation, rotation, scale),
-			vertex_buffer = mesh.vertex_buffer.ptr,
-			index_buffer = mesh.index_buffer.ptr,
-			material_index = material,
+	submit_render_instance(
+		RenderInstance {
+			data = {
+				model_to_world = linalg.matrix4_from_trs_f32(translation, rotation, scale),
+				vertex_buffer = mesh.vertex_buffer.ptr,
+				index_buffer = mesh.index_buffer.ptr,
+				material_index = material,
+			},
+			index_buffer = mesh.index_buffer.buffer,
+			index_count = mesh.index_count,
+			blas_address = include_in_raytracing ? mesh.blas.address : 0,
 		},
-		index_buffer = mesh.index_buffer.buffer,
-		index_count = mesh.index_count,
-		blas_address = include_in_raytracing ? mesh.blas.address : 0,
-	})
+	)
 }
 
 draw_skeletal_mesh :: proc(
@@ -365,16 +366,18 @@ draw_skeletal_mesh :: proc(
 	scale: Vec3,
 ) {
 	append(&current_frame_game().skel_instances, instance)
-	submit_render_instance(RenderInstance {
-		data = {
-			model_to_world = linalg.matrix4_from_trs_f32(translation, rotation, scale),
-			vertex_buffer = instance.preskinned_vertex_buffers[gfx.current_frame_index()].ptr,
-			index_buffer = instance.skel.buffers.index_buffer.ptr,
-			material_index = material,
+	submit_render_instance(
+		RenderInstance {
+			data = {
+				model_to_world = linalg.matrix4_from_trs_f32(translation, rotation, scale),
+				vertex_buffer = instance.preskinned_vertex_buffers[gfx.current_frame_index()].ptr,
+				index_buffer = instance.skel.buffers.index_buffer.ptr,
+				material_index = material,
+			},
+			index_buffer = instance.skel.buffers.index_buffer.buffer,
+			index_count = instance.skel.buffers.index_count,
 		},
-		index_buffer = instance.skel.buffers.index_buffer.buffer,
-		index_count = instance.skel.buffers.index_count,
-	})
+	)
 }
 
 prepare_shared_frame_data :: proc() {
