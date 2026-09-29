@@ -59,6 +59,7 @@ Asset_Debug_Entry :: struct {
 	path:       string,
 	asset_type: typeid,
 	status:     Asset_Load_Result,
+	ref_count:  int,
 }
 
 Asset_Inspect_Proc :: #type proc(assets: ^runtime.Raw_Map, entries: ^[dynamic]Asset_Debug_Entry)
@@ -66,14 +67,14 @@ Asset_Inspect_Proc :: #type proc(assets: ^runtime.Raw_Map, entries: ^[dynamic]As
 inspect_asset_store :: proc(assets: ^runtime.Raw_Map, entries: ^[dynamic]Asset_Debug_Entry, $T: typeid) {
 	store := cast(^map[string]T)assets
 	for path, asset in store^ {
-		append(entries, Asset_Debug_Entry{path, T, asset.status})
+		append(entries, Asset_Debug_Entry{path, T, asset.status, asset.ref_count})
 	}
 }
 
 Asset_Load_Result :: enum {
+    NotAvailable,
 	Ready,
 	// Async,
-	NotAvailable,
 }
 
 register_asset_type :: proc($T: typeid, loaders: Asset_Loaders) {
@@ -103,6 +104,7 @@ load_asset :: proc(
 	asset: ^T,
 ) where intrinsics.type_is_subtype_of(T, Asset_Base) {
 	if found_asset := get_asset(id); found_asset != nil {
+        found_asset.ref_count += 1
 		return found_asset
 	}
 
@@ -124,6 +126,9 @@ load_asset :: proc(
 
 	// should never happen
 	assert(asset != nil)
+
+    asset.status = .Ready
+    asset.ref_count = 1
 
 	return
 }
@@ -158,7 +163,9 @@ add_asset :: proc(path: string, asset: $T) -> Asset_Id(T) where intrinsics.type_
 
 get_asset :: proc(id: Asset_Id($T)) -> ^T {
 	if store := get_asset_store(T); store != nil {
-		return &store.assets[id.path]
+        if asset, ok := &store.assets[id.path]; ok {
+            return asset
+        }
 	}
 
 	return nil
