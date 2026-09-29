@@ -154,12 +154,12 @@ init_material_store :: proc() {
 	material_store.materials_buffer = gfx.create_buffer(GPUMaterial, 20)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, material_store.materials_buffer)
 
-    test_mat_asset := load_asset(Asset_Id(Material_Asset){"assets/materials/test.sjson"})
+	test_mat_asset := load_asset(Asset_Id(Material_Asset){"assets/materials/test.sjson"})
 
-    // HACK: remove this.
+	// HACK: remove this.
 	add_material(game.render_state.material_store.materials_gpu[test_mat_asset.material_id])
 
-    materialball_mat_asset := load_asset(Asset_Id(Material_Asset){"assets/materials/materialball2.sjson"})
+	materialball_mat_asset := load_asset(Asset_Id(Material_Asset){"assets/materials/materialball2.sjson"})
 }
 
 init_render_passes :: proc() {
@@ -223,9 +223,11 @@ draw :: proc() {
 	}
 
 	for static_mesh in get_entities(StaticMesh) {
-        mesh_asset := load_asset(static_mesh.mesh_asset)
-        material_asset := load_asset(static_mesh.material_asset)
-		draw_mesh(mesh_asset.gpu_buffers, material_asset.material_id, static_mesh.translation, static_mesh.rotation, static_mesh.scale)
+		mesh_asset := get_asset(static_mesh.mesh_asset)
+		material_asset := get_asset(static_mesh.material_asset)
+		if mesh_asset != nil && material_asset != nil {
+			draw_mesh(mesh_asset.gpu_buffers, material_asset.material_id, static_mesh.translation, static_mesh.rotation, static_mesh.scale)
+		}
 	}
 
 	for terrain in get_entities(Terrain) {
