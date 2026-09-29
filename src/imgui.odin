@@ -21,6 +21,8 @@ import "gfx"
 configure_im :: proc() {
 	io := im.GetIO()
 
+    io.ConfigFlags += {.DockingEnable}
+
 	font_config: im.FontConfig = {}
 
 	// Font bytes belong to the asset arena, which outlives the ImGui context.
@@ -164,6 +166,8 @@ update_imgui :: proc() {
 
 	if !game.show_imgui do return
 
+    im.DockSpaceOverViewport(flags = {.PassthruCentralNode})
+
 	editor_draw_imgui()
 
 	dl := im.GetForegroundDrawList()
@@ -199,7 +203,7 @@ update_imgui :: proc() {
 	}
 
 	if im.Begin("Physics") {
-        inspector_draw_any(game.phys)
+		inspector_draw_any(game.phys)
 	}
 	im.End()
 
@@ -475,11 +479,11 @@ to_pretty_case :: proc(
 Inspector_Draw_Proc :: #type proc(base: rawptr) -> (draw_label: bool)
 
 Inspector :: struct {
-    registered_types: map[typeid]Inspector_Draw_Proc
+	registered_types: map[typeid]Inspector_Draw_Proc,
 }
 
 register_custom_inspector :: proc(draw: proc(base: ^$T) -> (draw_label: bool)) {
-    game.inspector.registered_types[T] = draw
+	game.inspector.registered_types[T] = draw
 }
 
 inspector_draw_any :: proc(value: any) -> bool {
@@ -731,17 +735,17 @@ inspector_draw_any :: proc(value: any) -> bool {
 		return false
 	case runtime.Type_Info_Named:
 		return inspector_draw_any({base, v.base.id})
-    case runtime.Type_Info_Pointer:
-        if v.elem == nil {
-            return false
-        }
+	case runtime.Type_Info_Pointer:
+		if v.elem == nil {
+			return false
+		}
 
-        if base != nil {
-            im.TextUnformatted("nil")
-            return true
-        }
+		if base != nil {
+			im.TextUnformatted("nil")
+			return true
+		}
 
-        dest := (cast(^rawptr)base)^
+		dest := (cast(^rawptr)base)^
 		return inspector_draw_any({dest, v.elem.id})
 	case:
 		return false
