@@ -7,33 +7,30 @@ import vk "vendor:vulkan"
 
 import "gfx"
 
-@(private = "file")
-ImageId :: gfx.ImageId
-
 @(shader_shared)
 GPUDDGITracePush :: struct #max_field_align(16) {
-	volume:     gfx.Ptr(GPUDDGIVolume),
+	volume:    gfx.Ptr(GPUDDGIVolume),
 	instances: gfx.Ptr(GPURenderInstance),
-	materials:  gfx.Ptr(GPUMaterial),
-	global:     gfx.Ptr(GPUGlobalData),
-	radiance:   gfx.Ptr(Vec4),
-	tlas:       vk.DeviceAddress `AccelerationStructure`,
+	materials: gfx.Ptr(GPUMaterial),
+	global:    gfx.Ptr(GPUGlobalData),
+	radiance:  gfx.Ptr(Vec4),
+	tlas:      vk.DeviceAddress `AccelerationStructure`,
 }
 
 @(shader_shared)
 GPUDDGIUpdatePush :: struct #max_field_align(16) {
 	volume:     gfx.Ptr(GPUDDGIVolume),
 	radiance:   gfx.Ptr(Vec4),
-	irradiance: ImageId `RWImage2D`,
-	visibility: ImageId `RWImage2D`,
-	probe_data: ImageId `RWImage2D`,
+	irradiance: gfx.ImageId `RWImage2D`,
+	visibility: gfx.ImageId `RWImage2D`,
+	probe_data: gfx.ImageId `RWImage2D`,
 }
 
 @(shader_shared)
 GPUDDGIRelocatePush :: struct #max_field_align(16) {
 	volume:         gfx.Ptr(GPUDDGIVolume),
 	radiance:       gfx.Ptr(Vec4),
-	probe_data:     ImageId `RWImage2D`,
+	probe_data:     gfx.ImageId `RWImage2D`,
 	first_frame:    u32,
 	adjust_offsets: u32,
 }
@@ -41,7 +38,7 @@ GPUDDGIRelocatePush :: struct #max_field_align(16) {
 @(shader_shared)
 GPUDDGIDebugAtlasPush :: struct #max_field_align(16) {
 	volume:    gfx.Ptr(GPUDDGIVolume),
-	out_image: ImageId `RWImage2D`,
+	out_image: gfx.ImageId `RWImage2D`,
 }
 
 @(shader_shared)
@@ -55,19 +52,17 @@ GPUDDGIProbePush :: struct #max_field_align(16) {
 DDGI_UPDATE_BLOCKS_PER_PROBE :: (DDGI_PROBE_IRR_TEXELS * DDGI_PROBE_IRR_TEXELS + 63) / 64 + (DDGI_PROBE_DEPTH_TEXELS * DDGI_PROBE_DEPTH_TEXELS + 63) / 64
 
 DDGIRenderPass :: struct {
-	trace_pipeline:         ^gfx.ComputePipeline,
-	update_pipeline:        ^gfx.ComputePipeline,
-	border_pipeline:        ^gfx.ComputePipeline,
-	relocate_pipeline:      ^gfx.ComputePipeline,
-	debug_pipeline:         ^gfx.ComputePipeline,
-	probe_pipeline:         ^gfx.GraphicsPipeline,
-	volumes_buffers:        [gfx.FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume),
-	debug_volume:           i32,
-	probe_vbuf:             gfx.Buffer(Vertex),
-	probe_ibuf:             gfx.Buffer(u32),
-	probe_index_count:      u32,
-	draw_probes:            bool,
-	draw_reflection_probes: bool,
+	trace_pipeline:        ^gfx.ComputePipeline,
+	update_pipeline:       ^gfx.ComputePipeline,
+	border_pipeline:       ^gfx.ComputePipeline,
+	relocate_pipeline:     ^gfx.ComputePipeline,
+	debug_pipeline:        ^gfx.ComputePipeline,
+	probe_pipeline:        ^gfx.GraphicsPipeline,
+	volumes_buffers:       [gfx.FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume),
+	debug_volume:          i32,
+	probe_vbuf:            gfx.Buffer(Vertex),
+	probe_ibuf:            gfx.Buffer(u32),
+	probe_index_count:     u32,
 }
 
 init_ddgi_rp :: proc() {
@@ -111,7 +106,6 @@ init_ddgi_rp :: proc() {
 }
 
 // Generates a UV sphere (positions == normals, unit radius).
-@(private = "file")
 ddgi_make_sphere :: proc(rings, sectors: int) -> ([]Vertex, []u32) {
 	verts := make([dynamic]Vertex)
 	indices := make([dynamic]u32)
@@ -179,7 +173,6 @@ ddgi_prepare :: proc(volumes: []DDGIVolume, advance_frame: bool) {
 	game.render_state.global_data.ddgi_volumes = gfx.slice(rp.volumes_buffers[frame_index], count = u64(count))
 }
 
-@(private = "file")
 ddgi_current_config :: proc(volume: ^DDGI_Volume_Resources) -> ^gfx.Buffer(GPUDDGIVolume) {
 	return &volume.config_buffers[gfx.current_frame_index()]
 }
@@ -195,41 +188,39 @@ record_ddgi_pass :: proc(cmd: gfx.CommandBuffer, volumes: []DDGIVolume) {
 // Overlay: draws an instanced sphere per probe into the HDR scene, each shaded
 // by its own irradiance. Depth-tested against the scene.
 record_ddgi_debug_probes_pass :: proc(cmd: gfx.CommandBuffer, volumes: []DDGIVolume) {
-	if !game.render_state.ddgi_rp.draw_probes do return
+	when EDITOR {
+		if .Irradiance_Probes not_in editor.settings.vis_flags {
+			return
+		}
 
-	for &volume in volumes {
-		record_ddgi_debug_volume(cmd, &volume.volume)
+		for &volume in volumes {
+			rp := &game.render_state.ddgi_rp
+			gfx.cmd_begin_rendering(
+				cmd,
+				area = gfx.r_ctx.draw_extent,
+				color_attachment = &{view = gfx.r_ctx.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
+				depth_attachment = &{view = gfx.r_ctx.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
+			)
+			gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
+			gfx.cmd_bind_pipeline(cmd, rp.probe_pipeline)
+			gfx.cmd_bind_index_buffer(cmd, rp.probe_ibuf.buffer)
+			gfx.cmd_push_constants(
+				cmd,
+				GPUDDGIProbePush {
+					global = current_frame_game().global_buffer.ptr,
+					volume = ddgi_current_config(&volume.volume).ptr,
+					vertex_buffer = rp.probe_vbuf.ptr,
+					probe_radius = 0.3,
+				},
+			)
+			counts := volume.gpu.grid_counts
+			gfx.cmd_draw_indexed(cmd, rp.probe_index_count, instance_count = counts[0] * counts[1] * counts[2])
+			gfx.cmd_end_rendering(cmd)
+		}
 	}
 }
 
-@(private = "file")
-record_ddgi_debug_volume :: proc(cmd: gfx.CommandBuffer, volume: ^DDGI_Volume_Resources) {
-	rp := &game.render_state.ddgi_rp
-	gfx.cmd_begin_rendering(
-		cmd,
-		area = gfx.r_ctx.draw_extent,
-		color_attachment = &{view = gfx.r_ctx.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
-		depth_attachment = &{view = gfx.r_ctx.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
-	)
-	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
-	gfx.cmd_bind_pipeline(cmd, rp.probe_pipeline)
-	gfx.cmd_bind_index_buffer(cmd, rp.probe_ibuf.buffer)
-	gfx.cmd_push_constants(
-		cmd,
-		GPUDDGIProbePush {
-			global = current_frame_game().global_buffer.ptr,
-			volume = ddgi_current_config(volume).ptr,
-			vertex_buffer = rp.probe_vbuf.ptr,
-			probe_radius = 0.3,
-		},
-	)
-	counts := volume.gpu.grid_counts
-	gfx.cmd_draw_indexed(cmd, rp.probe_index_count, instance_count = counts[0] * counts[1] * counts[2])
-	gfx.cmd_end_rendering(cmd)
-}
-
 // Trace + update for the volume, recorded into `cmd`. Uses the per-frame scene TLAS.
-@(private = "file")
 record_ddgi_volume :: proc(cmd: gfx.CommandBuffer, volume: ^DDGI_Volume_Resources) {
 	counts := volume.gpu.grid_counts
 	num_probes := counts[0] * counts[1] * counts[2]

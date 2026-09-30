@@ -129,7 +129,10 @@ main :: proc() {
 		// Rendering
 		{
 			init_game_renderer()
-			configure_im()
+
+			when EDITOR {
+				configure_im()
+			}
 		}
 
 		// Scene
@@ -274,7 +277,9 @@ main :: proc() {
 			}
 
 			if glfw.GetWindowAttrib(game.window, glfw.ICONIFIED) == 0 {
-				update_imgui()
+				when EDITOR {
+					update_imgui()
+				}
 				draw()
 			}
 

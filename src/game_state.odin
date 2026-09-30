@@ -13,7 +13,6 @@ NUM_FRAME_AVG_COUNT :: 10
 PhysicsContext :: struct {
 	world:          b3.WorldId `edit:"-"`,
 	update_physics: bool,
-	show_debug:     bool,
 }
 
 ViewState :: enum {
@@ -50,7 +49,6 @@ Game :: struct {
 	},
 	config:             GameConfig,
 	state:              GameState,
-	editor_settings:    Editor_Settings,
 	renderer:           ^gfx.Renderer,
 
 	// Systems
@@ -60,8 +58,6 @@ Game :: struct {
 	asset_system:       AssetSystem,
 	view_state:         ViewState,
 	render_state:       RenderState,
-
-    inspector: Inspector,
 
 	// Physics
 	phys:               PhysicsContext,

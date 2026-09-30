@@ -2,6 +2,8 @@ package game
 
 import "gfx"
 
+//TODO: support shaders
+
 MaterialId :: distinct u32
 
 @(shader_shared)

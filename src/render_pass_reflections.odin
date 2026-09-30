@@ -123,7 +123,9 @@ record_reflection_probe_pass :: proc(cmd: gfx.CommandBuffer, probes: []Reflectio
 }
 
 record_reflection_probe_debug_pass :: proc(cmd: gfx.CommandBuffer, probes: []ReflectionProbe) {
-	if !game.render_state.ddgi_rp.draw_reflection_probes do return
+    if .Reflection_Probes not_in editor.settings.vis_flags {
+        return
+    }
 
 	rp := &game.render_state.ddgi_rp
 	gfx.cmd_begin_rendering(
