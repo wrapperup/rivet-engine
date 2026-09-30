@@ -8,6 +8,8 @@ import "core:mem/virtual"
 import "core:os"
 
 import b3 "vendor:box3d"
+import vk "vendor:vulkan"
+import ktx "deps:odin-libktx"
 
 import "gfx"
 
@@ -208,7 +210,7 @@ load_image_asset :: proc(path: string, allocator: mem.Allocator) -> bool {
 	// 	return false
 	// }
 
-	image := gfx.load_image_from_file(path)
+	image := load_image_from_ktx_file(path)
 	add_asset(path, Image_Asset{image_id = image})
 
 	return true
@@ -217,6 +219,167 @@ load_image_asset :: proc(path: string, allocator: mem.Allocator) -> bool {
 destroy_image_asset :: proc(raw: rawptr, allocator: mem.Allocator) {
 	asset := cast(^Image_Asset)raw
 	gfx.destroy_image(asset.image_id)
+}
+
+load_image_from_ktx_file :: proc(filename: string, image_type: vk.ImageType = .D2, debug_name: cstring = nil, allocator := context.allocator, loc := #caller_location) -> gfx.ImageId {
+	bytes, read_err := os.read_entire_file(filename, allocator)
+	assert(read_err == nil, "Failed to read file")
+	defer delete(bytes)
+
+	return load_image_from_ktx_memory(bytes, image_type, debug_name, loc)
+}
+
+load_image_from_ktx_memory :: proc(mem: []u8, image_type: vk.ImageType = .D2, debug_name: cstring = nil, loc := #caller_location) -> gfx.ImageId {
+	ktx_texture: ^ktx.Texture2
+	ktx_result := ktx.Texture2_CreateFromMemory(raw_data(mem), len(mem), {.TEXTURE_CREATE_LOAD_IMAGE_DATA}, &ktx_texture)
+
+	assert(ktx_result == .SUCCESS, "Failed to load image.")
+
+	return load_image_from_ktx_texture(ktx_texture, loc = loc)
+}
+
+load_image_from_ktx_texture :: proc(ktx_texture: ^ktx.Texture2, debug_name: cstring = nil, loc := #caller_location) -> gfx.ImageId {
+	num_dims := ktx_texture.numDimensions // Dimensions
+	num_faces := ktx_texture.numFaces // Faces (cubemap)
+	num_levels := ktx_texture.numLevels // Mip levels
+	num_layers := ktx_texture.numLayers // Array levels
+
+	image_type: vk.ImageType
+	switch num_dims {
+	case 1:
+		image_type = .D1
+	case 2:
+		image_type = .D2
+	case 3:
+		image_type = .D3
+	}
+
+	is_array := ktx_texture.isArray
+	is_cubemap := ktx_texture.isCubemap
+
+	// Don't support cubemap arrays... if that's even a thing.
+	assert(!(is_cubemap && is_array))
+
+	// Assign cubemap faces instead.
+	if is_cubemap do num_layers = num_faces
+
+	size := ktx.Texture_GetDataSize(ktx_texture)
+	data := ktx.Texture_GetData(ktx_texture)
+	format := ktx.Texture_GetVkFormat(ktx_texture)
+
+	extent := vk.Extent3D{ktx_texture.baseWidth, ktx_texture.baseHeight, ktx_texture.baseDepth}
+
+	image := gfx.create_image(
+		format,
+		extent,
+		{.SAMPLED, .TRANSFER_DST},
+		image_type = image_type,
+		mip_levels = num_levels,
+		array_layers = num_layers,
+		flags = is_cubemap ? {.CUBE_COMPATIBLE} : {},
+        debug_name = debug_name,
+		loc = loc,
+	)
+
+	// Next, upload image data to vk Image
+	staging := gfx.create_buffer(u8, vk.DeviceSize(size), .Staging)
+	mapped_data := staging.info.pMappedData
+
+	mem.copy(mapped_data, data, int(size))
+
+	copy_regions: [dynamic]vk.BufferImageCopy
+
+	for i in 0 ..< num_layers {
+		for level in 0 ..< num_levels {
+			offset: uint
+			if is_cubemap {
+				ret := ktx.Texture_GetImageOffset(ktx_texture, level, 0, i, &offset)
+				assert(ret == .SUCCESS)
+			} else {
+				ret := ktx.Texture_GetImageOffset(ktx_texture, level, i, 0, &offset)
+				assert(ret == .SUCCESS)
+			}
+
+			copy_region := vk.BufferImageCopy{}
+			copy_region.imageSubresource.aspectMask = {.COLOR}
+			copy_region.imageSubresource.mipLevel = level
+			copy_region.imageSubresource.baseArrayLayer = i
+			copy_region.imageSubresource.layerCount = 1
+			copy_region.imageExtent.width = max(ktx_texture.baseWidth >> level, 1)
+			copy_region.imageExtent.height = max(ktx_texture.baseHeight >> level, 1)
+			copy_region.imageExtent.depth = max(ktx_texture.baseDepth >> level, 1)
+			copy_region.bufferOffset = vk.DeviceSize(offset)
+
+			append(&copy_regions, copy_region)
+		}
+	}
+
+	if cmd, ok := gfx.immediate_submit(); ok {
+		gfx.transition_image(cmd, image, .TRANSFER_DST_OPTIMAL)
+		gfx.cmd_copy_buffer_to_image(cmd, staging, image, copy_regions[:])
+		gfx.transition_image(cmd, image, .SHADER_READ_ONLY_OPTIMAL)
+	}
+
+	gfx.destroy_buffer(&staging)
+
+	return image
+}
+
+write_buffer_to_ktx_file :: proc(
+	filename: cstring,
+	buffer: ^gfx.Buffer($T),
+	extent: vk.Extent3D,
+	format: vk.Format,
+	format_size: u32,
+	image_type: vk.ImageType = .D2,
+	levels: u32 = 1,
+	layers: u32 = 1,
+	faces: u32 = 1,
+	is_array: bool = false,
+) {
+	info := buffer.info
+	max_size := info.size
+	data := cast([^]u8)info.pMappedData
+
+	assert(info.pMappedData != nil)
+
+	ktx_texture: ^ktx.Texture2
+	createInfo := ktx.TextureCreateInfo {
+		vkFormat        = format,
+		baseWidth       = extent.width,
+		baseHeight      = extent.height,
+		baseDepth       = extent.depth,
+		numDimensions   = u32(image_type) + 1,
+		numLevels       = levels,
+		numLayers       = layers,
+		numFaces        = faces,
+		isArray         = is_array,
+		generateMipmaps = false,
+	}
+
+	ktx.Texture2_Create(&createInfo, .TEXTURE_CREATE_ALLOC_STORAGE, &ktx_texture)
+
+	offset: u32
+	for level in 0 ..< levels {
+		for face in 0 ..< faces {
+			w := extent.width >> level
+			h := extent.width >> level
+
+			size := w * h * format_size
+
+			assert(u32(offset) + size <= u32(max_size))
+
+			res := ktx.Texture_SetImageFromMemory(ktx_texture, level, 0, face, data[offset:], uint(size))
+			assert(res == .SUCCESS)
+
+			offset += size
+		}
+	}
+
+	res := ktx.Texture_WriteToNamedFile(ktx_texture, filename)
+	assert(res == .SUCCESS)
+
+	ktx.Texture_Destroy(ktx_texture)
 }
 
 Material_JSON :: struct {

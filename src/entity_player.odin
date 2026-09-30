@@ -317,14 +317,6 @@ get_current_projection_matrix_clipped :: proc(near, far: f32) -> Mat4x4 {
 
 get_current_view_matrix :: proc() -> Mat4x4 {
 	player := get_entity(game.state.player_id)
-
-	// TODO: Make this an editor flag!!!!
-	when GAME_EDITOR {
-		if .ViewFromThirdPerson in debug_vis_flags() {
-			return linalg.matrix4_look_at_f32({0, 10, 0}, player.eye_pos, {0, 1, 0})
-		}
-	}
-
 	return player_get_view_matrix(player)
 }
 

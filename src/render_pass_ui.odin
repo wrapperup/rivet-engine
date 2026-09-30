@@ -112,7 +112,7 @@ load_font :: proc(image_path: string, json_path: string, allocator := context.al
 	assert(parsed.atlas.width > 0 && parsed.atlas.height > 0 && parsed.atlas.distance_range > 0, "Invalid font atlas dimensions or range.")
 	assert(len(parsed.glyphs) > 0 && parsed.metrics.line_height > 0, "Font has no glyphs or an invalid line height.")
 
-	font.image = gfx.load_image_from_file(image_path)
+	font.image = load_image_from_ktx_file(image_path)
 	font.line_height = parsed.metrics.line_height
 	font.ascender = parsed.metrics.ascender
 	font.descender = parsed.metrics.descender

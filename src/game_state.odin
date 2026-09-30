@@ -50,7 +50,7 @@ Game :: struct {
 	},
 	config:             GameConfig,
 	state:              GameState,
-	editor:             Editor_State,
+	editor_settings:    Editor_Settings,
 	renderer:           ^gfx.Renderer,
 
 	// Systems

@@ -21,7 +21,7 @@ import "gfx"
 configure_im :: proc() {
 	io := im.GetIO()
 
-    io.ConfigFlags += {.DockingEnable}
+	io.ConfigFlags += {.DockingEnable}
 
 	font_config: im.FontConfig = {}
 
@@ -166,9 +166,7 @@ update_imgui :: proc() {
 
 	if !game.show_imgui do return
 
-    im.DockSpaceOverViewport(flags = {.PassthruCentralNode})
-
-	editor_draw_imgui()
+	im.DockSpaceOverViewport(flags = {.PassthruCentralNode})
 
 	dl := im.GetForegroundDrawList()
 	red := im.GetColorU32ImVec4({1.0, 0.0, 0.0, 1.0})
@@ -207,6 +205,11 @@ update_imgui :: proc() {
 	}
 	im.End()
 
+	if im.Begin("Editor Settings") {
+		inspector_draw_any(game.editor_settings)
+	}
+	im.End()
+
 	if im.Begin("Entities") {
 		if im.CollapsingHeader("Raw Entities") {
 			im.Text("%d live entities across %d allocated slots", game.entity_system.live_count, game.entity_system.slot_count)
@@ -224,57 +227,6 @@ update_imgui :: proc() {
 			}
 		}
 
-		imgui_draw_type :: proc(info_base: runtime.Type_Info, data: rawptr = nil) {
-			info_named: runtime.Type_Info_Named
-			info_struct: runtime.Type_Info_Struct
-
-			#partial switch info in info_base.variant {
-			case runtime.Type_Info_Pointer:
-				info_ptr := info_base.variant.(runtime.Type_Info_Pointer)
-				info_named = info_ptr.elem.variant.(runtime.Type_Info_Named)
-				info_struct = info_named.base.variant.(runtime.Type_Info_Struct)
-			case runtime.Type_Info_Named:
-				info_named = info_base.variant.(runtime.Type_Info_Named)
-				info_struct = info_named.base.variant.(runtime.Type_Info_Struct)
-			case:
-				return // we don't support this case.
-			}
-
-			display_string: cstring
-
-			if data == nil {
-				display_string = strings.clone_to_cstring(info_named.name, context.temp_allocator)
-			} else {
-				display_string = fmt.ctprintf("%s %p", info_named.name, data)
-			}
-
-			im.Text(display_string)
-			for i in 0 ..< info_struct.field_count {
-				name := info_struct.names[i]
-				ty := info_struct.types[i]
-				offset := info_struct.offsets[i]
-
-				if data == nil {
-					im.Text(strings.clone_to_cstring(name, context.temp_allocator))
-				} else {
-					data_ptr := (cast([^]u8)data)[offset:]
-
-					#partial switch info in ty.variant {
-					case runtime.Type_Info_Integer:
-						if info.signed {
-							im.InputInt(strings.clone_to_cstring(name, context.temp_allocator), (cast(^i32)data_ptr))
-						} else {
-							im.Text("%s %u", (cast(^uint)data_ptr)^)
-						}
-					case runtime.Type_Info_Pointer, runtime.Type_Info_Struct:
-						imgui_draw_type(ty^, data_ptr)
-						continue
-					}
-				}
-			}
-			im.Text("")
-		}
-
 		for subtype_ptr, i in game.entity_system.subtype_storage {
 			storage_raw := subtype_ptr.ptr
 			size_t := subtype_ptr.type_info.size
@@ -286,7 +238,6 @@ update_imgui :: proc() {
 
 			im.SameLine()
 
-			// TODO: really sketchy.
 			if im.TreeNode(
 				fmt.ctprintf("%s Entities (num: %d)", subtype_ptr.type_info.variant.(runtime.Type_Info_Named).name, storage_raw.dense.len),
 			) {
@@ -296,7 +247,7 @@ update_imgui :: proc() {
 				for im.ListClipper_Step(&clipper) {
 					for i in clipper.DisplayStart ..< clipper.DisplayEnd {
 						data_ptr := (cast([^]u8)storage_raw.dense.data)[int(i) * size_t:]
-						imgui_draw_type(subtype_ptr.type_info, data_ptr)
+						inspector_draw_any({data_ptr, subtype_ptr.type_info.id})
 					}
 				}
 				im.TreePop()
@@ -304,18 +255,6 @@ update_imgui :: proc() {
 		}
 	}
 	im.End()
-
-	if player != nil {
-		if im.Begin("Camera") {
-			im.InputFloat3("pos", &player.translation)
-			im.InputFloat3("vel", &player.velocity)
-			im.InputFloat3("pitch yaw", &player.camera_rot)
-			im.InputFloat("fov", &player.camera_fov_deg)
-			items := [len(ViewState)]cstring{"SceneColor", "SceneDepth", "ShadowDepth", "Raytracing", "DDGIAtlas"}
-			im.ComboChar("view", cast(^i32)(&game.view_state), raw_data(&items), len(items))
-		}
-		im.End()
-	}
 
 	if im.Begin("DDGI") {
 		im.Checkbox("Update", &game.state.update_ddgi)
@@ -722,6 +661,14 @@ inspector_draw_any :: proc(value: any) -> bool {
 					im.TreePop()
 				}
 				im.PopID()
+			} else if _, is_bit_set := field_info.variant.(runtime.Type_Info_Bit_Set); is_bit_set {
+				im.PushIDPtr(field_base)
+				if im.TreeNodeEx(strings.clone_to_cstring(label, context.temp_allocator),
+					{.DefaultOpen, .SpanAvailWidth, .FramePadding}) {
+					inspector_draw_any(field_value)
+					im.TreePop()
+				}
+				im.PopID()
 			} else if reflect.is_struct(field_info) {
 				if im.TreeNode(strings.clone_to_cstring(label, context.temp_allocator)) {
 					inspector_draw_any(field_value)
@@ -733,6 +680,46 @@ inspector_draw_any :: proc(value: any) -> bool {
 		}
 
 		return false
+
+	case runtime.Type_Info_Bit_Set:
+		bytes := ([^]u8)(base)[:type_info.size]
+		big_endian := reflect.bit_set_is_big_endian(value)
+		im.BeginGroup()
+		defer im.EndGroup()
+
+		_draw_bit :: proc(bytes: []u8, bit: i64, big_endian: bool, label: cstring) {
+			if bit < 0 || bit >= i64(len(bytes)) * 8 {
+				return
+			}
+			byte_index := int(bit / 8)
+			if big_endian {
+				byte_index = len(bytes) - 1 - byte_index
+			}
+			mask := u8(1) << u8(bit % 8)
+			checked := bytes[byte_index] & mask != 0
+			if im.Checkbox(label, &checked) {
+				if checked {
+					bytes[byte_index] |= mask
+				} else {
+					bytes[byte_index] &~= mask
+				}
+			}
+		}
+
+		elem_info := runtime.type_info_base(v.elem)
+		if enum_info, is_enum := elem_info.variant.(runtime.Type_Info_Enum); is_enum {
+			for name, i in enum_info.names {
+				im.PushIDInt(i32(i))
+				_draw_bit(bytes, i64(enum_info.values[i]) - v.lower, big_endian,
+					strings.clone_to_cstring(to_pretty_case(name), context.temp_allocator))
+				im.PopID()
+			}
+		} else {
+			for i in v.lower ..= v.upper {
+				_draw_bit(bytes, i - v.lower, big_endian, fmt.ctprint(i))
+			}
+		}
+
 	case runtime.Type_Info_Named:
 		return inspector_draw_any({base, v.base.id})
 	case runtime.Type_Info_Pointer:
