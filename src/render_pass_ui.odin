@@ -58,7 +58,7 @@ Glyph :: struct {
 }
 
 Font :: struct {
-	image:               Asset_Id(Image_Asset),
+	image:               Handle(Image_Asset),
 	glyphs:              map[rune]Glyph,
 	kerning:             map[[2]rune]f32,
 	unit_range:          Vec2,
@@ -113,7 +113,7 @@ load_font :: proc(image_path: string, json_path: string, allocator := context.al
 	assert(parsed.atlas.width > 0 && parsed.atlas.height > 0 && parsed.atlas.distance_range > 0, "Invalid font atlas dimensions or range.")
 	assert(len(parsed.glyphs) > 0 && parsed.metrics.line_height > 0, "Font has no glyphs or an invalid line height.")
 
-	font.image = Asset_Id(Image_Asset){ image_path }
+	font.image = Handle(Image_Asset){ image_path }
     load_asset(font.image)
 
 	font.line_height = parsed.metrics.line_height

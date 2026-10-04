@@ -180,7 +180,7 @@ heightfield_mesh :: proc(source: ^HeightfieldSource, uv_scale: f32, allocator :=
 init_terrain :: proc(
 	terrain: ^Terrain,
 	path: string,
-	material: Asset_Id(Material_Asset),
+	material: Handle(Material_Asset),
 	uv_scale: f32,
 	gpu_arena: ^gfx.ResourceArena,
 	translation: Vec3 = {0, 0, 0},

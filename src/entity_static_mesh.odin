@@ -5,16 +5,16 @@ import b3 "vendor:box3d"
 @(entity)
 StaticMesh :: struct {
 	using entity:   ^Entity,
-	mesh_asset:     Asset_Id(Static_Mesh_Asset),
-	material_asset: Asset_Id(Material_Asset),
+	mesh_asset:     Handle(Static_Mesh_Asset),
+	material_asset: Handle(Material_Asset),
 	body:           b3.BodyId,
 	scale:          Vec3,
 }
 
 init_static_mesh :: proc(
 	static_mesh: ^StaticMesh,
-	mesh: Asset_Id(Static_Mesh_Asset),
-	material: Asset_Id(Material_Asset),
+	mesh: Handle(Static_Mesh_Asset),
+	material: Handle(Material_Asset),
 	translation: Vec3 = {0, 0, 0},
 	rotation: Quat = Quat(1),
 	scale: Vec3 = {1, 1, 1},

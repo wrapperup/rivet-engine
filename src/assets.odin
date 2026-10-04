@@ -29,7 +29,7 @@ Asset_Load_Kind :: enum {
 // TODO:
 // Asset_Meta :: struct {}
 
-Asset_Id :: struct($T: typeid) {
+Handle :: struct($T: typeid) {
 	path: string,
 }
 
@@ -108,7 +108,7 @@ get_asset_store :: proc($T: typeid) -> ^Asset_Store(T) {
 }
 
 load_asset :: proc(
-	id: Asset_Id($T),
+	id: Handle($T),
 	allocator := context.allocator,
 	method := Asset_Load_Kind.Block,
 ) -> (
@@ -144,7 +144,7 @@ load_asset :: proc(
 	return
 }
 
-release_asset :: proc(id: Asset_Id($T)) -> (destroyed: bool) {
+release_asset :: proc(id: Handle($T)) -> (destroyed: bool) {
 	asset := get_asset(id)
 	if asset == nil {
 		return false
@@ -162,21 +162,21 @@ release_asset :: proc(id: Asset_Id($T)) -> (destroyed: bool) {
 	return false
 }
 
-_destroy_asset :: proc(id: Asset_Id($T)) {
+_destroy_asset :: proc(id: Handle($T)) {
 	store := get_asset_store(T)
 	asset := get_asset(id)
 	store.loaders.destroy(asset, context.allocator)
 	delete_key(&store.assets, id.path)
 }
 
-add_asset :: proc(path: string, asset: $T) -> Asset_Id(T) where intrinsics.type_is_subtype_of(T, Asset) {
+add_asset :: proc(path: string, asset: $T) -> Handle(T) where intrinsics.type_is_subtype_of(T, Asset) {
 	store := get_asset_store(T)
 	store.assets[path] = asset
 
 	return {path}
 }
 
-get_asset :: proc(id: Asset_Id($T)) -> ^T {
+get_asset :: proc(id: Handle($T)) -> ^T {
 	if store := get_asset_store(T); store != nil {
 		if asset, ok := &store.assets[id.path]; ok {
 			return asset
@@ -416,9 +416,9 @@ Material_JSON :: struct {
 Material_Asset :: struct {
 	using base:             Asset,
 	material_id:            MaterialId,
-	base_color:             Asset_Id(Image_Asset),
-	normal_map:             Asset_Id(Image_Asset),
-	proughness_metallic_ao: Asset_Id(Image_Asset),
+	base_color:             Handle(Image_Asset),
+	normal_map:             Handle(Image_Asset),
+	proughness_metallic_ao: Handle(Image_Asset),
 }
 
 load_material_asset :: proc(path: string, allocator := context.allocator) -> bool {
@@ -429,9 +429,9 @@ load_material_asset :: proc(path: string, allocator := context.allocator) -> boo
 	parsed: Material_JSON
 	parse_err := json.unmarshal(bytes, &parsed, spec = .Bitsquid, allocator = context.allocator)
 
-	base_color_id := Asset_Id(Image_Asset){parsed.base_color}
-	normal_map_id := Asset_Id(Image_Asset){parsed.normal_map}
-	proughness_metallic_ao_id := Asset_Id(Image_Asset){parsed.proughness_metallic_ao}
+	base_color_id := Handle(Image_Asset){parsed.base_color}
+	normal_map_id := Handle(Image_Asset){parsed.normal_map}
+	proughness_metallic_ao_id := Handle(Image_Asset){parsed.proughness_metallic_ao}
 
 	// Copy IDs before another insertion can relocate values in the image map.
 	base_color_image := load_asset(base_color_id, allocator).image_id

@@ -150,8 +150,8 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 			probe.priority = json_f32(object["priority"], probe.priority)
 			append(&scene.entities, probe.id)
 		case "static_mesh":
-			asset := Asset_Id(Static_Mesh_Asset) { strings.clone(object["asset"].(json.String)) }
-            material := Asset_Id(Material_Asset) { strings.clone(object["material"].(json.String)) }
+			asset := Handle(Static_Mesh_Asset) { strings.clone(object["asset"].(json.String)) }
+            material := Handle(Material_Asset) { strings.clone(object["material"].(json.String)) }
 
             if asset.path == "" || material.path == "" {
                 continue
@@ -166,7 +166,7 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 				log.warn("heightfield node missing generated asset, skipping:", node.name.? or_else "<unnamed>")
 				continue
 			}
-            material := Asset_Id(Material_Asset) { object["material"].(json.String) }
+            material := Handle(Material_Asset) { object["material"].(json.String) }
 			uv_scale := json_f32(object["uv_scale"], 1.0)
 			terrain := new_entity(Terrain)
 			if !init_terrain(terrain, asset, material, uv_scale, &scene.gpu_arena, node.translation, node.rotation) {
