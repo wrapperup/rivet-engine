@@ -49,14 +49,12 @@ Asset_Loaders :: struct {
 Asset_Store_Raw :: struct {
 	assets:  runtime.Raw_Map,
 	loaders: Asset_Loaders,
-	inspect: Asset_Inspect_Proc,
 	destroy: proc(store: ^Asset_Store_Raw, allocator: mem.Allocator),
 }
 
 Asset_Store :: struct($T: typeid) where intrinsics.type_is_subtype_of(T, Asset) {
 	assets:  map[string]T,
 	loaders: Asset_Loaders,
-	inspect: Asset_Inspect_Proc,
 }
 
 Asset_Debug_Entry :: struct {
@@ -64,15 +62,6 @@ Asset_Debug_Entry :: struct {
 	asset_type: typeid,
 	status:     Asset_Load_Result,
 	ref_count:  int,
-}
-
-Asset_Inspect_Proc :: #type proc(assets: ^runtime.Raw_Map, entries: ^[dynamic]Asset_Debug_Entry)
-
-inspect_asset_store :: proc(assets: ^runtime.Raw_Map, entries: ^[dynamic]Asset_Debug_Entry, $T: typeid) {
-	store := cast(^map[string]T)assets
-	for path, asset in store^ {
-		append(entries, Asset_Debug_Entry{path, T, asset.status, asset.ref_count})
-	}
 }
 
 Asset_Load_Result :: enum {
@@ -86,9 +75,6 @@ register_asset_type :: proc($T: typeid, loaders: Asset_Loaders) {
 
 	store := Asset_Store_Raw {
 		loaders = loaders,
-		inspect = proc(assets: ^runtime.Raw_Map, entries: ^[dynamic]Asset_Debug_Entry) {
-			inspect_asset_store(assets, entries, T)
-		},
 		destroy = proc(self: ^Asset_Store_Raw, allocator: mem.Allocator) {
 			store := cast(^Asset_Store(T))self
 
