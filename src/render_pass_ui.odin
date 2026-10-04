@@ -2,7 +2,6 @@ package game
 
 import "core:encoding/json"
 import "core:math"
-import "core:mem/virtual"
 import "core:os"
 import "core:slice"
 
@@ -164,10 +163,10 @@ init_ui_rp :: proc() {
 	ui_rp.sampler = gfx.create_sampler(.LINEAR, .REPEAT)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, ui_rp.sampler)
 
+    // TODO: leak. asset system.
 	ui_rp.font = load_font(
-		"assets/fonts/msdf/f_nunito_regular_mtsdf.ktx2",
+		"fonts/msdf/f_nunito_regular_mtsdf.ktx2",
 		"assets/fonts/msdf/f_nunito_regular_mtsdf.json",
-		virtual.arena_allocator(&game.asset_system.arena),
 	)
 
 	for i in 0 ..< gfx.FRAME_OVERLAP {

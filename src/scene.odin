@@ -152,11 +152,6 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 		case "static_mesh":
 			asset := Handle(Static_Mesh_Asset) { strings.clone(object["asset"].(json.String)) }
             material := Handle(Material_Asset) { strings.clone(object["material"].(json.String)) }
-
-            if asset.path == "" || material.path == "" {
-                continue
-            }
-
 			sm := new_entity(StaticMesh)
 			init_static_mesh(sm, asset, material, node.translation, node.rotation, node.scale)
 			append(&scene.entities, sm.id)

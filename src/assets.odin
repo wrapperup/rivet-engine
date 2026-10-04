@@ -1,12 +1,13 @@
 package game
 
+import "core:log"
 import "base:intrinsics"
 import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
 import "core:mem"
-import "core:mem/virtual"
 import "core:os"
+import "core:path/filepath"
 
 import ktx "deps:odin-libktx"
 import b3 "vendor:box3d"
@@ -14,8 +15,10 @@ import vk "vendor:vulkan"
 
 import "gfx"
 
+BASE_ASSET_DIR :: "assets"
+COOKED_ASSET_DIR :: "cooked"
+
 AssetSystem :: struct {
-	arena:       virtual.Arena,
 	allocator:   mem.Allocator,
 	initialized: bool,
 	stores:      map[typeid]Asset_Store_Raw,
@@ -107,7 +110,6 @@ get_asset_store :: proc($T: typeid) -> ^Asset_Store(T) {
 
 load_asset :: proc(
 	handle: Handle($T),
-	allocator := context.allocator,
 	method := Asset_Load_Kind.Block,
 ) -> (
 	asset: ^T,
@@ -122,19 +124,26 @@ load_asset :: proc(
 
 	store := get_asset_store(T)
 	if store == nil {
+        log.warn("Failed to load asset:", handle)
 		return
 	}
 
+
 	if method == .Block {
-		bytes, err := os.read_entire_file(handle.path, allocator)
+		asset_path := resolve_asset_path(handle, context.temp_allocator)
+		bytes, err := os.read_entire_file(asset_path, allocator)
 		if err != nil {
+            log.warn("Failed to load asset:", handle)
 			return
 		}
 
 		new_asset: T
 		if !store.loaders.load(bytes, &new_asset, allocator) {
+            log.warn("Failed to load asset:", handle)
 			return
 		}
+
+        log.warn("Loaded asset:", handle)
 
 		store.assets[handle.path] = new_asset
 		asset = &store.assets[handle.path]
@@ -159,7 +168,7 @@ release_asset :: proc(handle: Handle($T)) -> (destroyed: bool) {
 		asset.ref_count -= 1
 
 		if asset.ref_count == 0 {
-			_destroy_asset(handle)
+			_destroy_asset(handle, game.asset_system.allocator)
 			return true
 		}
 	}
@@ -167,10 +176,10 @@ release_asset :: proc(handle: Handle($T)) -> (destroyed: bool) {
 	return false
 }
 
-_destroy_asset :: proc(handle: Handle($T)) {
+_destroy_asset :: proc(handle: Handle($T), allocator: mem.Allocator) {
 	store := get_asset_store(T)
 	asset := get_asset(handle)
-	store.loaders.destroy(asset, context.allocator)
+	store.loaders.destroy(asset, allocator)
 	delete_key(&store.assets, handle.path)
 }
 
@@ -184,12 +193,13 @@ get_asset :: proc(handle: Handle($T)) -> ^T {
 	return nil
 }
 
-init_asset_system :: proc() -> bool {
-	if virtual.arena_init_growing(&game.asset_system.arena) != nil {
-		return false
-	}
+resolve_asset_path :: proc(handle: Handle($T), allocator := context.allocator) -> string {
+	resolved, err := filepath.join({BASE_ASSET_DIR, handle.path}, allocator)
+	return resolved
+}
 
-	game.asset_system.allocator = virtual.arena_allocator(&game.asset_system.arena)
+init_asset_system :: proc(allocator := context.allocator) -> bool {
+	game.asset_system.allocator = allocator
 	game.asset_system.initialized = true
 
 	return true
@@ -204,7 +214,6 @@ shutdown_asset_system :: proc() {
 		store.destroy(&store, context.allocator)
 	}
 
-	virtual.arena_destroy(&game.asset_system.arena)
 	game.asset_system = {}
 }
 
@@ -434,9 +443,9 @@ load_material_asset :: proc(bytes: []u8, out: rawptr, allocator := context.alloc
 	proughness_metallic_ao_id := Handle(Image_Asset){parsed.proughness_metallic_ao}
 
 	// Copy IDs before another insertion can relocate values in the image map.
-	base_color_image := load_asset(base_color_id, allocator).image_id
-	normal_map_image := load_asset(normal_map_id, allocator).image_id
-	proughness_metallic_ao_image := load_asset(proughness_metallic_ao_id, allocator).image_id
+	base_color_image := load_asset(base_color_id).image_id
+	normal_map_image := load_asset(normal_map_id).image_id
+	proughness_metallic_ao_image := load_asset(proughness_metallic_ao_id).image_id
 
 	material_id := add_material(
 		{base_color_id = base_color_image, normal_map_id = normal_map_image, ao_roughness_metallic_id = proughness_metallic_ao_image},

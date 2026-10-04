@@ -174,7 +174,7 @@ main :: proc() {
 				init_ball(ball, {(rand.float32() - 0.5) * 0.01 * f32(i) + 2, 5.0 * f32(i), (rand.float32() - 0.5) * 0.01 * f32(i)}, 0)
 			}
 
-			load_scene_from_file(&game.state.current_scene, "meshes/static/scene_map_test.glb")
+			load_scene_from_file(&game.state.current_scene, "assets/meshes/static/scene_map_test.glb")
 		}
 
 		game.frame_time_start = time.tick_now()
