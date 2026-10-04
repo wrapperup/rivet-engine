@@ -330,6 +330,8 @@ main :: proc() {
 			scene_shutdown(&game.state.current_scene)
 		}
 
+
+		shutdown_asset_system()
 		shutdown_entity_system()
 		physics_shutdown()
 		shutdown_sound_system()
@@ -340,7 +342,6 @@ main :: proc() {
 			game.renderer = nil
 		}
 
-		shutdown_asset_system()
 		if game.window != nil {
 			glfw.DestroyWindow(game.window)
 		}

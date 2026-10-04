@@ -43,7 +43,7 @@ UI_Push :: struct #max_field_align(16) {
 
 UIRenderPass :: struct {
 	pipeline:        ^gfx.GraphicsPipeline,
-	sampler:      gfx.SamplerId,
+	sampler:         gfx.SamplerId,
 	commands:        [dynamic]UI_Command,
 	num_commands:    int,
 	command_buffers: [gfx.FRAME_OVERLAP]gfx.Buffer(UI_Command),
@@ -58,7 +58,7 @@ Glyph :: struct {
 }
 
 Font :: struct {
-	image:               gfx.ImageId,
+	image:               Asset_Id(Image_Asset),
 	glyphs:              map[rune]Glyph,
 	kerning:             map[[2]rune]f32,
 	unit_range:          Vec2,
@@ -72,6 +72,7 @@ Text_Alignment :: enum {
 	Right,
 }
 
+// TODO: asset loader
 load_font :: proc(image_path: string, json_path: string, allocator := context.allocator) -> (font: Font) {
 	Bounds :: struct {
 		left, top, right, bottom: f32,
@@ -112,7 +113,9 @@ load_font :: proc(image_path: string, json_path: string, allocator := context.al
 	assert(parsed.atlas.width > 0 && parsed.atlas.height > 0 && parsed.atlas.distance_range > 0, "Invalid font atlas dimensions or range.")
 	assert(len(parsed.glyphs) > 0 && parsed.metrics.line_height > 0, "Font has no glyphs or an invalid line height.")
 
-	font.image = load_image_from_ktx_file(image_path)
+	font.image = Asset_Id(Image_Asset){ image_path }
+    load_asset(font.image)
+
 	font.line_height = parsed.metrics.line_height
 	font.ascender = parsed.metrics.ascender
 	font.descender = parsed.metrics.descender
@@ -158,7 +161,7 @@ init_ui_rp :: proc() {
 		)
 	})
 
-    ui_rp.sampler = gfx.create_sampler(.LINEAR, .REPEAT)
+	ui_rp.sampler = gfx.create_sampler(.LINEAR, .REPEAT)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, ui_rp.sampler)
 
 	ui_rp.font = load_font(
@@ -240,7 +243,7 @@ ui_glyph :: proc(
 		anchor = anchor,
 		pivot = 0,
 		mode = .Glyph,
-		image = font.image,
+		image = get_asset(font.image).image_id,
 		uv_min = glyph.uv_min,
 		uv_max = glyph.uv_max,
 		unit_range = font.unit_range,
@@ -443,11 +446,7 @@ record_ui_pass :: proc(cmd: gfx.CommandBuffer) {
 		commands := gfx.slice(ui_rp.command_buffers[gfx.current_frame_index()])
 		gfx.cmd_push_constants(
 			cmd,
-			UI_Push {
-				commands = commands,
-				viewport_size = auto_cast (transmute([2]u32)game.renderer.draw_extent),
-				sampler = ui_rp.sampler,
-			},
+			UI_Push{commands = commands, viewport_size = auto_cast (transmute([2]u32)game.renderer.draw_extent), sampler = ui_rp.sampler},
 		)
 
 		gfx.cmd_draw(cmd, 4, u32(game.render_state.ui_rp.num_commands))

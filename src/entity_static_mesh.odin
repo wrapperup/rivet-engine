@@ -37,6 +37,7 @@ init_static_mesh :: proc(
 	shape_def.baseMaterial = phys_default_material()
 
     static_mesh_asset := load_asset(static_mesh.mesh_asset)
+    load_asset(static_mesh.material_asset)
 
 	_ = b3.CreateMeshShape(static_mesh.body, shape_def, static_mesh_asset.phys_mesh_data, {1, 1, 1})
 }

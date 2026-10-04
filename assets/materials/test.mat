@@ -1,3 +1,4 @@
+type = "Pbr"
 base_color = "assets/textures/t_test_basecolor2.ktx2"
 normal_map = "assets/textures/t_test_normalmap.ktx2"
 proughness_metallic_ao = "assets/textures/t_test_rma.ktx2"

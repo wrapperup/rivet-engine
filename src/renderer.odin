@@ -140,8 +140,9 @@ init_test_resources :: proc() {
 
 		// dfg_asset := load_asset(Image_Asset, "assets/gen/t_dfg.ktx2")
 
-		rs.post_process_rp.tony_mc_mapface_id = load_image_from_ktx_file("assets/textures/tonemapping/t_tony_mc_mapface.ktx2")
-		tr.dfg_id = load_image_from_ktx_file("assets/gen/t_dfg.ktx2")
+		rs.post_process_rp.tony_mc_mapface_id =
+			load_asset(Asset_Id(Image_Asset){"assets/textures/tonemapping/t_tony_mc_mapface.ktx2"}).image_id
+		tr.dfg_id = load_asset(Asset_Id(Image_Asset){"assets/gen/t_dfg.ktx2"}).image_id
 
 		tr.default_sampler_id = default_sampler
 		tr.env_sampler_id = env_sampler
@@ -154,12 +155,12 @@ init_material_store :: proc() {
 	material_store.materials_buffer = gfx.create_buffer(GPUMaterial, 20)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, material_store.materials_buffer)
 
-	test_mat_asset := load_asset(Asset_Id(Material_Asset){"assets/materials/test.sjson"})
-
-	// HACK: remove this.
-	add_material(game.render_state.material_store.materials_gpu[test_mat_asset.material_id])
-
-	materialball_mat_asset := load_asset(Asset_Id(Material_Asset){"assets/materials/materialball2.sjson"})
+	// test_mat_asset := load_asset(Asset_Id(Material_Asset){"assets/materials/test.mat"})
+	//
+	// // HACK: remove this.
+	// add_material(game.render_state.material_store.materials_gpu[test_mat_asset.material_id])
+	//
+	// materialball_mat_asset := load_asset(Asset_Id(Material_Asset){"assets/materials/materialball2.mat"})
 }
 
 init_render_passes :: proc() {
@@ -219,7 +220,10 @@ draw :: proc() {
 
 	// TEMP: test draw command
 	for &ball in get_entities(Ball) {
-		draw_mesh(game.ball_mesh, 1, ball.translation, ball.rotation, 1, include_in_raytracing = false)
+		material_asset := get_asset(Asset_Id(Material_Asset){"assets/materials/test.mat"})
+		if material_asset != nil {
+			draw_mesh(game.ball_mesh, material_asset.material_id, ball.translation, ball.rotation, 1, include_in_raytracing = false)
+		}
 	}
 
 	for static_mesh in get_entities(StaticMesh) {
@@ -227,6 +231,8 @@ draw :: proc() {
 		material_asset := get_asset(static_mesh.material_asset)
 		if mesh_asset != nil && material_asset != nil {
 			draw_mesh(mesh_asset.gpu_buffers, material_asset.material_id, static_mesh.translation, static_mesh.rotation, static_mesh.scale)
+		} else {
+			log.warn("WTF")
 		}
 	}
 
