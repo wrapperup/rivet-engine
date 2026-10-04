@@ -40,10 +40,12 @@ Asset :: struct {
 	ref_count:   int,
 }
 
+Asset_Processor_Proc :: #type proc(in_bytes: []u8, allocator: mem.Allocator) -> (out_bytes: []u8)
+
 Asset_Loaders :: struct {
 	load:    #type proc(path: string, allocator: mem.Allocator) -> bool,
 	destroy: #type proc(asset: rawptr, allocator: mem.Allocator),
-	// TODO: unload...
+	processors: map[string]Asset_Processor_Proc,
 }
 
 Asset_Store_Raw :: struct {
@@ -87,6 +89,16 @@ register_asset_type :: proc($T: typeid, loaders: Asset_Loaders) {
 	game.asset_system.stores[T] = store
 }
 
+register_asset_processor :: proc($T: typeid, filetype: string, processor: Asset_Processor_Proc) -> bool {
+    store := get_asset_store(T)
+    if filetype in store.loaders.processors {
+        return false
+    }
+
+    store.loaders.processors[filetype] = processor
+    return true
+}
+
 get_asset_store :: proc($T: typeid) -> ^Asset_Store(T) {
 	fmt.assertf(T in game.asset_system.stores, "Asset store not registered for this type: %s", typeid_of(T))
 
@@ -94,13 +106,13 @@ get_asset_store :: proc($T: typeid) -> ^Asset_Store(T) {
 }
 
 load_asset :: proc(
-	id: Handle($T),
+	handle: Handle($T),
 	allocator := context.allocator,
 	method := Asset_Load_Kind.Block,
 ) -> (
 	asset: ^T,
 ) where intrinsics.type_is_subtype_of(T, Asset) {
-	if found_asset := get_asset(id); found_asset != nil {
+	if found_asset := get_asset(handle); found_asset != nil {
 		found_asset.ref_count += 1
 		return found_asset
 	}
@@ -114,11 +126,11 @@ load_asset :: proc(
 	}
 
 	if method == .Block {
-		if !store.loaders.load(id.path, allocator) {
+		if !store.loaders.load(handle.path, allocator) {
 			return
 		}
 
-		asset = get_asset(id)
+		asset = get_asset(handle)
 	}
 
 	// should never happen
@@ -130,8 +142,8 @@ load_asset :: proc(
 	return
 }
 
-release_asset :: proc(id: Handle($T)) -> (destroyed: bool) {
-	asset := get_asset(id)
+release_asset :: proc(handle: Handle($T)) -> (destroyed: bool) {
+	asset := get_asset(handle)
 	if asset == nil {
 		return false
 	}
@@ -140,7 +152,7 @@ release_asset :: proc(id: Handle($T)) -> (destroyed: bool) {
 		asset.ref_count -= 1
 
 		if asset.ref_count == 0 {
-			_destroy_asset(id)
+			_destroy_asset(handle)
 			return true
 		}
 	}
@@ -148,11 +160,11 @@ release_asset :: proc(id: Handle($T)) -> (destroyed: bool) {
 	return false
 }
 
-_destroy_asset :: proc(id: Handle($T)) {
+_destroy_asset :: proc(handle: Handle($T)) {
 	store := get_asset_store(T)
-	asset := get_asset(id)
+	asset := get_asset(handle)
 	store.loaders.destroy(asset, context.allocator)
-	delete_key(&store.assets, id.path)
+	delete_key(&store.assets, handle.path)
 }
 
 add_asset :: proc(path: string, asset: $T) -> Handle(T) where intrinsics.type_is_subtype_of(T, Asset) {
@@ -162,9 +174,9 @@ add_asset :: proc(path: string, asset: $T) -> Handle(T) where intrinsics.type_is
 	return {path}
 }
 
-get_asset :: proc(id: Handle($T)) -> ^T {
+get_asset :: proc(handle: Handle($T)) -> ^T {
 	if store := get_asset_store(T); store != nil {
-		if asset, ok := &store.assets[id.path]; ok {
+		if asset, ok := &store.assets[handle.path]; ok {
 			return asset
 		}
 	}

@@ -296,7 +296,7 @@ init_slang_session :: proc() -> ^sp.ISession {
 		compilerOptionEntryCount    = u32(len(options)),
 	}
 
-    session_desc := sp.SessionDesc {
+	session_desc := sp.SessionDesc {
 		structureSize            = size_of(sp.SessionDesc),
 		targets                  = &target_desc,
 		targetCount              = 1,
