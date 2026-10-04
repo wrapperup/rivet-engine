@@ -39,6 +39,8 @@ main :: proc() {
 		windows.SetConsoleOutputCP(.UTF8)
 	}
 
+    context.logger = log.create_console_logger()
+
 	// init
 	{
 		reserved_threads := 4
@@ -49,7 +51,7 @@ main :: proc() {
 		game.config = default_game_config()
 
 		if !init_asset_system() {
-			fmt.eprintln("Failed to load assets!")
+			log.error("Failed to load assets.")
 			free(game)
 			game = nil
 			return
@@ -148,6 +150,7 @@ main :: proc() {
 			grid_size: f32 = 3.0
 
 			sound_source := new_entity(SoundSource)
+            // TODO: asset system
 			init_sound_source(sound_source, "assets/audio/ambient/a_outdoors_birds.wav", true, 0.1, false, 0.5)
 
 			game.phys.update_physics = false
@@ -162,6 +165,7 @@ main :: proc() {
 				update_ddgi = true, // DDGI must run for reflection capture (and GI) to populate
 			}
 
+            // TODO: asset system.
 			game.ball_mesh, _ = load_gpu_mesh_from_file("assets/meshes/static/demo_ball.glb", context.temp_allocator)
 			defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, game.ball_mesh)
 
@@ -170,7 +174,7 @@ main :: proc() {
 				init_ball(ball, {(rand.float32() - 0.5) * 0.01 * f32(i) + 2, 5.0 * f32(i), (rand.float32() - 0.5) * 0.01 * f32(i)}, 0)
 			}
 
-			load_scene_from_file(&game.state.current_scene, "assets/meshes/static/scene_map_test.glb")
+			load_scene_from_file(&game.state.current_scene, "meshes/static/scene_map_test.glb")
 		}
 
 		game.frame_time_start = time.tick_now()
