@@ -1,6 +1,7 @@
 package game
 
 import "base:intrinsics"
+import "core:fmt"
 
 import "deps:gltf2"
 import vk "vendor:vulkan"
@@ -59,11 +60,7 @@ staging_write_mesh_buffers :: proc(buffers: ^GPUMeshBuffers, mesh: Mesh, loc := 
 }
 
 // Combines all primitives of one glTF mesh. The caller owns both output slices.
-parse_gltf_mesh_into_mesh :: proc(
-	data: ^gltf2.Data,
-	mesh_idx: int,
-	allocator := context.allocator,
-) -> (Mesh, bool) {
+parse_gltf_mesh_into_mesh :: proc(data: ^gltf2.Data, mesh_idx: int, allocator := context.allocator) -> (Mesh, bool) {
 	if mesh_idx < 0 || mesh_idx >= len(data.meshes) do return {}, false
 
 	parts := make([dynamic]Mesh, 0, len(data.meshes[mesh_idx].primitives), allocator)
@@ -115,7 +112,7 @@ combine_meshes :: proc(parts: []Mesh, allocator := context.allocator) -> (Mesh, 
 	if total_indices == 0 || total_vertices == 0 do return {}, false
 
 	mesh := Mesh {
-		indices = make([]u32, total_indices, allocator),
+		indices  = make([]u32, total_indices, allocator),
 		vertices = make([]Vertex, total_vertices, allocator),
 	}
 	index_offset := 0
@@ -556,6 +553,15 @@ load_mesh_from_file :: proc(path: string, allocator := context.allocator, loc :=
 
 	// if there are no errors we want to free memory when we are done with processing gltf/glb file.
 	defer gltf2.unload(data)
+
+	return parse_gltf_asset_into_mesh(data, allocator)
+}
+
+load_mesh_from_bytes :: proc(bytes: []u8, allocator := context.allocator, loc := #caller_location) -> (Mesh, bool) {
+	data, error := gltf2.parse(bytes, {is_glb = true, delete_content = false}, allocator)
+	fmt.assertf(error == nil, "Couldn't load mesh:", error, loc = loc)
+
+	defer gltf2.unload(data, allocator)
 
 	return parse_gltf_asset_into_mesh(data, allocator)
 }

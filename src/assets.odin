@@ -43,8 +43,8 @@ Asset :: struct {
 Asset_Processor_Proc :: #type proc(in_bytes: []u8, allocator: mem.Allocator) -> (out_bytes: []u8)
 
 Asset_Loaders :: struct {
-	load:    #type proc(path: string, allocator: mem.Allocator) -> bool,
-	destroy: #type proc(asset: rawptr, allocator: mem.Allocator),
+	load:       #type proc(bytes: []u8, out: rawptr, allocator: mem.Allocator) -> bool,
+	destroy:    #type proc(asset: rawptr, allocator: mem.Allocator),
 	processors: map[string]Asset_Processor_Proc,
 }
 
@@ -90,13 +90,13 @@ register_asset_type :: proc($T: typeid, loaders: Asset_Loaders) {
 }
 
 register_asset_processor :: proc($T: typeid, filetype: string, processor: Asset_Processor_Proc) -> bool {
-    store := get_asset_store(T)
-    if filetype in store.loaders.processors {
-        return false
-    }
+	store := get_asset_store(T)
+	if filetype in store.loaders.processors {
+		return false
+	}
 
-    store.loaders.processors[filetype] = processor
-    return true
+	store.loaders.processors[filetype] = processor
+	return true
 }
 
 get_asset_store :: proc($T: typeid) -> ^Asset_Store(T) {
@@ -126,11 +126,18 @@ load_asset :: proc(
 	}
 
 	if method == .Block {
-		if !store.loaders.load(handle.path, allocator) {
+		bytes, err := os.read_entire_file(handle.path, allocator)
+		if err != nil {
 			return
 		}
 
-		asset = get_asset(handle)
+		new_asset: T
+		if !store.loaders.load(bytes, &new_asset, allocator) {
+			return
+		}
+
+		store.assets[handle.path] = new_asset
+		asset = &store.assets[handle.path]
 	}
 
 	// should never happen
@@ -165,13 +172,6 @@ _destroy_asset :: proc(handle: Handle($T)) {
 	asset := get_asset(handle)
 	store.loaders.destroy(asset, context.allocator)
 	delete_key(&store.assets, handle.path)
-}
-
-add_asset :: proc(path: string, asset: $T) -> Handle(T) where intrinsics.type_is_subtype_of(T, Asset) {
-	store := get_asset_store(T)
-	store.assets[path] = asset
-
-	return {path}
 }
 
 get_asset :: proc(handle: Handle($T)) -> ^T {
@@ -212,6 +212,7 @@ register_assets :: proc() {
 	register_asset_type(Image_Asset, {load = load_image_asset, destroy = destroy_image_asset})
 	register_asset_type(Material_Asset, {load = load_material_asset, destroy = destroy_material_asset})
 	register_asset_type(Static_Mesh_Asset, {load = load_static_mesh_asset, destroy = destroy_static_mesh_asset})
+	register_asset_type(Shader_Asset, {load = load_shader_asset, destroy = destroy_shader_asset})
 }
 
 // asset types
@@ -221,9 +222,12 @@ Image_Asset :: struct {
 	image_id:   gfx.ImageId,
 }
 
-load_image_asset :: proc(path: string, allocator: mem.Allocator) -> bool {
-	image := load_image_from_ktx_file(path)
-	add_asset(path, Image_Asset{image_id = image})
+load_image_asset :: proc(bytes: []u8, out: rawptr, allocator: mem.Allocator) -> bool {
+	asset := cast(^Image_Asset)out
+
+	asset^ = {
+		image_id = load_image_from_ktx_memory(bytes),
+	}
 
 	return true
 }
@@ -419,10 +423,8 @@ Material_Asset :: struct {
 	proughness_metallic_ao: Handle(Image_Asset),
 }
 
-load_material_asset :: proc(path: string, allocator := context.allocator) -> bool {
-	bytes, read_err := os.read_entire_file(path, context.allocator)
-	fmt.assertf(read_err == nil, "Failed to read json: %s", path)
-	defer delete(bytes)
+load_material_asset :: proc(bytes: []u8, out: rawptr, allocator := context.allocator) -> bool {
+	asset := cast(^Material_Asset)out
 
 	parsed: Material_JSON
 	parse_err := json.unmarshal(bytes, &parsed, spec = .Bitsquid, allocator = context.allocator)
@@ -437,22 +439,15 @@ load_material_asset :: proc(path: string, allocator := context.allocator) -> boo
 	proughness_metallic_ao_image := load_asset(proughness_metallic_ao_id, allocator).image_id
 
 	material_id := add_material(
-		{
-			base_color_id = base_color_image,
-			normal_map_id = normal_map_image,
-			ao_roughness_metallic_id = proughness_metallic_ao_image,
-		},
+		{base_color_id = base_color_image, normal_map_id = normal_map_image, ao_roughness_metallic_id = proughness_metallic_ao_image},
 	)
 
-	add_asset(
-		path,
-		Material_Asset {
-			material_id = material_id,
-			base_color = base_color_id,
-			normal_map = normal_map_id,
-			proughness_metallic_ao = proughness_metallic_ao_id,
-		},
-	)
+	asset^ = {
+		material_id            = material_id,
+		base_color             = base_color_id,
+		normal_map             = normal_map_id,
+		proughness_metallic_ao = proughness_metallic_ao_id,
+	}
 
 	return true
 }
@@ -473,8 +468,10 @@ Static_Mesh_Asset :: struct {
 	phys_mesh_data: ^b3.MeshData,
 }
 
-load_static_mesh_asset :: proc(path: string, allocator := context.allocator) -> bool {
-	mesh, ok := load_mesh_from_file(path, context.temp_allocator)
+load_static_mesh_asset :: proc(bytes: []u8, out: rawptr, allocator: mem.Allocator) -> bool {
+	asset := cast(^Static_Mesh_Asset)out
+
+	mesh, ok := load_mesh_from_bytes(bytes, allocator)
 	assert(ok)
 
 	gpu_mesh := upload_mesh_to_gpu(mesh)
@@ -503,7 +500,10 @@ load_static_mesh_asset :: proc(path: string, allocator := context.allocator) -> 
 	phys_mesh_data := b3.CreateMesh(mesh_def, nil, 0)
 	assert(phys_mesh_data != nil)
 
-	add_asset(path, Static_Mesh_Asset{gpu_buffers = gpu_mesh, phys_mesh_data = phys_mesh_data})
+	asset^ = {
+		gpu_buffers    = gpu_mesh,
+		phys_mesh_data = phys_mesh_data,
+	}
 
 	return true
 }
@@ -519,4 +519,23 @@ destroy_static_mesh_asset :: proc(raw: rawptr, allocator: mem.Allocator) {
 		b3.DestroyMesh(asset.phys_mesh_data)
 		asset.phys_mesh_data = nil
 	}
+}
+
+Shader_Asset :: struct {
+	using base:  Asset,
+	spirv_bytes: []u8,
+}
+
+load_shader_asset :: proc(bytes: []u8, out: rawptr, allocator: mem.Allocator) -> bool {
+	asset := cast(^Shader_Asset)out
+	asset^ = {
+		spirv_bytes = bytes,
+	}
+
+	return true
+}
+
+destroy_shader_asset :: proc(raw: rawptr, allocator: mem.Allocator) {
+	asset := cast(^Shader_Asset)raw
+	delete(asset.spirv_bytes)
 }
