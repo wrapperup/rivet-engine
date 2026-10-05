@@ -105,11 +105,9 @@ main :: proc() {
 				&command,
 				"-use-separate-modules",
 				"-define:LIVEPATCH=true",
-				"-linker:lld",
 				"-extra-linker-flags:/OPT:NOREF /OPT:NOICF /MAP:build/debug/main.map",
 			)
 		} else {
-			append(&command, "-linker:radlink")
 		}
 	}
 
