@@ -1,3 +1,4 @@
+#+feature dynamic-literals
 package meta
 
 import "base:runtime"
@@ -42,6 +43,14 @@ templated_type_map := []string {
 banned_types := []Type_Mapping {
 	{"ImageId", "Tag the struct with an `Image*` type."},
 	{"SamplerId", "Tag the struct with `Sampler` or `SamplerComparison`."},
+}
+
+asset_type_by_ext := map[string]string {
+    ".ktx2" = "Image_Asset",
+    ".png" = "Image_Asset",
+    ".mat" = "Material_Asset",
+    ".slang" = "Shader_Asset",
+    ".glb" = "Static_Mesh_Asset",
 }
 
 error_reported := false
@@ -244,9 +253,9 @@ get_type_string :: proc(expr: ^ast.Expr, file: ^ast.File) -> (type_name: string,
 }
 
 Thing :: enum {
-    Hello = 12,
-    Hi,
-    Hey,
+	Hello = 12,
+	Hi,
+	Hey,
 }
 
 generate_shader_bindings :: proc(files: []^ast.File) {
@@ -530,12 +539,6 @@ append_layout_asserts :: proc(b: ^strings.Builder, files: []^ast.File) {
 						if prev_name == "" {
 							fmt.sbprintf(b, "#assert(offset_of(%s, %s) == 0)\n", name, fname)
 						} else {
-							// Scalar offset = the previous field's end, rounded up to a matrix's
-							// scalar alignment (4 for an f32 matrix). `size_of(type_of(S{}.field))`
-							// sizes the previous field WITHOUT naming its type, so file-private
-							// field types (gfx.Ptr, ImageId, ...) that aren't in scope in this
-							// generated file don't matter — only struct/field names are referenced. The `{}`
-							// is written literally (fmt treats it as a format verb otherwise).
 							fmt.sbprintf(
 								b,
 								"#assert(offset_of(%s, %s) == (offset_of(%s, %s) + size_of(type_of(",
@@ -569,8 +572,8 @@ generate_code :: proc(files: []^ast.File) {
 	bpln(&b, "//\n")
 
 	Entity_Kind_Data :: struct {
-		name:             string,
-		s_type:           ^ast.Struct_Type,
+		name:   string,
+		s_type: ^ast.Struct_Type,
 	}
 
 	entity_kinds: [dynamic]Entity_Kind_Data
@@ -609,10 +612,7 @@ generate_code :: proc(files: []^ast.File) {
 								continue
 							}
 
-							append(
-								&entity_kinds,
-								Entity_Kind_Data{name = ident.name, s_type = struct_type},
-							)
+							append(&entity_kinds, Entity_Kind_Data{name = ident.name, s_type = struct_type})
 
 							continue
 						}
@@ -634,27 +634,148 @@ generate_code :: proc(files: []^ast.File) {
 
 	bpln(&b, "register_entity_subtypes :: proc() {")
 	for kind in entity_kinds {
-        snake_case_name := strings.to_snake_case(kind.name)
-        bpln(&b, "    when #defined(", snake_case_name, "_destroy) {", sep = "")
-        bpln(&b, "        register_entity_subtype(", kind.name, ", ", snake_case_name, "_destroy)", sep = "")
-        bpln(&b, "    } else {")
-        bpln(&b, "        register_entity_subtype(", kind.name, ")", sep = "")
-        bpln(&b, "    }")
+		snake_case_name := strings.to_snake_case(kind.name)
+		bpln(&b, "    when #defined(", snake_case_name, "_destroy) {", sep = "")
+		bpln(&b, "        register_entity_subtype(", kind.name, ", ", snake_case_name, "_destroy)", sep = "")
+		bpln(&b, "    } else {")
+		bpln(&b, "        register_entity_subtype(", kind.name, ")", sep = "")
+		bpln(&b, "    }")
 	}
 	bpln(&b, "}\n")
 
 	bpln(&b, "entity_type_to_kind :: proc($T: typeid) -> Entity_Kind {")
-    bpln(&b, "    return .Base when T == Entity else")
+	bpln(&b, "    return .Base when T == Entity else")
 	for kind in entity_kinds {
-        bpln(&b, "           .", kind.name, " when T == ", kind.name, " else", sep = "")
+		bpln(&b, "           .", kind.name, " when T == ", kind.name, " else", sep = "")
 	}
-    bpln(&b, "           #panic(\"Unregistered entity type\")")
+	bpln(&b, "           #panic(\"Unregistered entity type\")")
 	bpln(&b, "}\n")
 
 	append_layout_asserts(&b, files)
+
+	{
+		DirectoryNode :: struct {
+			name:        string,
+			directories: [dynamic]int,
+			files:       [dynamic]string,
+		}
+
+		ASSET_BASE_DIR :: "assets"
+
+		walker := os.walker_create(ASSET_BASE_DIR)
+		defer os.walker_destroy(&walker)
+
+		nodes: [dynamic]DirectoryNode
+		append(&nodes, DirectoryNode{name = ASSET_BASE_DIR})
+
+		directory_map: map[string]int
+		directory_map[ASSET_BASE_DIR] = 0
+
+		root: int
+
+		working_directory, err_wd := os.get_working_directory(context.temp_allocator)
+		assert(err_wd == nil, "Can't get working directory")
+
+		for info in os.walker_walk(&walker) {
+			path, _ := filepath.clean(info.fullpath)
+			rel_path, _ := filepath.rel(working_directory, path)
+			rel_path = rel_path[len(ASSET_BASE_DIR) + 1:]
+			parent_path := filepath.dir(rel_path)
+
+			parent_index := directory_map[parent_path]
+
+			if info.type == .Directory {
+				index := len(nodes)
+				append(&nodes, DirectoryNode{name = strings.clone(filepath.base(rel_path))})
+				directory_map[strings.clone(rel_path)] = index
+				append(&nodes[parent_index].directories, index)
+			} else {
+				append(&nodes[parent_index].files, strings.clone(rel_path))
+			}
+		}
+
+		indent :: proc(b: ^strings.Builder, depth: int) {
+			for i in 0 ..< depth * 4 {
+				bp(b, " ")
+			}
+		}
+
+		traverse :: proc(b: ^strings.Builder, node_index: int, nodes: ^[dynamic]DirectoryNode, depth := 1, types := false) {
+			node := nodes[node_index]
+
+			if node_index != 0 {
+				indent(b, depth - 1)
+				if types {
+					bpln(b, node.name, ": struct {", sep = "")
+				} else {
+					bpln(b, node.name, "= {")
+				}
+			}
+
+			for file in node.files {
+				base := filepath.base(file)
+				snake := to_odin_identifier(base)
+				indent(b, depth)
+				if types {
+					bpln(b, snake, ": string,", sep = "")
+				} else {
+					bpln(b, snake, " = ", fmt.tprintf("%q", file), ",", sep = "")
+				}
+			}
+
+			for dir in node.directories {
+				traverse(b, dir, nodes, depth + 1, types)
+			}
+
+			if node_index != 0 {
+				indent(b, depth - 1)
+				bpln(b, "},", sep = "")
+			}
+		}
+
+		bpln(&b, "GeneratedAssetsType :: struct {")
+		traverse(&b, 0, &nodes, types = true)
+		bpln(&b, "}")
+		bpln(&b, "")
+
+		bpln(&b, "assets :: GeneratedAssetsType {")
+		traverse(&b, 0, &nodes)
+		bpln(&b, "}")
+	}
 
 	if !error_reported {
 		err_wef := os.write_entire_file("src/generated.odin", transmute([]u8)strings.to_string(b))
 		assert(err_wef == nil, "Couldn't write generated.odin")
 	}
+}
+
+to_odin_identifier :: proc(input: string, allocator := context.allocator) -> string {
+	buffer: [dynamic]u8
+
+	for r in input {
+		is_letter := ('a' <= r && r <= 'z') || ('A' <= r && r <= 'Z')
+		is_digit := '0' <= r && r <= '9'
+		if len(buffer) == 0 && is_digit {
+			append(&buffer, u8('_'))
+		}
+		if is_letter || is_digit || r == '_' {
+			append(&buffer, u8(r))
+		} else {
+			append(&buffer, u8('_'))
+		}
+	}
+
+	if len(buffer) == 0 || (len(buffer) == 1 && buffer[0] == '_') {
+		return strings.clone("asset", allocator)
+	}
+
+	name := string(buffer[:])
+	t: tokenizer.Tokenizer
+	tokenizer.init(&t, name, "<generated-identifier>")
+	token := tokenizer.scan(&t)
+	if tokenizer.is_keyword(token.kind) {
+		append(&buffer, u8('_'))
+	}
+
+	return string(buffer[:])
 }
