@@ -46,11 +46,11 @@ banned_types := []Type_Mapping {
 }
 
 asset_type_by_ext := map[string]string {
-    ".ktx2" = "Image_Asset",
-    ".png" = "Image_Asset",
-    ".mat" = "Material_Asset",
-    ".slang" = "Shader_Asset",
-    ".glb" = "Static_Mesh_Asset",
+	".ktx2"  = "Image_Asset",
+	".png"   = "Image_Asset",
+	".mat"   = "Material_Asset",
+	".slang" = "Shader_Asset",
+	".glb"   = "Static_Mesh_Asset",
 }
 
 error_reported := false
@@ -715,11 +715,23 @@ generate_code :: proc(files: []^ast.File) {
 			for file in node.files {
 				base := filepath.base(file)
 				snake := to_odin_identifier(base)
+				asset_type, has_type := asset_type_by_ext[filepath.ext(base)]
+
+				if has_type {
+					asset_type = fmt.tprint("Handle(", asset_type, ")", sep = "")
+				} else {
+					asset_type = "string"
+				}
+
 				indent(b, depth)
 				if types {
-					bpln(b, snake, ": string,", sep = "")
+					bpln(b, snake, ": ", asset_type, ",", sep = "")
 				} else {
-					bpln(b, snake, " = ", fmt.tprintf("%q", file), ",", sep = "")
+					if has_type {
+						bpln(b, snake, " = {", fmt.tprintf("%q", file), "},", sep = "")
+					} else {
+						bpln(b, snake, " = ", fmt.tprintf("%q", file), ",", sep = "")
+					}
 				}
 			}
 
