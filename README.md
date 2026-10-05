@@ -1,6 +1,5 @@
-# cool engine
+# rivet
 <img width="3759" height="2131" alt="main_9dwZZzDbtY" src="https://github.com/user-attachments/assets/bfd39332-85e3-4063-bf08-e2367b914d41" />
-
 
 Toy engine + Vulkan renderer I built for fun to learn Odin language (and some graphics techniques).
 
