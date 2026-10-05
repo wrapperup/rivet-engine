@@ -50,3 +50,5 @@ Some debug views for DDGI and cubemaps
  - [odin-mikktspace](https://github.com/wrapperup/odin-mikktspace)
  - [odin-slang](https://github.com/DragosPopse/odin-slang)
  - [odin-vma](https://github.com/DanielGavin/odin-vma)
+ - [glTF2](https://github.com/Pawel82S/glTF2)
+ - [odin_livepatch](https://github.com/MatzeOGH/odin_livepatch)
