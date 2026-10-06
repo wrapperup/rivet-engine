@@ -653,7 +653,7 @@ generate_code :: proc(files: []^ast.File) {
 
 	append_layout_asserts(&b, files)
 
-	{
+	if false {
 		DirectoryNode :: struct {
 			name:        string,
 			directories: [dynamic]int,
