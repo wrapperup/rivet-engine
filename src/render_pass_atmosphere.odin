@@ -135,35 +135,35 @@ init_atmosphere_rp :: proc() {
 	}
 
 	rp.transmittance_pipeline = add_compute_shader(
-		"shaders/atmosphere_transmittance.slang",
+		{"shaders/atmosphere_transmittance.slang"},
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("Atmosphere_Transmittance", module, GPUAtmosphereLutPush)
 		},
 	)
 
 	rp.multiple_scattering_pipeline = add_compute_shader(
-		"shaders/atmosphere_multiple_scattering.slang",
+		{"shaders/atmosphere_multiple_scattering.slang"},
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("Atmosphere_MultipleScattering", module, GPUAtmosphereLutPush)
 		},
 	)
 
-	rp.sky_view_pipeline = add_compute_shader("shaders/atmosphere_sky_view.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+	rp.sky_view_pipeline = add_compute_shader({"shaders/atmosphere_sky_view.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 		return gfx.create_compute_pipeline("Atmosphere_SkyView", module, GPUAtmosphereLutPush)
 	})
 
 	rp.environment_pipeline = add_compute_shader(
-		"shaders/atmosphere_environment.slang",
+		{"shaders/atmosphere_environment.slang"},
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("Atmosphere_Environment", module, GPUAtmosphereCubePush)
 		},
 	)
 
-	rp.aerial_pipeline = add_compute_shader("shaders/atmosphere_aerial.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+	rp.aerial_pipeline = add_compute_shader({"shaders/atmosphere_aerial.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 		return gfx.create_compute_pipeline("Atmosphere_Aerial", module, GPUAtmosphereAerialPush)
 	})
 
-	rp.draw_pipeline = add_graphics_shader("shaders/atmosphere.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
+	rp.draw_pipeline = add_graphics_shader({"shaders/atmosphere.slang"}, proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
 		return gfx.create_graphics_pipeline(
 			name = "Atmosphere_Sky",
 			shader = module,

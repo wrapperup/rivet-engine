@@ -421,7 +421,7 @@ generate_shader_bindings :: proc(files: []^ast.File) {
 	str = strings.trim(str, "\n")
 
 	if !error_reported {
-		err_wef := os.write_entire_file("shaders/generated.slang", transmute([]u8)str)
+		err_wef := os.write_entire_file("assets/shaders/generated.slang", transmute([]u8)str)
 		assert(err_wef == nil)
 	}
 }

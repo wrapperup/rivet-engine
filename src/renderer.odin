@@ -205,19 +205,6 @@ init_shared_buffers :: proc() {
 draw :: proc() {
 	scope_stat_time(.Render)
 
-	when ODIN_DEBUG {
-		if check_shader_hotreload() {
-			gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
-			hotreload_start := time.now()
-			if hotreload_modified_shaders() {
-				game.render_state.atmosphere_rp.force_update = true
-				log.info("Shaders hotreloaded in", time.since(hotreload_start))
-			} else {
-				log.warn("Shaders failed to load!")
-			}
-		}
-	}
-
 	// TEMP: test draw command
 	for &ball in get_entities(Ball) {
 		material_asset := get_asset(Handle(Material_Asset){"materials/test.mat"})
@@ -432,7 +419,6 @@ renderer_shutdown :: proc() {
 	im_glfw.Shutdown()
 	im.DestroyContext(game.render_state.imgui_ctx)
 	game.render_state.imgui_ctx = nil
-	shutdown_shader_manager()
 
 	for &frame in game.render_state.frame_data {
 		delete(frame.instances)

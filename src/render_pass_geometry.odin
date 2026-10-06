@@ -7,11 +7,11 @@ import "gfx"
 @(shader_shared)
 GPUGeometryDebugView :: enum u32 {
 	None,
-    Normal,
-    Tangent,
-    Bitangent,
-    Specular,
-    Irradiance,
+	Normal,
+	Tangent,
+	Bitangent,
+	Specular,
+	Irradiance,
 }
 
 @(shader_shared)
@@ -33,7 +33,7 @@ GeometryRenderPass :: struct {
 init_geometry_rp :: proc() {
 	// Match vertex and raster state in both passes for depth equality.
 	game.render_state.geometry_rp.depth_pipeline = add_graphics_shader(
-		"shaders/mesh.slang",
+		{"shaders/mesh.slang"},
 		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
 			return gfx.create_graphics_pipeline(
 				name = "Mesh_Depth_Prepass",
@@ -50,7 +50,7 @@ init_geometry_rp :: proc() {
 		},
 	)
 	game.render_state.geometry_rp.mesh_pipeline = add_graphics_shader(
-		"shaders/mesh.slang",
+		{"shaders/mesh.slang"},
 		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
 			return gfx.create_graphics_pipeline(
 				name = "Basic_Mesh_Pipeline",

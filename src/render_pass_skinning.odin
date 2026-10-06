@@ -20,7 +20,7 @@ SkinningRenderPass :: struct {
 
 init_skinning_rp :: proc() {
 	game.render_state.skinning_rp.skinning_pipeline = add_compute_shader(
-		"shaders/skinning.slang",
+		{"shaders/skinning.slang"},
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("Skinning", module, GPUSkinningPushConstants)
 		},
@@ -31,11 +31,7 @@ init_skinning_instance :: proc(instance: ^SkeletalMeshInstance, animation: ^Skel
 	init_skeleton_animator(&instance.animator, instance.skel, animation)
 
 	for i in 0 ..< gfx.FRAME_OVERLAP {
-		instance.joint_matrices_buffers[i] = gfx.create_buffer(
-			Mat4x4,
-			instance.skel.joint_count,
-			.DynUniform,
-		)
+		instance.joint_matrices_buffers[i] = gfx.create_buffer(Mat4x4, instance.skel.joint_count, .DynUniform)
 		instance.preskinned_vertex_buffers[i] = gfx.create_buffer(Vertex, instance.skel.buffers.vertex_count, .DynUniform)
 
 		gfx.defer_destroy_buffer(&gfx.r_ctx.global_arena, instance.joint_matrices_buffers[i])
@@ -59,30 +55,20 @@ record_skinning_pass :: proc(cmd: gfx.CommandBuffer, instances: []^SkeletalMeshI
 
 	for instance in instances {
 		output := instance.preskinned_vertex_buffers[frame_index]
-		gfx.buffer_barrier(
-			cmd,
-			output,
-			src_access = .VertexShaderRead,
-			dst_access = .ComputeShaderWrite,
-		)
+		gfx.buffer_barrier(cmd, output, src_access = .VertexShaderRead, dst_access = .ComputeShaderWrite)
 
 		gfx.cmd_push_constants(
 			cmd,
 			GPUSkinningPushConstants {
-				input_vertices  = gfx.slice(instance.skel.buffers.vertex_buffer),
+				input_vertices = gfx.slice(instance.skel.buffers.vertex_buffer),
 				output_vertices = gfx.slice(output),
-				attrs           = gfx.slice(instance.skel.buffers.skel_vert_attrs_buffer),
-				joint_matrices  = gfx.slice(instance.joint_matrices_buffers[frame_index]),
+				attrs = gfx.slice(instance.skel.buffers.skel_vert_attrs_buffer),
+				joint_matrices = gfx.slice(instance.joint_matrices_buffers[frame_index]),
 			},
 		)
 
 		gfx.cmd_dispatch(cmd, u32(math.ceil(f32(instance.skel.buffers.vertex_count) / 64.0)))
 
-		gfx.buffer_barrier(
-			cmd,
-			output,
-			src_access = .ComputeShaderWrite,
-			dst_access = .VertexShaderRead,
-		)
+		gfx.buffer_barrier(cmd, output, src_access = .ComputeShaderWrite, dst_access = .VertexShaderRead)
 	}
 }

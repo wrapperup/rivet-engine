@@ -9,10 +9,10 @@ import "gfx"
 
 @(shader_shared)
 GPUDrawShadowDepthPushConstants :: struct #max_field_align(16) {
-	instances:     gfx.Ptr(GPURenderInstance),
-	global_data:   gfx.Ptr(GPUGlobalData),
+	instances:      gfx.Ptr(GPURenderInstance),
+	global_data:    gfx.Ptr(GPUGlobalData),
 	instance_index: u32,
-	cascade_index: u32,
+	cascade_index:  u32,
 }
 
 @(shader_shared)
@@ -42,9 +42,14 @@ init_shadow_maps :: proc() {
 		{.DEPTH_STENCIL_ATTACHMENT, .SAMPLED},
 		array_layers = NUM_CASCADES,
 	)
-    gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image)
+	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_depth_image)
 
-	shadow_rp.shadow_sampler = gfx.create_sampler(.LINEAR, .CLAMP_TO_BORDER, compare_op = .LESS_OR_EQUAL, border_color = .FLOAT_OPAQUE_WHITE)
+	shadow_rp.shadow_sampler = gfx.create_sampler(
+		.LINEAR,
+		.CLAMP_TO_BORDER,
+		compare_op = .LESS_OR_EQUAL,
+		border_color = .FLOAT_OPAQUE_WHITE,
+	)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, shadow_rp.shadow_sampler)
 
 	for &view, i in shadow_rp.shadow_depth_attach_image_views {
@@ -55,7 +60,7 @@ init_shadow_maps :: proc() {
 
 init_shadow_rp :: proc() {
 	game.render_state.shadow_rp.mesh_shadow_pipeline = add_graphics_shader(
-	"shaders/shadow_depth.slang",
+	{"shaders/shadow_depth.slang"},
 	proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
 		return gfx.create_graphics_pipeline(
 			name = "Shadow_Depth_Pipeline",

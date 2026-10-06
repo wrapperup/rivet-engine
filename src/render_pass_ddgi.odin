@@ -68,22 +68,22 @@ DDGIRenderPass :: struct {
 init_ddgi_rp :: proc() {
 	ddgi_rp := &game.render_state.ddgi_rp
 
-	ddgi_rp.trace_pipeline = add_compute_shader("shaders/ddgi_trace.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+	ddgi_rp.trace_pipeline = add_compute_shader({"shaders/ddgi_trace.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 		return gfx.create_compute_pipeline("DDGI_Trace", module, GPUDDGITracePush)
 	})
-	ddgi_rp.update_pipeline = add_compute_shader("shaders/ddgi_update.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+	ddgi_rp.update_pipeline = add_compute_shader({"shaders/ddgi_update.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 		return gfx.create_compute_pipeline("DDGI_Update", module, GPUDDGIUpdatePush)
 	})
-	ddgi_rp.border_pipeline = add_compute_shader("shaders/ddgi_border.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+	ddgi_rp.border_pipeline = add_compute_shader({"shaders/ddgi_border.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 		return gfx.create_compute_pipeline("DDGI_Border", module, GPUDDGIUpdatePush)
 	})
-	ddgi_rp.relocate_pipeline = add_compute_shader("shaders/ddgi_relocate.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+	ddgi_rp.relocate_pipeline = add_compute_shader({"shaders/ddgi_relocate.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 		return gfx.create_compute_pipeline("DDGI_Relocate", module, GPUDDGIRelocatePush)
 	})
-	ddgi_rp.debug_pipeline = add_compute_shader("shaders/ddgi_debug_atlas.slang", proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
+	ddgi_rp.debug_pipeline = add_compute_shader({"shaders/ddgi_debug_atlas.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 		return gfx.create_compute_pipeline("DDGI_Debug_Atlas", module, GPUDDGIDebugAtlasPush)
 	})
-	ddgi_rp.probe_pipeline = add_graphics_shader("shaders/ddgi_debug_probes.slang", proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
+	ddgi_rp.probe_pipeline = add_graphics_shader({"shaders/ddgi_debug_probes.slang"}, proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
 		return gfx.create_graphics_pipeline(
 			name = "DDGI_Debug_Probes",
 			shader = module,

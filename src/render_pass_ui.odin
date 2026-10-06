@@ -145,7 +145,7 @@ load_font :: proc(image_path: string, json_path: string, allocator := context.al
 init_ui_rp :: proc() {
 	ui_rp := &game.render_state.ui_rp
 
-	ui_rp.pipeline = add_graphics_shader("shaders/ui.slang", proc(module: gfx.ShaderModule) -> gfx.GraphicsPipeline {
+	ui_rp.pipeline = add_graphics_shader({"shaders/ui.slang"}, proc(module: gfx.ShaderModule) -> gfx.GraphicsPipeline {
 		return gfx.create_graphics_pipeline(
 			name = "UI_Pipeline",
 			shader = module,

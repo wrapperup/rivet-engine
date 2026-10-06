@@ -1,17 +1,21 @@
 package game
 
-import "core:log"
 import "base:intrinsics"
 import "base:runtime"
 import "core:encoding/json"
 import "core:fmt"
+import "core:log"
 import "core:mem"
 import "core:os"
 import "core:path/filepath"
+import "core:slice"
+import "core:strings"
 
 import ktx "deps:odin-libktx"
 import b3 "vendor:box3d"
 import vk "vendor:vulkan"
+
+import slang "deps:odin-slang/slang"
 
 import "gfx"
 
@@ -43,7 +47,7 @@ Asset :: struct {
 	ref_count:   int,
 }
 
-Asset_Processor_Proc :: #type proc(in_bytes: []u8, allocator: mem.Allocator) -> (out_bytes: []u8)
+Asset_Processor_Proc :: #type proc(path: string, allocator: mem.Allocator) -> (out_bytes: []u8, ok: bool)
 
 Asset_Loaders :: struct {
 	load:       #type proc(bytes: []u8, out: rawptr, allocator: mem.Allocator) -> bool,
@@ -108,12 +112,7 @@ get_asset_store :: proc($T: typeid) -> ^Asset_Store(T) {
 	return cast(^Asset_Store(T))&game.asset_system.stores[T]
 }
 
-load_asset :: proc(
-	handle: Handle($T),
-	method := Asset_Load_Kind.Block,
-) -> (
-	asset: ^T,
-) where intrinsics.type_is_subtype_of(T, Asset) {
+load_asset :: proc(handle: Handle($T), method := Asset_Load_Kind.Block) -> (asset: ^T) where intrinsics.type_is_subtype_of(T, Asset) {
 	if found_asset := get_asset(handle); found_asset != nil {
 		found_asset.ref_count += 1
 		return found_asset
@@ -124,26 +123,38 @@ load_asset :: proc(
 
 	store := get_asset_store(T)
 	if store == nil {
-        log.warn("Failed to load asset:", handle)
+		log.warn("Failed to load asset:", handle)
 		return
 	}
 
 
 	if method == .Block {
 		asset_path := resolve_asset_path(handle, context.temp_allocator)
-		bytes, err := os.read_entire_file(asset_path, allocator)
-		if err != nil {
-            log.warn("Failed to load asset:", handle)
-			return
+		asset_ext := filepath.ext(asset_path)
+
+        bytes: []u8
+		if processor, found := store.loaders.processors[asset_ext]; found {
+			ok: bool
+			if bytes, ok = processor(asset_path, allocator); !ok {
+				log.warn("Failed to read and process asset:", handle, "with file ext:", asset_ext)
+				return
+			}
+		} else {
+            err: os.Error
+			bytes, err = os.read_entire_file(asset_path, allocator)
+			if err != nil {
+				log.warn("Failed to read asset:", handle)
+				return
+			}
 		}
 
 		new_asset: T
 		if !store.loaders.load(bytes, &new_asset, allocator) {
-            log.warn("Failed to load asset:", handle)
+			log.warn("Failed to load asset:", handle)
 			return
 		}
 
-        log.warn("Loaded asset:", handle)
+		log.warn("Loaded asset:", handle)
 
 		store.assets[handle.path] = new_asset
 		asset = &store.assets[handle.path]
@@ -222,6 +233,8 @@ register_assets :: proc() {
 	register_asset_type(Material_Asset, {load = load_material_asset, destroy = destroy_material_asset})
 	register_asset_type(Static_Mesh_Asset, {load = load_static_mesh_asset, destroy = destroy_static_mesh_asset})
 	register_asset_type(Shader_Asset, {load = load_shader_asset, destroy = destroy_shader_asset})
+
+	register_asset_processor(Shader_Asset, ".slang", process_shader_asset_slang)
 }
 
 // asset types
@@ -547,4 +560,45 @@ load_shader_asset :: proc(bytes: []u8, out: rawptr, allocator: mem.Allocator) ->
 destroy_shader_asset :: proc(raw: rawptr, allocator: mem.Allocator) {
 	asset := cast(^Shader_Asset)raw
 	delete(asset.spirv_bytes)
+}
+
+process_shader_asset_slang :: proc(path: string, allocator: mem.Allocator) -> (out_bytes: []u8, ok: bool) {
+	diagnostics: ^slang.IBlob
+	r: slang.Result
+
+	session := init_slang_session()
+	defer safe_release(session)
+
+	path_c := strings.clone_to_cstring(path, context.temp_allocator)
+	module: ^slang.IModule = session->loadModule(path_c, &diagnostics)
+	diagnostics_check(diagnostics)
+	if module == nil {
+		log.error("Shader", path, "doesn't exist.")
+		return
+	}
+
+	components: [dynamic]^slang.IComponentType
+	defer delete(components)
+
+	append(&components, module)
+
+	linked_program: ^slang.IComponentType
+	r = session->createCompositeComponentType(&components[0], len(components), &linked_program, &diagnostics)
+	diagnostics_check(diagnostics)
+	slang_check(r)
+
+	target_code: ^slang.IBlob
+	r = linked_program->getTargetCode(0, &target_code, &diagnostics)
+	diagnostics_check(diagnostics)
+	slang_check(r)
+
+	code_size := target_code->getBufferSize()
+	source_code := slice.bytes_from_ptr(target_code->getBufferPointer(), auto_cast code_size)
+
+	assert(code_size % 4 == 0)
+
+	out_bytes = slice.clone(source_code)
+	ok = true
+
+	return
 }

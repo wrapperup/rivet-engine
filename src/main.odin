@@ -335,6 +335,7 @@ main :: proc() {
 		}
 
 
+        shutdown_shader_manager()
 		shutdown_asset_system()
 		shutdown_entity_system()
 		physics_shutdown()

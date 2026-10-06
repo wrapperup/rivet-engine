@@ -11,16 +11,16 @@ ImageId :: gfx.ImageId
 
 @(shader_shared)
 GPUDebugRTPushConstants :: struct #max_field_align(16) {
-	global:     gfx.Ptr(GPUGlobalData),
+	global:    gfx.Ptr(GPUGlobalData),
 	instances: gfx.Ptr(GPURenderInstance),
-	materials:  gfx.Ptr(GPUMaterial),
-	tlas:       vk.DeviceAddress `AccelerationStructure`,
-	out_image:  ImageId `RWImage2D`,
+	materials: gfx.Ptr(GPUMaterial),
+	tlas:      vk.DeviceAddress `AccelerationStructure`,
+	out_image: ImageId `RWImage2D`,
 }
 
 init_debug_rt_rp :: proc() {
 	game.render_state.debug_rt_pipeline = add_compute_shader(
-		"shaders/debug_rt.slang",
+		{"shaders/debug_rt.slang"},
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("Debug_RT_Pipeline", module, GPUDebugRTPushConstants)
 		},
