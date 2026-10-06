@@ -53,9 +53,11 @@ DDGI_Volume_Resources :: struct {
 @(entity)
 DDGIVolume :: struct {
 	using entity: ^Entity,
+	translation:  Vec3,
 	using volume: DDGI_Volume_Resources,
 }
 
+// TODO: make this part of the entity...
 ddgi_volume_resources_init :: proc(
 	volume: ^DDGI_Volume_Resources,
 	origin: Vec3,

@@ -89,13 +89,8 @@ TypedEntityId :: struct($T: typeid) {
 // to be reasonably cache-friendly, so keep it small when
 // possible.
 Entity :: struct {
-	id:          EntityId,
-	kind:        Entity_Kind,
-
-	// shared
-	translation: Vec3,
-	velocity:    Vec3,
-	rotation:    Quat,
+	id:   EntityId,
+	kind: Entity_Kind,
 }
 
 ENTITY_PAGE_SIZE :: 1024
@@ -219,12 +214,16 @@ release_entity_slot :: proc(system: ^EntitySystem, id: EntityId) -> bool {
 	return true
 }
 
+InitProc :: #type proc(entity: rawptr)
 DestroyProc :: #type proc(entity: rawptr)
 
 SubtypeStorage :: struct {
 	ptr:       ^RawSparseSet,
 	type_info: runtime.Type_Info,
-	destroy:   DestroyProc,
+	procs:     struct {
+		init:    InitProc,
+		destroy: DestroyProc,
+	},
 	shutdown:  proc(storage: rawptr, destroy: DestroyProc),
 }
 
@@ -232,13 +231,18 @@ register_entity_subtype_no_destroy :: proc($T: typeid) -> ^SparseSet(T) {
 	return register_entity_subtype_with_destroy(T, nil)
 }
 
-register_entity_subtype_with_destroy :: proc($T: typeid, destroy_proc: proc(_: ^T)) -> ^SparseSet(T) {
+SubtypeProcs :: struct($T: typeid) {
+	init:    proc(entity: ^T),
+	destroy: proc(entity: ^T),
+}
+
+register_entity_subtype_with_destroy :: proc($T: typeid, procs: SubtypeProcs(T)) -> ^SparseSet(T) {
 	sparse_set := new(SparseSet(T))
 
 	subtype_storage := SubtypeStorage {
 		ptr = cast(^RawSparseSet)sparse_set,
 		type_info = type_info_of(T)^,
-		destroy = cast(DestroyProc)destroy_proc,
+		procs = {init = cast(InitProc)procs.init, destroy = cast(DestroyProc)procs.destroy},
 		shutdown = proc(storage_raw: rawptr, destroy: DestroyProc) {
 			storage := cast(^SparseSet(T))storage_raw
 			if destroy != nil {
@@ -274,15 +278,25 @@ get_entity_subtype_system :: proc($T: typeid) -> ^SparseSet(T) {
 }
 
 new_entity_subtype :: proc($T: typeid) -> ^T where intrinsics.type_is_subtype_of(T, ^Entity) {
-	data := T{}
+	return new_entity_subtype_configured(T{})
+}
+
+new_entity_subtype_configured :: proc(data: $T) -> ^T where intrinsics.type_is_subtype_of(T, ^Entity) {
+	data := data
 	data.entity = new_entity_raw()
 	data.entity.kind = entity_type_to_kind(T)
 
 	assert(reflect.enum_value_has_name(data.entity.kind))
 
-	storage := get_entity_subtype_system(T)
+	storage := game.entity_system.subtype_storage[data.entity.kind]
 
-	return assign_at_sparse_set(storage, data.entity.id, data)
+	s_entity := assign_at_sparse_set(cast(^SparseSet(T))storage.ptr, data.entity.id, data)
+
+	if storage.procs.init != nil {
+		storage.procs.init(s_entity)
+	}
+
+	return s_entity
 }
 
 new_entity_subtype_id :: proc($T: typeid) -> (^T, TypedEntityId(T)) where intrinsics.type_is_subtype_of(T, ^Entity) {
@@ -300,8 +314,8 @@ new_entity_raw :: proc() -> ^Entity {
 }
 
 new_entity :: proc {
-	new_entity_raw,
 	new_entity_subtype,
+	new_entity_subtype_configured,
 }
 
 // Resolve a live entity handle. The returned address remains stable until the
@@ -397,9 +411,9 @@ destroy_entity :: proc(id: EntityId) -> bool {
 	assert(reflect.enum_value_has_name(entity.kind))
 
 	storage := game.entity_system.subtype_storage[entity.kind]
-	if storage.destroy != nil {
+	if storage.procs.destroy != nil {
 		if elem, eok := get_elem_raw_sparse_set(storage.ptr, id, storage.type_info.size); eok {
-			storage.destroy(elem)
+			storage.procs.destroy(elem)
 		}
 	}
 
@@ -483,7 +497,7 @@ shutdown_entity_system_storage :: proc(system: ^EntitySystem) {
 	if !system.initialized do return
 
 	for storage in system.subtype_storage {
-		storage.shutdown(storage.ptr, storage.destroy)
+		storage.shutdown(storage.ptr, storage.procs.destroy)
 	}
 	virtual.arena_destroy(&system.arena)
 	system^ = {}

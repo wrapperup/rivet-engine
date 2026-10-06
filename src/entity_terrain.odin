@@ -30,10 +30,14 @@ HeightfieldSource :: struct {
 @(entity)
 Terrain :: struct {
 	using entity: ^Entity,
+	translation:  Vec3,
+	rotation:     Quat,
 	mesh:         GPUMeshBuffers,
-	material:     MaterialId,
+	material:     Handle(Material_Asset),
 	body:         b3.BodyId,
-	heightfield:  ^b3.HeightFieldData,
+	uv_scale:     f32,
+	heightfield:  string, // TODO: assetify
+	_heightfield: ^b3.HeightFieldData,
 }
 
 heightfield_finite :: proc "contextless" (value: f32) -> bool {
@@ -177,23 +181,14 @@ heightfield_mesh :: proc(source: ^HeightfieldSource, uv_scale: f32, allocator :=
 	return mesh
 }
 
-init_terrain :: proc(
-	terrain: ^Terrain,
-	path: string,
-	material: Handle(Material_Asset),
-	uv_scale: f32,
-	gpu_arena: ^gfx.ResourceArena,
-	translation: Vec3 = {0, 0, 0},
-	rotation: Quat = Quat(1),
-) -> bool {
-	source := load_heightfield_source(path, context.temp_allocator) or_return
+terrain_init :: proc(terrain: ^Terrain) {
+	source, k := load_heightfield_source(terrain.heightfield, context.temp_allocator)
 	defer delete(source.heights, context.temp_allocator)
 
-	mesh := heightfield_mesh(&source, uv_scale, context.temp_allocator)
+	mesh := heightfield_mesh(&source, terrain.uv_scale, context.temp_allocator)
 	defer delete(mesh.vertices, context.temp_allocator)
 	defer delete(mesh.indices, context.temp_allocator)
 	terrain.mesh = upload_mesh_to_gpu(mesh)
-	defer_destroy_gpu_mesh(gpu_arena, terrain.mesh)
 
 	heightfield_def := b3.HeightFieldDef {
 		heights             = raw_data(source.heights),
@@ -204,29 +199,25 @@ init_terrain :: proc(
 		globalMaximumHeight = source.max_height,
 		clockwiseWinding    = false,
 	}
-	terrain.heightfield = b3.CreateHeightField(heightfield_def)
-	if terrain.heightfield == nil {
-		log.error("Box3D failed to create heightfield:", path)
-		return false
+	terrain._heightfield = b3.CreateHeightField(heightfield_def)
+	if terrain._heightfield == nil {
+		log.error("Box3D failed to create heightfield:", terrain.heightfield)
 	}
 
-	terrain.translation = translation + Vec3{source.origin_x, 0, source.origin_z}
-	terrain.rotation = rotation
-
-	// TODO: store asset id
-	terrain.material = load_asset(material).material_id
+	terrain.translation += Vec3{source.origin_x, 0, source.origin_z}
 
 	body_def := b3.DefaultBodyDef()
 	body_def.type = .staticBody
 	body_def.position = terrain.translation
-	body_def.rotation = rotation
+	body_def.rotation = terrain.rotation
 	body_def.userData = entity_id_to_rawptr(terrain.id)
 	terrain.body = b3.CreateBody(game.phys.world, body_def)
 
 	shape_def := b3.DefaultShapeDef()
 	shape_def.baseMaterial = phys_default_material()
-	_ = b3.CreateHeightFieldShape(terrain.body, shape_def, terrain.heightfield)
-	return true
+	_ = b3.CreateHeightFieldShape(terrain.body, shape_def, terrain._heightfield)
+
+    load_asset(terrain.material)
 }
 
 terrain_destroy :: proc(terrain: ^Terrain) {
@@ -234,8 +225,9 @@ terrain_destroy :: proc(terrain: ^Terrain) {
 		b3.DestroyBody(terrain.body)
 		terrain.body = b3.nullBodyId
 	}
-	if terrain.heightfield != nil {
-		b3.DestroyHeightField(terrain.heightfield)
-		terrain.heightfield = nil
+	if terrain._heightfield != nil {
+		b3.DestroyHeightField(terrain._heightfield)
+		terrain._heightfield = nil
 	}
+    release_asset(terrain.material)
 }

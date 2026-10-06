@@ -294,7 +294,6 @@ struct ReflectionProbeDebugPush {
   ReflectionProbe* probe;
   Vertex* vertex_buffer;
   Vec3 center;
-  f32 radius;
 };
 
 struct ReflectionPrefilterPush {

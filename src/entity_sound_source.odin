@@ -6,6 +6,7 @@ import ma "vendor:miniaudio"
 @(entity)
 SoundSource :: struct {
 	using entity: ^Entity,
+	translation:  Vec3,
 	sound:        ma.sound,
 }
 

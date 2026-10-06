@@ -5,31 +5,19 @@ import b3 "vendor:box3d"
 @(entity)
 StaticMesh :: struct {
 	using entity:   ^Entity,
+	translation:    Vec3,
+	rotation:       Quat,
 	mesh_asset:     Handle(Static_Mesh_Asset),
 	material_asset: Handle(Material_Asset),
 	body:           b3.BodyId,
 	scale:          Vec3,
 }
 
-init_static_mesh :: proc(
-	static_mesh: ^StaticMesh,
-	mesh: Handle(Static_Mesh_Asset),
-	material: Handle(Material_Asset),
-	translation: Vec3 = {0, 0, 0},
-	rotation: Quat = Quat(1),
-	scale: Vec3 = {1, 1, 1},
-) {
-	static_mesh.translation = translation
-	static_mesh.rotation = rotation
-	static_mesh.scale = scale
-
-	static_mesh.mesh_asset = mesh
-	static_mesh.material_asset = material
-
+static_mesh_init :: proc(static_mesh: ^StaticMesh) {
 	body_def := b3.DefaultBodyDef()
 	body_def.type = .staticBody
-	body_def.position = translation
-	body_def.rotation = rotation
+	body_def.position = static_mesh.translation
+	body_def.rotation = static_mesh.rotation
 	body_def.userData = entity_id_to_rawptr(static_mesh.id)
 	static_mesh.body = b3.CreateBody(game.phys.world, body_def)
 

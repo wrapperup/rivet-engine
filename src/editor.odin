@@ -323,7 +323,6 @@ when EDITOR {
 				}
 				im.SliderFloat("Intensity", &probe.intensity, 0.0, 16.0)
 				im.SliderFloat("Blend distance", &probe.blend_distance, 0.01, 8.0)
-				im.SliderFloat("Debug ball radius", &probe.debug_radius, 0.05, 3.0)
 				im.InputFloat3("Position", &probe.translation)
 				im.InputFloat3("Half extents", &probe.half_extents)
 				im.PopID()

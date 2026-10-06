@@ -141,11 +141,11 @@ main :: proc() {
 		{
 			game.render_state.draw_sky = true
 
-			player := new_entity(Player)
-			init_player(player)
-			player.translation = {3, 3.7, 5}
-			player.camera_rot = {-0.4, -0.6, 0}
-			player.camera_fov_deg = 65
+			player := new_entity(Player {
+                translation = {3, 3.7, 5},
+                camera_rot = {-0.4, -0.6, 0},
+                camera_fov_deg = 65,
+            })
 
 			grid_size: f32 = 3.0
 

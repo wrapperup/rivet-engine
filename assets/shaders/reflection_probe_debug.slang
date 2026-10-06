@@ -17,7 +17,7 @@ struct V2F {
 [shader("vertex")]
 V2F vertex_main(uint vid: SV_VertexID) {
   let vert = pc.vertex_buffer[vid];
-  let world = pc.center + vert.position * pc.radius;
+  let world = pc.center + vert.position;
 
   let world_to_clip = mul(pc.global.view_to_clip, pc.global.world_to_view);
 

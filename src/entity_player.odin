@@ -18,7 +18,9 @@ Fire_Mode :: enum {
 @(entity)
 Player :: struct {
 	using entity:               ^Entity,
-	//
+	translation:                Vec3,
+	velocity:                   Vec3,
+	rotation:                   Quat,
 	eye_pos:                    Vec3,
 	move_mode:                  Move_Mode,
 	camera_rot:                 Vec3,
@@ -39,10 +41,6 @@ Player :: struct {
 slope_limit_deg: f32 : 45.0
 capsule_half_height: f32 : 0.5
 capsule_radius: f32 : 0.5
-
-init_player :: proc(player: ^Player) {
-	player.translation = {0, 10, 0}
-}
 
 update_player :: proc(player: ^Player, dt: f64) {
 	// Values / Constants
@@ -148,7 +146,6 @@ update_player :: proc(player: ^Player, dt: f64) {
 			switch player.fire_mode {
 			case .CreatePointLight:
 				if player.fire_time > 0.1 {
-					point_light := new_entity(PointLight)
 					color: Vec3 = 0
 					switch player.temp_cycler {
 					case 0:
@@ -159,7 +156,12 @@ update_player :: proc(player: ^Player, dt: f64) {
 						color = {0, 0, 1}
 					}
 
-					init_point_light(point_light, player.translation, color, 10, 10)
+					point_light := new_entity(PointLight {
+                        translation = player.translation,
+                        color = color,
+                        lumens = 10,
+                        radius = 10,
+                    })
 
 					player.temp_cycler = (player.temp_cycler + 1) % 3
 

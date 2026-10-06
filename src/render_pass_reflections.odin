@@ -24,7 +24,6 @@ GPUReflectionProbeDebugPush :: struct #max_field_align(16) {
 	probe:         gfx.Ptr(GPUReflectionProbe),
 	vertex_buffer: gfx.Ptr(Vertex),
 	center:        Vec3,
-	radius:        f32,
 }
 
 @(shader_shared)
@@ -146,7 +145,6 @@ record_reflection_probe_debug_pass :: proc(cmd: gfx.CommandBuffer, probes: []Ref
 				probe = probe.configs[gfx.current_frame_index()].ptr,
 				vertex_buffer = rp.probe_vbuf.ptr,
 				center = probe.translation,
-				radius = probe.debug_radius,
 			},
 		)
 		gfx.cmd_draw_indexed(cmd, rp.probe_index_count, instance_count = 1)

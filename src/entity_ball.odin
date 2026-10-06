@@ -7,6 +7,9 @@ import b3 "vendor:box3d"
 @(entity)
 Ball :: struct {
 	using entity: ^Entity,
+	translation: Vec3,
+	velocity:    Vec3,
+	rotation:    Quat,
 	material:     MaterialId,
 	num:          int,
 	rigid:        b3.BodyId,

@@ -17,45 +17,53 @@ Entity_Kind :: enum {
 }
 
 register_entity_subtypes :: proc() {
-    when #defined(ball_destroy) {
-        register_entity_subtype(Ball, ball_destroy)
-    } else {
-        register_entity_subtype(Ball)
+    {
+        procs: SubtypeProcs(Ball)
+        when #defined(ball_init) do procs.init = ball_init
+        when #defined(ball_destroy) do procs.destroy = ball_destroy
+        register_entity_subtype(Ball, procs)
     }
-    when #defined(ddgi_volume_destroy) {
-        register_entity_subtype(DDGIVolume, ddgi_volume_destroy)
-    } else {
-        register_entity_subtype(DDGIVolume)
+    {
+        procs: SubtypeProcs(DDGIVolume)
+        when #defined(ddgi_volume_init) do procs.init = ddgi_volume_init
+        when #defined(ddgi_volume_destroy) do procs.destroy = ddgi_volume_destroy
+        register_entity_subtype(DDGIVolume, procs)
     }
-    when #defined(player_destroy) {
-        register_entity_subtype(Player, player_destroy)
-    } else {
-        register_entity_subtype(Player)
+    {
+        procs: SubtypeProcs(Player)
+        when #defined(player_init) do procs.init = player_init
+        when #defined(player_destroy) do procs.destroy = player_destroy
+        register_entity_subtype(Player, procs)
     }
-    when #defined(point_light_destroy) {
-        register_entity_subtype(PointLight, point_light_destroy)
-    } else {
-        register_entity_subtype(PointLight)
+    {
+        procs: SubtypeProcs(PointLight)
+        when #defined(point_light_init) do procs.init = point_light_init
+        when #defined(point_light_destroy) do procs.destroy = point_light_destroy
+        register_entity_subtype(PointLight, procs)
     }
-    when #defined(reflection_probe_destroy) {
-        register_entity_subtype(ReflectionProbe, reflection_probe_destroy)
-    } else {
-        register_entity_subtype(ReflectionProbe)
+    {
+        procs: SubtypeProcs(ReflectionProbe)
+        when #defined(reflection_probe_init) do procs.init = reflection_probe_init
+        when #defined(reflection_probe_destroy) do procs.destroy = reflection_probe_destroy
+        register_entity_subtype(ReflectionProbe, procs)
     }
-    when #defined(sound_source_destroy) {
-        register_entity_subtype(SoundSource, sound_source_destroy)
-    } else {
-        register_entity_subtype(SoundSource)
+    {
+        procs: SubtypeProcs(SoundSource)
+        when #defined(sound_source_init) do procs.init = sound_source_init
+        when #defined(sound_source_destroy) do procs.destroy = sound_source_destroy
+        register_entity_subtype(SoundSource, procs)
     }
-    when #defined(static_mesh_destroy) {
-        register_entity_subtype(StaticMesh, static_mesh_destroy)
-    } else {
-        register_entity_subtype(StaticMesh)
+    {
+        procs: SubtypeProcs(StaticMesh)
+        when #defined(static_mesh_init) do procs.init = static_mesh_init
+        when #defined(static_mesh_destroy) do procs.destroy = static_mesh_destroy
+        register_entity_subtype(StaticMesh, procs)
     }
-    when #defined(terrain_destroy) {
-        register_entity_subtype(Terrain, terrain_destroy)
-    } else {
-        register_entity_subtype(Terrain)
+    {
+        procs: SubtypeProcs(Terrain)
+        when #defined(terrain_init) do procs.init = terrain_init
+        when #defined(terrain_destroy) do procs.destroy = terrain_destroy
+        register_entity_subtype(Terrain, procs)
     }
 }
 

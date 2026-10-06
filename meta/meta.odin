@@ -635,10 +635,17 @@ generate_code :: proc(files: []^ast.File) {
 	bpln(&b, "register_entity_subtypes :: proc() {")
 	for kind in entity_kinds {
 		snake_case_name := strings.to_snake_case(kind.name)
-		bpln(&b, "    when #defined(", snake_case_name, "_destroy) {", sep = "")
-		bpln(&b, "        register_entity_subtype(", kind.name, ", ", snake_case_name, "_destroy)", sep = "")
-		bpln(&b, "    } else {")
-		bpln(&b, "        register_entity_subtype(", kind.name, ")", sep = "")
+		// bpln(&b, "    when #defined(", snake_case_name, "_destroy) {", sep = "")
+		// bpln(&b, "        register_entity_subtype(", kind.name, ", ", snake_case_name, "_destroy)", sep = "")
+		// bpln(&b, "    } else {")
+		// bpln(&b, "        register_entity_subtype(", kind.name, ")", sep = "")
+		// bpln(&b, "    }")
+
+		bpln(&b, "    {")
+		bpln(&b, "        procs: SubtypeProcs(", kind.name, ")", sep = "")
+		bpln(&b, "        when #defined(", snake_case_name, "_init) do procs.init = ", snake_case_name, "_init", sep = "")
+		bpln(&b, "        when #defined(", snake_case_name, "_destroy) do procs.destroy = ", snake_case_name, "_destroy", sep = "")
+		bpln(&b, "        register_entity_subtype(", kind.name, ", procs)", sep = "")
 		bpln(&b, "    }")
 	}
 	bpln(&b, "}\n")

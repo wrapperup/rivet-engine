@@ -217,13 +217,14 @@ draw :: proc() {
 		material_asset := get_asset(static_mesh.material_asset)
 		if mesh_asset != nil && material_asset != nil {
 			draw_mesh(mesh_asset.gpu_buffers, material_asset.material_id, static_mesh.translation, static_mesh.rotation, static_mesh.scale)
-		} else {
-			log.warn("WTF")
 		}
 	}
 
 	for terrain in get_entities(Terrain) {
-		draw_mesh(terrain.mesh, terrain.material, terrain.translation, terrain.rotation, 1)
+		material_asset := get_asset(terrain.material)
+		if material_asset != nil {
+			draw_mesh(terrain.mesh, material_asset.material_id, terrain.translation, terrain.rotation, 1)
+		}
 	}
 
 	frame := current_frame_game()

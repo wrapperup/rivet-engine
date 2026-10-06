@@ -20,11 +20,11 @@ GPUReflectionProbe :: struct #max_field_align(16) {
 @(entity)
 ReflectionProbe :: struct {
 	using entity:         ^Entity,
+	translation:          Vec3,
 	half_extents:         Vec3,
 	blend_distance:       f32,
 	intensity:            f32,
 	priority:             f32,
-	debug_radius:         f32,
 	face_size:            u32,
 	mip_count:            u32,
 
@@ -41,13 +41,10 @@ REFLECTION_PROBE_FACE_SIZE :: 128
 MAX_REFLECTION_MIPS :: 12
 MAX_REFLECTION_PROBES :: 64
 
-reflection_probe_init :: proc(probe: ^ReflectionProbe, position: Vec3, half_extents: Vec3, arena: ^gfx.ResourceArena) {
-	probe.translation = position
-	probe.half_extents = half_extents
-	probe.blend_distance = 1.0
-	probe.intensity = 1.0
-	probe.priority = 0.0
-	probe.debug_radius = 0.5
+reflection_probe_init :: proc(probe: ^ReflectionProbe) {
+	if probe.blend_distance == 0 do probe.blend_distance = 1.0
+	if probe.intensity == 0 do probe.intensity = 1.0
+
 	probe.face_size = REFLECTION_PROBE_FACE_SIZE
 	probe.mip_count = u32(math.log2(f32(REFLECTION_PROBE_FACE_SIZE))) + 1
 
@@ -61,7 +58,6 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe, position: Vec3, half_exte
 		array_layers = 6,
 		flags = {.CUBE_COMPATIBLE},
 	)
-	gfx.defer_destroy(arena, probe.cube_image_id)
 
 	if cmd, ok := gfx.immediate_submit(); ok {
 		gfx.transition_image(cmd, probe.cube_image_id, .GENERAL)
@@ -88,16 +84,13 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe, position: Vec3, half_exte
 			base_array_layer = 0,
 			array_layers = 6,
 		)
-		gfx.defer_destroy(arena, mip_view)
 		probe.cube_mip_storage_ids[mip] = mip_view
 	}
 
 	probe.gpu_sampler_id = gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, max_lod = f32(probe.mip_count - 1))
-	gfx.defer_destroy(arena, probe.gpu_sampler_id)
 
 	for &config in probe.configs {
 		config = gfx.create_buffer(GPUReflectionProbe, 1, .DynUniform)
-		gfx.defer_destroy(arena, config)
 	}
 
 	cfg := reflection_probe_to_gpu(probe)

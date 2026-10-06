@@ -11,6 +11,7 @@ GPUPointLight :: struct #max_field_align(16) {
 @(entity)
 PointLight :: struct {
 	using entity: ^Entity,
+	translation:  Vec3,
 	color:        Vec3,
 	radius:       f32,
 	lumens:       f32,
@@ -25,11 +26,4 @@ point_light_to_gpu :: proc(light: PointLight) -> GPUPointLight {
         lumens = light.lumens
     }
     // odinfmt: enable
-}
-
-init_point_light :: proc(light: ^PointLight, position: Vec3, color: Vec3, radius: f32, lumens: f32) {
-	light.translation = position
-	light.color = color
-	light.radius = radius
-	light.lumens = lumens
 }

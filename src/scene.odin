@@ -98,7 +98,7 @@ scene_shutdown :: proc(scene: ^Scene) {
 	scene^ = {}
 }
 
-json_f32 :: proc(v: json.Value, default: f32) -> f32 {
+json_f32 :: proc(v: json.Value, default: f32 = 0) -> f32 {
 	#partial switch t in v {
 	case json.Integer:
 		return f32(t)
@@ -130,8 +130,9 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 				spacing[i] = size / f32(counts[i] - 1)
 			}
 
-			vol := new_entity(DDGIVolume)
-			vol.translation = origin + half
+			vol := new_entity(DDGIVolume {
+                translation = origin + half
+            })
 			ddgi_volume_resources_init(
 				&vol.volume,
 				origin,
@@ -141,34 +142,55 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 				priority = json_f32(object["priority"], 0),
 				edge_fade = json_f32(object["edge_fade"], 1.0),
 			)
+
 			append(&scene.entities, vol.id)
+
 		case "reflection_probe":
-			probe := new_entity(ReflectionProbe)
-			reflection_probe_init(probe, node.translation, node.scale, &scene.gpu_arena)
-			probe.blend_distance = json_f32(object["blend_distance"], probe.blend_distance)
-			probe.intensity = json_f32(object["intensity"], probe.intensity)
-			probe.priority = json_f32(object["priority"], probe.priority)
+			probe := new_entity(
+				ReflectionProbe {
+					translation = node.translation,
+					half_extents = node.scale,
+					blend_distance = json_f32(object["blend_distance"]),
+					intensity = json_f32(object["intensity"]),
+					priority = json_f32(object["priority"]),
+				},
+			)
+
 			append(&scene.entities, probe.id)
+
 		case "static_mesh":
 			asset := Handle(Static_Mesh_Asset){strings.clone(object["asset"].(json.String))}
 			material := Handle(Material_Asset){strings.clone(object["material"].(json.String))}
-			sm := new_entity(StaticMesh)
-			init_static_mesh(sm, asset, material, node.translation, node.rotation, node.scale)
+			sm := new_entity(
+				StaticMesh {
+					translation = node.translation,
+					rotation = node.rotation,
+					scale = node.scale,
+					mesh_asset = asset,
+					material_asset = material,
+				},
+			)
+
 			append(&scene.entities, sm.id)
+
 		case "heightfield":
 			asset, has_asset := object["heightfield_asset"].(json.String)
 			if !has_asset || asset == "" {
 				log.warn("heightfield node missing generated asset, skipping:", node.name.? or_else "<unnamed>")
 				continue
 			}
-			material := Handle(Material_Asset){object["material"].(json.String)}
+
+			material := Handle(Material_Asset){strings.clone(object["material"].(json.String))}
 			uv_scale := json_f32(object["uv_scale"], 1.0)
-			terrain := new_entity(Terrain)
-			if !init_terrain(terrain, asset, material, uv_scale, &scene.gpu_arena, node.translation, node.rotation) {
-				destroy_entity(terrain.id)
-				log.warn("failed to initialize heightfield:", asset)
-				continue
-			}
+
+			terrain := new_entity(Terrain {
+                translation = node.translation,
+                rotation = node.rotation,
+                heightfield = strings.clone(asset),
+                material = material,
+                uv_scale = uv_scale,
+            })
+
 			append(&scene.entities, terrain.id)
 		}
 	}
