@@ -1,7 +1,7 @@
 package game
 
-import vk "vendor:vulkan"
 import "gfx"
+import vk "vendor:vulkan"
 
 RaytracingResources :: struct {
 	instances_buffer: gfx.Buffer(vk.AccelerationStructureInstanceKHR),
@@ -45,12 +45,7 @@ record_raytracing :: proc(cmd: gfx.CommandBuffer, rt: ^RaytracingResources) {
 	rt.tlas, scratch = gfx.build_tlas(cmd, rt.instances_buffer, rt.instance_count)
 	gfx.defer_destroy(&gfx.current_frame().arena, scratch)
 
-	gfx.buffer_barrier(
-		cmd,
-		rt.tlas.buffer,
-		src_access = .AccelerationStructureBuildWrite,
-		dst_access = .AccelerationStructureRead,
-	)
+	gfx.buffer_barrier(cmd, rt.tlas.buffer, src_access = .AccelerationStructureBuildWrite, dst_access = .AccelerationStructureRead)
 }
 
 mat4_to_vk_transform :: proc(m: Mat4x4) -> vk.TransformMatrixKHR {

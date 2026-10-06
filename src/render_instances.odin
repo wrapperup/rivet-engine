@@ -1,8 +1,8 @@
 package game
 
 import "core:log"
-import vk "vendor:vulkan"
 import "gfx"
+import vk "vendor:vulkan"
 
 MAX_RENDER_INSTANCES :: 16_384
 
@@ -38,8 +38,8 @@ prepare_render_instances :: proc(frame: ^GameFrameData) {
 	}
 
 	if len(data) > 0 {
-        gfx.write_buffer_slice(&frame.instances_buffer, data)
-    }
+		gfx.write_buffer_slice(&frame.instances_buffer, data)
+	}
 
 	prepare_raytracing(&frame.rt, frame.instances[:])
 }

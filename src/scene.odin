@@ -1,11 +1,11 @@
 package game
 
-import "core:strings"
 import "core:encoding/json"
 import "core:log"
 import "core:math"
 import "core:mem/virtual"
 import "core:os"
+import "core:strings"
 import "core:time"
 
 import gltf2 "deps:gltf2"
@@ -150,8 +150,8 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 			probe.priority = json_f32(object["priority"], probe.priority)
 			append(&scene.entities, probe.id)
 		case "static_mesh":
-			asset := Handle(Static_Mesh_Asset) { strings.clone(object["asset"].(json.String)) }
-            material := Handle(Material_Asset) { strings.clone(object["material"].(json.String)) }
+			asset := Handle(Static_Mesh_Asset){strings.clone(object["asset"].(json.String))}
+			material := Handle(Material_Asset){strings.clone(object["material"].(json.String))}
 			sm := new_entity(StaticMesh)
 			init_static_mesh(sm, asset, material, node.translation, node.rotation, node.scale)
 			append(&scene.entities, sm.id)
@@ -161,7 +161,7 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 				log.warn("heightfield node missing generated asset, skipping:", node.name.? or_else "<unnamed>")
 				continue
 			}
-            material := Handle(Material_Asset) { object["material"].(json.String) }
+			material := Handle(Material_Asset){object["material"].(json.String)}
 			uv_scale := json_f32(object["uv_scale"], 1.0)
 			terrain := new_entity(Terrain)
 			if !init_terrain(terrain, asset, material, uv_scale, &scene.gpu_arena, node.translation, node.rotation) {

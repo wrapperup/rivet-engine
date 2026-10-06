@@ -23,7 +23,7 @@ Skeleton :: struct {
 	inverse_bind_matrices: [dynamic]JointMatrix,
 
 	// Base static buffers representing the skeleton on the GPU.
-	buffers: GPUSkelMeshBuffers
+	buffers:               GPUSkelMeshBuffers,
 }
 
 JointTrack :: struct {

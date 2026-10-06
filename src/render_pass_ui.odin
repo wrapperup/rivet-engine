@@ -112,8 +112,8 @@ load_font :: proc(image_path: string, json_path: string, allocator := context.al
 	assert(parsed.atlas.width > 0 && parsed.atlas.height > 0 && parsed.atlas.distance_range > 0, "Invalid font atlas dimensions or range.")
 	assert(len(parsed.glyphs) > 0 && parsed.metrics.line_height > 0, "Font has no glyphs or an invalid line height.")
 
-	font.image = Handle(Image_Asset){ image_path }
-    load_asset(font.image)
+	font.image = Handle(Image_Asset){image_path}
+	load_asset(font.image)
 
 	font.line_height = parsed.metrics.line_height
 	font.ascender = parsed.metrics.ascender
@@ -163,11 +163,8 @@ init_ui_rp :: proc() {
 	ui_rp.sampler = gfx.create_sampler(.LINEAR, .REPEAT)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, ui_rp.sampler)
 
-    // TODO: leak. asset system.
-	ui_rp.font = load_font(
-		"fonts/msdf/f_nunito_regular_mtsdf.ktx2",
-		"assets/fonts/msdf/f_nunito_regular_mtsdf.json",
-	)
+	// TODO: leak. asset system.
+	ui_rp.font = load_font("fonts/msdf/f_nunito_regular_mtsdf.ktx2", "assets/fonts/msdf/f_nunito_regular_mtsdf.json")
 
 	for i in 0 ..< gfx.FRAME_OVERLAP {
 		buffer := gfx.create_buffer(UI_Command, MAX_UI_COMMANDS, .Storage, "UI_Command_Buffer")

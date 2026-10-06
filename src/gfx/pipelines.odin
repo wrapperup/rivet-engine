@@ -257,22 +257,22 @@ pb_set_shaders :: proc(
 ) {
 	clear(&builder.shader_stages)
 	if vertex_entry != nil {
-        info := vk.PipelineShaderStageCreateInfo {
-            sType = .PIPELINE_SHADER_STAGE_CREATE_INFO,
-            stage = {.VERTEX},
-            module = shader,
-            pName = vertex_entry,
-        }
+		info := vk.PipelineShaderStageCreateInfo {
+			sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
+			stage  = {.VERTEX},
+			module = shader,
+			pName  = vertex_entry,
+		}
 		append(&builder.shader_stages, info)
 	}
 
 	if fragment_entry != nil {
-        info := vk.PipelineShaderStageCreateInfo {
-            sType = .PIPELINE_SHADER_STAGE_CREATE_INFO,
-            stage = {.FRAGMENT},
-            module = shader,
-            pName = fragment_entry,
-        }
+		info := vk.PipelineShaderStageCreateInfo {
+			sType  = .PIPELINE_SHADER_STAGE_CREATE_INFO,
+			stage  = {.FRAGMENT},
+			module = shader,
+			pName  = fragment_entry,
+		}
 		append(&builder.shader_stages, info)
 	}
 }

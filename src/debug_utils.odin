@@ -36,7 +36,7 @@ _debug_draw_line_impl :: proc(dl: ^im.DrawList, pos0_cs, pos1_cs: Vec2, thicknes
 
 debug_draw_dot :: proc(pos_ws: Vec3, half_size: f32 = 5.0, color := DEFAULT_DEBUG_COLOR) {
 	// TODO: cache this
-    bl := im.GetBackgroundDrawList()
+	bl := im.GetBackgroundDrawList()
 
 	view_projection := get_current_projection_view_matrix()
 	col_u32 := im.GetColorU32ImVec4(color)
@@ -160,51 +160,51 @@ debug_draw_capsule :: proc(
 
 // Wireframe sphere using your existing draw_line3 and draw_ring helpers.
 debug_draw_sphere :: proc(
-    center: Vec3,
-    radius: f32,
-    segments: int = 24,   // azimuth resolution
-    stacks:   int = 8,    // number of latitude rings (excluding the two poles)
-    meridians: int = 8,   // number of pole-to-pole arcs
-    thickness: f32 = 1.0,
-    color := im.Vec4{1, 1, 0, 1},
+	center: Vec3,
+	radius: f32,
+	segments: int = 24, // azimuth resolution
+	stacks: int = 8, // number of latitude rings (excluding the two poles)
+	meridians: int = 8, // number of pole-to-pole arcs
+	thickness: f32 = 1.0,
+	color := im.Vec4{1, 1, 0, 1},
 ) {
-    view_projection := get_current_projection_view_matrix()
-    bl := im.GetBackgroundDrawList()
-    col_u32 := im.GetColorU32ImVec4(color)
+	view_projection := get_current_projection_view_matrix()
+	bl := im.GetBackgroundDrawList()
+	col_u32 := im.GetColorU32ImVec4(color)
 
-    axis := linalg.normalize(Vec3{0, 1, 0})
-    tmp := Vec3{0, 0, 1}
-    if math.abs(linalg.dot(axis, tmp)) > 0.9 do tmp = Vec3{1, 0, 0}
-    u := linalg.normalize(linalg.cross(axis, tmp))
-    v := linalg.normalize(linalg.cross(u, axis))
+	axis := linalg.normalize(Vec3{0, 1, 0})
+	tmp := Vec3{0, 0, 1}
+	if math.abs(linalg.dot(axis, tmp)) > 0.9 do tmp = Vec3{1, 0, 0}
+	u := linalg.normalize(linalg.cross(axis, tmp))
+	v := linalg.normalize(linalg.cross(u, axis))
 
-    for j in 1..<(stacks) {
-        phi := (-0.5 * math.PI) + (math.PI * f32(j) / f32(stacks))
-        ring_center := center + axis * (radius * math.sin(phi))
-        ring_radius := radius * math.cos(phi)
-        if ring_radius > 0.0 {
-            draw_ring(ring_center, ring_radius, u, v, segments, view_projection, bl, col_u32, thickness)
-        }
-    }
+	for j in 1 ..< (stacks) {
+		phi := (-0.5 * math.PI) + (math.PI * f32(j) / f32(stacks))
+		ring_center := center + axis * (radius * math.sin(phi))
+		ring_radius := radius * math.cos(phi)
+		if ring_radius > 0.0 {
+			draw_ring(ring_center, ring_radius, u, v, segments, view_projection, bl, col_u32, thickness)
+		}
+	}
 
-    draw_ring(center, radius, u, v, segments, view_projection, bl, col_u32, thickness)
+	draw_ring(center, radius, u, v, segments, view_projection, bl, col_u32, thickness)
 
-    meridian_steps := math.max(stacks*2, 16) // smoothness of each arc
-    for k in 0..<meridians {
-        theta := (math.TAU * f32(k)) / f32(meridians)
-        dir := u*math.cos(theta) + v*math.sin(theta)
+	meridian_steps := math.max(stacks * 2, 16) // smoothness of each arc
+	for k in 0 ..< meridians {
+		theta := (math.TAU * f32(k)) / f32(meridians)
+		dir := u * math.cos(theta) + v * math.sin(theta)
 
-        // March φ from -π/2 to +π/2 and connect successive points
-        prev_phi := -0.5 * f32(math.PI)
-        prev_pt  := center + axis*(radius*math.sin_f32(prev_phi)) + dir*(radius*math.cos_f32(prev_phi))
-        for s in 1..<(meridian_steps+1) {
-            phi := (-0.5 * math.PI) + (math.PI * f32(s) / f32(meridian_steps))
-            pt  := center + axis*(radius*math.sin(phi)) + dir*(radius*math.cos(phi))
-            draw_line3(prev_pt, pt, view_projection, bl, col_u32, thickness)
-            prev_phi = phi
-            prev_pt  = pt
-        }
-    }
+		// March φ from -π/2 to +π/2 and connect successive points
+		prev_phi := -0.5 * f32(math.PI)
+		prev_pt := center + axis * (radius * math.sin_f32(prev_phi)) + dir * (radius * math.cos_f32(prev_phi))
+		for s in 1 ..< (meridian_steps + 1) {
+			phi := (-0.5 * math.PI) + (math.PI * f32(s) / f32(meridian_steps))
+			pt := center + axis * (radius * math.sin(phi)) + dir * (radius * math.cos(phi))
+			draw_line3(prev_pt, pt, view_projection, bl, col_u32, thickness)
+			prev_phi = phi
+			prev_pt = pt
+		}
+	}
 }
 
 // --- helpers ---

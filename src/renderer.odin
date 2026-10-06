@@ -140,8 +140,7 @@ init_test_resources :: proc() {
 
 		// dfg_asset := load_asset(Image_Asset, "gen/t_dfg.ktx2")
 
-		rs.post_process_rp.tony_mc_mapface_id =
-			load_asset(Handle(Image_Asset){"textures/tonemapping/t_tony_mc_mapface.ktx2"}).image_id
+		rs.post_process_rp.tony_mc_mapface_id = load_asset(Handle(Image_Asset){"textures/tonemapping/t_tony_mc_mapface.ktx2"}).image_id
 		tr.dfg_id = load_asset(Handle(Image_Asset){"gen/t_dfg.ktx2"}).image_id
 
 		tr.default_sampler_id = default_sampler

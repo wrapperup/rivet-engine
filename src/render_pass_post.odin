@@ -20,7 +20,7 @@ PostProcessingRenderPass :: struct {
 
 init_post_process_rp :: proc() {
 	game.render_state.post_process_rp.tonemapper_pipeline = add_compute_shader(
-        {"shaders/tonemapping.slang"},
+		{"shaders/tonemapping.slang"},
 		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 			return gfx.create_compute_pipeline("Tonemapper_Pipeline", module, GPUPostProcessingPushConstants)
 		},

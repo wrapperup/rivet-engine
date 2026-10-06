@@ -149,7 +149,13 @@ init_imageview_create_info :: proc(
 		viewType = view_type,
 		image = image,
 		format = format,
-		subresourceRange = {baseMipLevel = base_mip_level, levelCount = mip_count, baseArrayLayer = base_array_layer, layerCount = layer_count, aspectMask = aspect_flags},
+		subresourceRange = {
+			baseMipLevel = base_mip_level,
+			levelCount = mip_count,
+			baseArrayLayer = base_array_layer,
+			layerCount = layer_count,
+			aspectMask = aspect_flags,
+		},
 	}
 
 	return info
@@ -160,7 +166,7 @@ init_sampler_create_info :: proc(
 	address_mode: vk.SamplerAddressMode,
 	compare_op: vk.CompareOp = .NEVER,
 	border_color: vk.BorderColor = .FLOAT_TRANSPARENT_BLACK,
-	max_lod: f32 = 1.0
+	max_lod: f32 = 1.0,
 ) -> vk.SamplerCreateInfo {
 	sampler_create_info := vk.SamplerCreateInfo {
 		sType         = .SAMPLER_CREATE_INFO,

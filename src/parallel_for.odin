@@ -46,7 +46,7 @@ parallel_for :: proc(length: int, procedure: Parallel_For_Procedure, data: rawpt
 	// Not even
 	if remainder > 0 {
 		for i in 0 ..< THREAD_COUNT - 1 {
-			// be mindful of the allocator used for tasks. The allocator needs to be thread safe, or be owned by the task for exclusive use 
+			// be mindful of the allocator used for tasks. The allocator needs to be thread safe, or be owned by the task for exclusive use
 			thread.pool_add_task(
 				&POOL,
 				allocator = context.allocator,
@@ -67,14 +67,8 @@ parallel_for :: proc(length: int, procedure: Parallel_For_Procedure, data: rawpt
 	} else {
 		// Evenly cut between all threads
 		for i in 0 ..< THREAD_COUNT {
-			// be mindful of the allocator used for tasks. The allocator needs to be thread safe, or be owned by the task for exclusive use 
-			thread.pool_add_task(
-				&POOL,
-				allocator = context.allocator,
-				procedure = parallel_for_proc,
-				data = nil,
-				user_index = i,
-			)
+			// be mindful of the allocator used for tasks. The allocator needs to be thread safe, or be owned by the task for exclusive use
+			thread.pool_add_task(&POOL, allocator = context.allocator, procedure = parallel_for_proc, data = nil, user_index = i)
 		}
 	}
 

@@ -445,8 +445,8 @@ transition_image :: proc(cmd: CommandBuffer, image: ImageId, new_layout: vk.Imag
 }
 
 copy_image_to_image :: proc(cmd: CommandBuffer, src_id: ImageId, dst_id: ImageId, src_size: vk.Extent2D, dst_size: vk.Extent2D) {
-    source := image_meta(src_id)
-    destination := image_meta(dst_id)
+	source := image_meta(src_id)
+	destination := image_meta(dst_id)
 
 	blit_region := vk.ImageBlit2 {
 		sType = .IMAGE_BLIT_2,

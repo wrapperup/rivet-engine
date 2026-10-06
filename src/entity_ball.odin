@@ -6,10 +6,10 @@ import b3 "vendor:box3d"
 
 @(entity)
 Ball :: struct {
-	using entity:       ^Entity,
-	material:           MaterialId,
-	num:                int,
-	rigid:              b3.BodyId,
+	using entity: ^Entity,
+	material:     MaterialId,
+	num:          int,
+	rigid:        b3.BodyId,
 }
 
 init_ball :: proc(ball: ^Ball, pos: Vec3, vel: Vec3) {

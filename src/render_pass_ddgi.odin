@@ -83,20 +83,23 @@ init_ddgi_rp :: proc() {
 	ddgi_rp.debug_pipeline = add_compute_shader({"shaders/ddgi_debug_atlas.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
 		return gfx.create_compute_pipeline("DDGI_Debug_Atlas", module, GPUDDGIDebugAtlasPush)
 	})
-	ddgi_rp.probe_pipeline = add_graphics_shader({"shaders/ddgi_debug_probes.slang"}, proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-		return gfx.create_graphics_pipeline(
-			name = "DDGI_Debug_Probes",
-			shader = module,
-			input_topology = .TRIANGLE_LIST,
-			polygon_mode = .FILL,
-			cull_mode = {},
-			front_face = .COUNTER_CLOCKWISE,
-			depth = {format = .D32_SFLOAT, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
-			color_format = .R32G32B32A32_SFLOAT,
-			multisampling_samples = gfx.msaa_samples(),
-			push_constants = GPUDDGIProbePush,
-		)
-	})
+	ddgi_rp.probe_pipeline = add_graphics_shader(
+		{"shaders/ddgi_debug_probes.slang"},
+		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
+			return gfx.create_graphics_pipeline(
+				name = "DDGI_Debug_Probes",
+				shader = module,
+				input_topology = .TRIANGLE_LIST,
+				polygon_mode = .FILL,
+				cull_mode = {},
+				front_face = .COUNTER_CLOCKWISE,
+				depth = {format = .D32_SFLOAT, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
+				color_format = .R32G32B32A32_SFLOAT,
+				multisampling_samples = gfx.msaa_samples(),
+				push_constants = GPUDDGIProbePush,
+			)
+		},
+	)
 
 	for &volumes_buffer in ddgi_rp.volumes_buffers {
 		volumes_buffer = gfx.create_buffer(GPUDDGIVolume, MAX_DDGI_VOLUMES, .DynUniform)

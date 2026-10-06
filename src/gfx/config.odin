@@ -30,17 +30,17 @@ REQUIRED_VK_11_FEATURES := vk.PhysicalDeviceVulkan11Features {
 }
 
 REQUIRED_VK_12_FEATURES := vk.PhysicalDeviceVulkan12Features {
-	sType                  = .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
-	pNext                  = &REQUIRED_VK_13_FEATURES,
-	bufferDeviceAddress         = true,
-	descriptorIndexing          = true,
-	storagePushConstant8        = true,
-	shaderInt8                  = true,
-	runtimeDescriptorArray      = true,
-	scalarBlockLayout           = true,
-	vulkanMemoryModel           = true,
+	sType                        = .PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+	pNext                        = &REQUIRED_VK_13_FEATURES,
+	bufferDeviceAddress          = true,
+	descriptorIndexing           = true,
+	storagePushConstant8         = true,
+	shaderInt8                   = true,
+	runtimeDescriptorArray       = true,
+	scalarBlockLayout            = true,
+	vulkanMemoryModel            = true,
 	vulkanMemoryModelDeviceScope = true,
-	timelineSemaphore           = true,
+	timelineSemaphore            = true,
 }
 
 REQUIRED_VK_13_FEATURES := vk.PhysicalDeviceVulkan13Features {
@@ -66,9 +66,9 @@ DEVICE_EXTENSIONS := []cstring {
 	vk.KHR_SWAPCHAIN_EXTENSION_NAME,
 	vk.KHR_DYNAMIC_RENDERING_EXTENSION_NAME, // Enabled by default in 1.3
 	vk.KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME, // Enable by default in 1.3
-    vk.KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-    vk.KHR_RAY_QUERY_EXTENSION_NAME,
-    vk.KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+	vk.KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+	vk.KHR_RAY_QUERY_EXTENSION_NAME,
+	vk.KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
 }
 
 // Set validation layers to enable.

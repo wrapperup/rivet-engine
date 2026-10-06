@@ -26,7 +26,7 @@ when EDITOR {
 	Debug_Vis_Flag :: enum {
 		Irradiance_Probes,
 		Reflection_Probes,
-        Physics_Bodies,
+		Physics_Bodies,
 	}
 
 	Debug_Vis_Flags :: bit_set[Debug_Vis_Flag;u32]
@@ -180,7 +180,7 @@ when EDITOR {
 
 		bl := im.GetBackgroundDrawList()
 
-		if .Physics_Bodies in editor.settings.vis_flags{
+		if .Physics_Bodies in editor.settings.vis_flags {
 			physics_debug_draw(view_projection, bl)
 		}
 

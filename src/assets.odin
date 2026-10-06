@@ -127,12 +127,11 @@ load_asset :: proc(handle: Handle($T), method := Asset_Load_Kind.Block) -> (asse
 		return
 	}
 
-
 	if method == .Block {
 		asset_path := resolve_asset_path(handle, context.temp_allocator)
 		asset_ext := filepath.ext(asset_path)
 
-        bytes: []u8
+		bytes: []u8
 		if processor, found := store.loaders.processors[asset_ext]; found {
 			ok: bool
 			if bytes, ok = processor(asset_path, allocator); !ok {
@@ -140,7 +139,7 @@ load_asset :: proc(handle: Handle($T), method := Asset_Load_Kind.Block) -> (asse
 				return
 			}
 		} else {
-            err: os.Error
+			err: os.Error
 			bytes, err = os.read_entire_file(asset_path, allocator)
 			if err != nil {
 				log.warn("Failed to read asset:", handle)

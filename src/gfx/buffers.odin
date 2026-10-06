@@ -34,19 +34,19 @@ BufferAccess :: enum {
 // buffers will always create a valid Ptr(T).
 BufferKind :: enum {
 	Storage, // Includes ptr
-    Index,
-    Staging, // For CPU -> GPU writes onto device-local buffers.
-    AccelStorage, // Raytracing accel structures.
-    AccelInstances, // Host-mapped TLAS instance buffer (AS build input).
-    Uniform, // Includes ptr. However, prefer uniform access for speed.
-    DynUniform, // Mapped uniform buffer // TODO: HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT
+	Index,
+	Staging, // For CPU -> GPU writes onto device-local buffers.
+	AccelStorage, // Raytracing accel structures.
+	AccelInstances, // Host-mapped TLAS instance buffer (AS build input).
+	Uniform, // Includes ptr. However, prefer uniform access for speed.
+	DynUniform, // Mapped uniform buffer // TODO: HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT
 	Readback, // For GPU -> CPU reads from device-local buffers.
 }
 
 vk_buffer_flags :: proc(kind: BufferKind) -> (vk.BufferUsageFlags, vma.AllocationCreateFlags) {
 	rt := vk.BufferUsageFlags{}
 
-    // TODO: Query.
+	// TODO: Query.
 	if true {
 		rt = {.ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR}
 	}
@@ -62,7 +62,7 @@ vk_buffer_flags :: proc(kind: BufferKind) -> (vk.BufferUsageFlags, vma.Allocatio
 		return {.ACCELERATION_STRUCTURE_STORAGE_KHR, .SHADER_DEVICE_ADDRESS}, {}
 	case .AccelInstances:
 		return {.ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR, .SHADER_DEVICE_ADDRESS}, {.MAPPED, .HOST_ACCESS_SEQUENTIAL_WRITE}
-    // LEGACY
+	// LEGACY
 	case .Uniform:
 		return {.TRANSFER_DST, .UNIFORM_BUFFER, .SHADER_DEVICE_ADDRESS}, {}
 	case .DynUniform:
@@ -143,11 +143,7 @@ slice_from_ptr :: proc(data: Ptr($T), count: u64) -> Slice(T) {
 	return {data = data, count = count}
 }
 
-slice_from_buffer :: proc(
-	buffer: Buffer($T),
-	first: u64 = 0,
-	count: Maybe(u64) = nil,
-) -> Slice(T) {
+slice_from_buffer :: proc(buffer: Buffer($T), first: u64 = 0, count: Maybe(u64) = nil) -> Slice(T) {
 	assert(buffer.ptr.address != 0, "GPU slices require a device-addressable buffer")
 	total_count := buffer.count
 	assert(first <= total_count, "GPU slice starts outside its buffer")
@@ -158,13 +154,7 @@ slice_from_buffer :: proc(
 		slice_count = requested_count
 	}
 
-	return {
-		data = {
-			address = buffer.ptr.address +
-				vk.DeviceAddress(first) * vk.DeviceAddress(size_of(T)),
-		},
-		count = slice_count,
-	}
+	return {data = {address = buffer.ptr.address + vk.DeviceAddress(first) * vk.DeviceAddress(size_of(T))}, count = slice_count}
 }
 
 slice :: proc {

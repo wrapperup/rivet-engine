@@ -1,9 +1,9 @@
 package game
 
-import "core:reflect"
 import "base:intrinsics"
 import "base:runtime"
 import "core:mem/virtual"
+import "core:reflect"
 
 RawSparseSet :: struct {
 	sparse:          runtime.Raw_Map,
@@ -278,7 +278,7 @@ new_entity_subtype :: proc($T: typeid) -> ^T where intrinsics.type_is_subtype_of
 	data.entity = new_entity_raw()
 	data.entity.kind = entity_type_to_kind(T)
 
-    assert(reflect.enum_value_has_name(data.entity.kind))
+	assert(reflect.enum_value_has_name(data.entity.kind))
 
 	storage := get_entity_subtype_system(T)
 
@@ -382,7 +382,7 @@ _remove_entity :: proc(id: EntityId) -> bool {
 	entity := get_entity_raw(id)
 	if entity == nil do return false
 
-    assert(reflect.enum_value_has_name(entity.kind))
+	assert(reflect.enum_value_has_name(entity.kind))
 
 	storage := game.entity_system.subtype_storage[entity.kind]
 	remove_elem_raw_sparse_set(storage.ptr, id, storage.type_info.size)
@@ -394,7 +394,7 @@ destroy_entity :: proc(id: EntityId) -> bool {
 	entity := get_entity_raw(id)
 	if entity == nil do return false
 
-    assert(reflect.enum_value_has_name(entity.kind))
+	assert(reflect.enum_value_has_name(entity.kind))
 
 	storage := game.entity_system.subtype_storage[entity.kind]
 	if storage.destroy != nil {

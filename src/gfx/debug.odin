@@ -23,14 +23,14 @@ object_type_of_handle :: proc($T: typeid) -> vk.ObjectType {
 debug_set_object_name :: proc(handle: $T/u64, object_name: cstring) {
 	if r_ctx.debug_messenger == 0 do return
 
-    object_type := object_type_of_handle(T)
+	object_type := object_type_of_handle(T)
 
-    name_info := vk.DebugUtilsObjectNameInfoEXT {
-        sType = .DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-        objectType = object_type,
-        pObjectName = object_name,
-        objectHandle = u64(handle),
-    }
+	name_info := vk.DebugUtilsObjectNameInfoEXT {
+		sType        = .DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+		objectType   = object_type,
+		pObjectName  = object_name,
+		objectHandle = u64(handle),
+	}
 
-    vk.SetDebugUtilsObjectNameEXT(r_ctx.device, &name_info)
+	vk.SetDebugUtilsObjectNameEXT(r_ctx.device, &name_info)
 }

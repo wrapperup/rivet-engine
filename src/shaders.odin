@@ -46,7 +46,7 @@ Shader :: struct($T: typeid) {
 
 init_shader :: proc($T: typeid, asset: Handle(Shader_Asset), pipeline_create_callback: proc(_: vk.ShaderModule) -> T) -> Shader(T) {
 	shader := Shader(T) {
-        asset = asset,
+		asset                    = asset,
 		pipeline_create_callback = pipeline_create_callback,
 	}
 

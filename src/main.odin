@@ -39,7 +39,7 @@ main :: proc() {
 		windows.SetConsoleOutputCP(.UTF8)
 	}
 
-    context.logger = log.create_console_logger()
+	context.logger = log.create_console_logger()
 
 	// init
 	{
@@ -150,7 +150,7 @@ main :: proc() {
 			grid_size: f32 = 3.0
 
 			sound_source := new_entity(SoundSource)
-            // TODO: asset system
+			// TODO: asset system
 			init_sound_source(sound_source, "assets/audio/ambient/a_outdoors_birds.wav", true, 0.1, false, 0.5)
 
 			game.phys.update_physics = false
@@ -165,7 +165,7 @@ main :: proc() {
 				update_ddgi = true, // DDGI must run for reflection capture (and GI) to populate
 			}
 
-            // TODO: asset system.
+			// TODO: asset system.
 			game.ball_mesh, _ = load_gpu_mesh_from_file("assets/meshes/static/demo_ball.glb", context.temp_allocator)
 			defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, game.ball_mesh)
 
@@ -335,7 +335,7 @@ main :: proc() {
 		}
 
 
-        shutdown_shader_manager()
+		shutdown_shader_manager()
 		shutdown_asset_system()
 		shutdown_entity_system()
 		physics_shutdown()

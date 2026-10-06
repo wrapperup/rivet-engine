@@ -215,7 +215,7 @@ defer_destroy_vk_swapchain :: proc(arena: ^ResourceArena, handle: vk.SwapchainKH
 defer_destroy :: proc {
 	defer_destroy_buffer,
 	defer_destroy_image,
-    defer_destroy_sampler,
+	defer_destroy_sampler,
 	defer_destroy_graphics_pipeline,
 	defer_destroy_compute_pipeline,
 

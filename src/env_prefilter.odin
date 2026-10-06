@@ -42,10 +42,10 @@ create_prefiltered_cubemap_pipeline :: proc(filename: string, out_width, out_hei
 	pass.descriptor_set = gfx.allocate_descriptor_set(&gfx.r_ctx.global_descriptor_allocator, gfx.r_ctx.device, pass.descriptor_set_layout)
 
 	pass.cube_image = load_image_from_ktx_file(filename)
-    meta := gfx.image_meta(pass.cube_image)
-    assert(meta.view_type == .CUBE)
-    width := meta.extent.width
-    height := meta.extent.height
+	meta := gfx.image_meta(pass.cube_image)
+	assert(meta.view_type == .CUBE)
+	width := meta.extent.width
+	height := meta.extent.height
 
 	pass.cube_sampler = gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE)
 

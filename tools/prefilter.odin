@@ -17,10 +17,10 @@ import vma "deps:odin-vma"
 import impl "../src"
 
 EnvPrefilterCommand :: struct {
-	input:  cstring `args:"pos=0,required" usage:"Input file."`,
-	output: cstring `args:"pos=1,required" usage:"Output file."`,
-	size:   u32 `usage:"Size (in px) of the output texture"`,
-	samples:   u32 `usage:"Samples to use in prefiltering"`,
+	input:   cstring `args:"pos=0,required" usage:"Input file."`,
+	output:  cstring `args:"pos=1,required" usage:"Output file."`,
+	size:    u32 `usage:"Size (in px) of the output texture"`,
+	samples: u32 `usage:"Samples to use in prefiltering"`,
 }
 
 main :: proc() {
@@ -80,7 +80,13 @@ main :: proc() {
 		command.samples = 4096
 	}
 
-	process_env_to_file(fmt.ctprint(command.input), fmt.ctprintf("%s%s", command.output, ".ktx2"), command.size, command.size, command.samples)
+	process_env_to_file(
+		fmt.ctprint(command.input),
+		fmt.ctprintf("%s%s", command.output, ".ktx2"),
+		command.size,
+		command.size,
+		command.samples,
+	)
 
 	fmt.println("Done in", time.since(start_time))
 

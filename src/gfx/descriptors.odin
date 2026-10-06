@@ -242,12 +242,12 @@ write_descriptor_set :: proc(descriptor_set: vk.DescriptorSet, writes: []Descrip
 		if is_image_descriptor_type(write.type) {
 			assert(write.buffer == 0, "Descriptor write is an image type, but the buffer field was set.", loc = loc)
 
-            if write.type == .SAMPLER {
-                assert(write.sampler != 0, fmt.tprint("Descriptor write has a null sampler! array_index:", write.array_index), loc = loc)
-            } else {
-                assert(write.image_layout != .UNDEFINED, "Descriptor write has a null image layout!", loc = loc)
-                assert(write.image_view != 0, "Descriptor write has a null image view!", loc = loc)
-            }
+			if write.type == .SAMPLER {
+				assert(write.sampler != 0, fmt.tprint("Descriptor write has a null sampler! array_index:", write.array_index), loc = loc)
+			} else {
+				assert(write.image_layout != .UNDEFINED, "Descriptor write has a null image layout!", loc = loc)
+				assert(write.image_view != 0, "Descriptor write has a null image view!", loc = loc)
+			}
 
 			image_info := vk.DescriptorImageInfo {
 				imageLayout = write.image_layout,
@@ -269,7 +269,7 @@ write_descriptor_set :: proc(descriptor_set: vk.DescriptorSet, writes: []Descrip
 			}
 
 			append(&descriptor_writes, descriptor_write)
-        } else {
+		} else {
 			assert(write.image_layout == .UNDEFINED, "Descriptor write is a buffer type, but the image_layout field was set.")
 			assert(write.image_view == 0, "Descriptor write is a buffer type, but the image_view field was set.")
 			assert(write.sampler == 0, "Descriptor write is a buffer type, but the sampler field was set.")

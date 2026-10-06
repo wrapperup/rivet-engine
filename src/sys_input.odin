@@ -13,9 +13,9 @@ Action :: enum {
 	LockCamera,
 	Fullscreen,
 	ExitGame,
-    ShowDebug,
-    ReloadScene,
-    Livepatch,
+	ShowDebug,
+	ReloadScene,
+	Livepatch,
 }
 
 Axis :: enum {

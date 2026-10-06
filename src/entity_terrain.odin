@@ -213,7 +213,7 @@ init_terrain :: proc(
 	terrain.translation = translation + Vec3{source.origin_x, 0, source.origin_z}
 	terrain.rotation = rotation
 
-    // TODO: store asset id
+	// TODO: store asset id
 	terrain.material = load_asset(material).material_id
 
 	body_def := b3.DefaultBodyDef()

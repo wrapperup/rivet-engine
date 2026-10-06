@@ -20,7 +20,6 @@ BindlessSystem :: struct {
 	// Storage
 	images:            [dynamic]Image,
 	samplers:          [dynamic]vk.Sampler,
-
 	free_images:       [dynamic]ImageId,
 	free_samplers:     [dynamic]SamplerId,
 }
@@ -56,12 +55,12 @@ shutdown_bindless_descriptors :: proc() {
 
 image_meta :: proc(id: ImageId) -> ^Image {
 	bindless_system := &r_ctx.bindless_system
-    return &bindless_system.images[id]
+	return &bindless_system.images[id]
 }
 
 sampler_meta :: proc(id: SamplerId) -> vk.Sampler {
 	bindless_system := &r_ctx.bindless_system
-    return bindless_system.samplers[id]
+	return bindless_system.samplers[id]
 }
 
 add_image_impl :: proc(image: Image) -> ImageId {
@@ -80,43 +79,43 @@ add_image_impl :: proc(image: Image) -> ImageId {
 	assert(u32(image_id) < MAX_BINDLESS_IMAGES, "bindless image slots exhausted")
 
 	if .STORAGE in image.usage {
-        write_descriptor_set(
-            bindless_system.descriptor_set,
-            {
-                {
-                    binding = BINDLESS_STORAGE_IMAGES,
-                    type = .STORAGE_IMAGE,
-                    image_view = image.image_view,
-                    image_layout = .GENERAL,
-                    array_index = u32(image_id),
-                },
-            },
-        )
-    }
+		write_descriptor_set(
+			bindless_system.descriptor_set,
+			{
+				{
+					binding = BINDLESS_STORAGE_IMAGES,
+					type = .STORAGE_IMAGE,
+					image_view = image.image_view,
+					image_layout = .GENERAL,
+					array_index = u32(image_id),
+				},
+			},
+		)
+	}
 
 	if .SAMPLED in image.usage {
-        write_descriptor_set(
-            bindless_system.descriptor_set,
-            {
-                {
-                    binding = BINDLESS_SAMPLED_IMAGES,
-                    type = .SAMPLED_IMAGE,
-                    image_view = image.image_view,
-                    image_layout = .GENERAL,
-                    array_index = u32(image_id),
-                },
-            },
-        )
-    }
+		write_descriptor_set(
+			bindless_system.descriptor_set,
+			{
+				{
+					binding = BINDLESS_SAMPLED_IMAGES,
+					type = .SAMPLED_IMAGE,
+					image_view = image.image_view,
+					image_layout = .GENERAL,
+					array_index = u32(image_id),
+				},
+			},
+		)
+	}
 
 	return image_id
 }
 
 add_image_with_view_impl :: proc(image: Image, view: vk.ImageView) -> ImageId {
-    image := image
-    image.image_view = view
-    image.owns_image = false
-    return add_image_impl(image)
+	image := image
+	image.image_view = view
+	image.owns_image = false
+	return add_image_impl(image)
 }
 
 add_sampler :: proc(sampler: vk.Sampler) -> SamplerId {

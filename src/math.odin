@@ -1,6 +1,6 @@
 package game
 
-VEC3_UP :: Vec3 { 0, 1, 0 }
+VEC3_UP :: Vec3{0, 1, 0}
 
 // f32
 Vec2 :: [2]f32

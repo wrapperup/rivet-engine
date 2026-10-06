@@ -29,7 +29,7 @@ ReflectionProbe :: struct {
 	mip_count:            u32,
 
 	// GPU resources
-	cube_image_id:           gfx.ImageId,
+	cube_image_id:        gfx.ImageId,
 	cube_mip_storage_ids: [MAX_REFLECTION_MIPS]gfx.ImageId,
 	gpu_sampler_id:       gfx.SamplerId,
 	configs:              [gfx.FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
@@ -74,14 +74,14 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe, position: Vec3, half_exte
 			levelCount = probe.mip_count,
 			layerCount = 6,
 		}
-        // TODO: gfx command
+		// TODO: gfx command
 		vk.CmdClearColorImage(cmd, gfx.image_meta(probe.cube_image_id).image, .GENERAL, &black, 1, &range)
 	}
 
 	for mip in u32(0) ..< probe.mip_count {
 		mip_view := gfx.create_image_view(
 			probe.cube_image_id,
-            .R16G16B16A16_SFLOAT,
+			.R16G16B16A16_SFLOAT,
 			.D2_ARRAY,
 			base_mip_level = mip,
 			mip_levels = 1,
@@ -92,7 +92,7 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe, position: Vec3, half_exte
 		probe.cube_mip_storage_ids[mip] = mip_view
 	}
 
-    probe.gpu_sampler_id = gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, max_lod = f32(probe.mip_count - 1))
+	probe.gpu_sampler_id = gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, max_lod = f32(probe.mip_count - 1))
 	gfx.defer_destroy(arena, probe.gpu_sampler_id)
 
 	for &config in probe.configs {
