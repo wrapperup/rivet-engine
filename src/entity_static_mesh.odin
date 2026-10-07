@@ -3,6 +3,8 @@ package game
 import b3 "vendor:box3d"
 
 @(entity)
+@(init = static_mesh_init)
+@(destroy = static_mesh_destroy)
 StaticMesh :: struct {
 	using entity:   ^Entity,
 	translation:    Vec3,

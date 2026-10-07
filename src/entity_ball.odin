@@ -5,6 +5,7 @@ import "core:log"
 import b3 "vendor:box3d"
 
 @(entity)
+@(init = init_ball)
 Ball :: struct {
 	using entity: ^Entity,
 	translation: Vec3,
@@ -15,13 +16,13 @@ Ball :: struct {
 	rigid:        b3.BodyId,
 }
 
-init_ball :: proc(ball: ^Ball, pos: Vec3, vel: Vec3) {
+init_ball :: proc(ball: ^Ball) {
 	ball.num = len_entities(Ball) - 1
 
 	body_def := b3.DefaultBodyDef()
 	body_def.type = .dynamicBody
-	body_def.position = pos
-	body_def.linearVelocity = vel
+	body_def.position = ball.translation
+	body_def.linearVelocity = ball.velocity
 	body_def.linearDamping = 0.1
 	body_def.angularDamping = 0.1
 	body_def.sleepThreshold = 0.1

@@ -97,6 +97,8 @@ main :: proc() {
 		"-collection:deps=deps",
 		"-custom-attribute:shader_shared",
 		"-custom-attribute:entity",
+		"-custom-attribute:init",
+		"-custom-attribute:destroy",
 		"-show-timings",
 	)
 	when ODIN_OS == .Windows {

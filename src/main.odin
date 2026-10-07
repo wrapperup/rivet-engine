@@ -141,17 +141,11 @@ main :: proc() {
 		{
 			game.render_state.draw_sky = true
 
-			player := new_entity(Player {
-                translation = {3, 3.7, 5},
-                camera_rot = {-0.4, -0.6, 0},
-                camera_fov_deg = 65,
-            })
+			player := new_entity(Player{translation = {3, 3.7, 5}, camera_rot = {-0.4, -0.6, 0}, camera_fov_deg = 65})
 
 			grid_size: f32 = 3.0
 
-			sound_source := new_entity(SoundSource)
-			// TODO: asset system
-			init_sound_source(sound_source, "assets/audio/ambient/a_outdoors_birds.wav", true, 0.1, false, 0.5)
+			new_sound_source("assets/audio/ambient/a_outdoors_birds.wav", true, 0.1, false, 0.5)
 
 			game.phys.update_physics = false
 			game.state = GameState {
@@ -170,8 +164,12 @@ main :: proc() {
 			defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, game.ball_mesh)
 
 			for i in 0 ..< 256 {
-				ball := new_entity(Ball)
-				init_ball(ball, {(rand.float32() - 0.5) * 0.01 * f32(i) + 2, 5.0 * f32(i), (rand.float32() - 0.5) * 0.01 * f32(i)}, 0)
+				new_entity(
+					Ball {
+						translation = {(rand.float32() - 0.5) * 0.01 * f32(i) + 2, 5.0 * f32(i), (rand.float32() - 0.5) * 0.01 * f32(i)},
+						rotation = 0,
+					},
+				)
 			}
 
 			load_scene_from_file(&game.state.current_scene, "assets/meshes/static/scene_map_test.glb")

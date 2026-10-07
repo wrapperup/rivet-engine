@@ -572,11 +572,13 @@ generate_code :: proc(files: []^ast.File) {
 	bpln(&b, "//\n")
 
 	Entity_Kind_Data :: struct {
-		name:   string,
-		s_type: ^ast.Struct_Type,
+		name:         string,
+		s_type:       ^ast.Struct_Type,
+		init_name:    string,
+		destroy_name: string,
 	}
 
-	entity_kinds: [dynamic]Entity_Kind_Data
+	entity_kinds: map[^ast.Struct_Type]Entity_Kind_Data
 
 	for file in files {
 		for decl in file.decls {
@@ -587,8 +589,42 @@ generate_code :: proc(files: []^ast.File) {
 
 			for attr in value.attributes {
 				for elem in attr.elems {
-					i, iok := elem.derived.(^ast.Ident)
-					if iok {
+					#partial switch i in elem.derived {
+					case ^ast.Field_Value:
+						attr_ident, i_ok := i.field.derived.(^ast.Ident)
+						if !i_ok {
+							continue
+						}
+
+						if attr_ident.name == "init" || attr_ident.name == "destroy" {
+							attr_value, a_ok := i.value.derived.(^ast.Ident)
+							if !a_ok {
+								report_error("Declaration value must be an identifier.", i.value, file)
+								continue
+							}
+
+							ident, nok := value.names[0].derived.(^ast.Ident)
+							if !nok {
+								report_error("Declaration name must be an identifier.", value.names[0], file)
+								continue
+							}
+
+							struct_type, s_ok := value.values[0].derived_expr.(^ast.Struct_Type)
+							if !s_ok {
+								report_error("Declaration must be a struct.", value.values[0], file)
+								continue
+							}
+
+							key_ptr, value_ptr, inserted, err := map_entry(&entity_kinds, struct_type)
+
+							if attr_ident.name == "init" {
+								value_ptr.init_name = attr_value.name
+							} else {
+								value_ptr.destroy_name = attr_value.name
+							}
+						}
+
+					case ^ast.Ident:
 						switch i.name {
 						case "entity":
 							if len(value.values) != 1 {
@@ -612,7 +648,8 @@ generate_code :: proc(files: []^ast.File) {
 								continue
 							}
 
-							append(&entity_kinds, Entity_Kind_Data{name = ident.name, s_type = struct_type})
+							key_ptr, value_ptr, inserted, err := map_entry(&entity_kinds, struct_type)
+							value_ptr.name = ident.name
 
 							continue
 						}
@@ -627,13 +664,13 @@ generate_code :: proc(files: []^ast.File) {
 	bpln(&b, "// Entity System")
 
 	bpln(&b, "Entity_Kind :: enum {")
-	for kind in entity_kinds {
+	for _, kind in entity_kinds {
 		bpln(&b, "    ", kind.name, ",", sep = "")
 	}
 	bpln(&b, "}\n")
 
 	bpln(&b, "register_entity_subtypes :: proc() {")
-	for kind in entity_kinds {
+	for _, kind in entity_kinds {
 		snake_case_name := strings.to_snake_case(kind.name)
 		// bpln(&b, "    when #defined(", snake_case_name, "_destroy) {", sep = "")
 		// bpln(&b, "        register_entity_subtype(", kind.name, ", ", snake_case_name, "_destroy)", sep = "")
@@ -643,8 +680,12 @@ generate_code :: proc(files: []^ast.File) {
 
 		bpln(&b, "    {")
 		bpln(&b, "        procs: SubtypeProcs(", kind.name, ")", sep = "")
-		bpln(&b, "        when #defined(", snake_case_name, "_init) do procs.init = ", snake_case_name, "_init", sep = "")
-		bpln(&b, "        when #defined(", snake_case_name, "_destroy) do procs.destroy = ", snake_case_name, "_destroy", sep = "")
+        if kind.init_name != "" {
+            bpln(&b, "        procs.init = ", kind.init_name, sep = "")
+        }
+        if kind.destroy_name != "" {
+            bpln(&b, "        procs.destroy = ", kind.destroy_name, sep = "")
+        }
 		bpln(&b, "        register_entity_subtype(", kind.name, ", procs)", sep = "")
 		bpln(&b, "    }")
 	}
@@ -652,7 +693,7 @@ generate_code :: proc(files: []^ast.File) {
 
 	bpln(&b, "entity_type_to_kind :: proc($T: typeid) -> Entity_Kind {")
 	bpln(&b, "    return .Base when T == Entity else")
-	for kind in entity_kinds {
+	for _, kind in entity_kinds {
 		bpln(&b, "           .", kind.name, " when T == ", kind.name, " else", sep = "")
 	}
 	bpln(&b, "           #panic(\"Unregistered entity type\")")
