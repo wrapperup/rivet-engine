@@ -17,8 +17,7 @@ GPUReflectionProbe :: struct #max_field_align(16) {
 	priority:       f32,
 }
 
-@(entity)
-@(init = reflection_probe_init)
+@(entity, init = reflection_probe_init)
 ReflectionProbe :: struct {
 	using entity:         ^Entity,
 	translation:          Vec3,

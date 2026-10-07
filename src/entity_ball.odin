@@ -4,8 +4,7 @@ import "core:log"
 
 import b3 "vendor:box3d"
 
-@(entity)
-@(init = init_ball)
+@(entity, init = init_ball)
 Ball :: struct {
 	using entity: ^Entity,
 	translation: Vec3,

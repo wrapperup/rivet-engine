@@ -3,9 +3,7 @@ package game
 import "core:strings"
 import ma "vendor:miniaudio"
 
-@(entity)
-@(init = init_sound_source)
-@(destroy = destroy_sound_source)
+@(entity, init = init_sound_source, destroy = destroy_sound_source)
 SoundSource :: struct {
 	using entity:   ^Entity,
 	translation:    Vec3,

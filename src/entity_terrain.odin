@@ -27,9 +27,7 @@ HeightfieldSource :: struct {
 	heights:    []f32,
 }
 
-@(entity)
-@(init = terrain_init)
-@(destroy = terrain_destroy)
+@(entity, init = terrain_init, destroy = terrain_destroy)
 Terrain :: struct {
 	using entity: ^Entity,
 	translation:  Vec3,
