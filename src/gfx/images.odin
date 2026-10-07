@@ -301,6 +301,8 @@ create_sampler :: proc(
 	border_color: vk.BorderColor = .FLOAT_TRANSPARENT_BLACK,
 	max_lod: f32 = 1.0,
 	max_anisotropy: f32 = 1.0,
+    debug_name: cstring = nil,
+    loc := #caller_location
 ) -> SamplerId {
 	sampler_create_info := vk.SamplerCreateInfo {
 		sType            = .SAMPLER_CREATE_INFO,
@@ -322,6 +324,14 @@ create_sampler :: proc(
 
 	sampler: vk.Sampler
 	vk_check(vk.CreateSampler(r_ctx.device, &sampler_create_info, nil, &sampler))
+
+	when ODIN_DEBUG {
+		if debug_name == nil {
+			debug_set_object_name(sampler, fmt.ctprint(loc))
+		} else {
+			debug_set_object_name(sampler, debug_name)
+		}
+	}
 
 	return add_sampler(sampler)
 }
