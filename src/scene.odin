@@ -174,21 +174,14 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 			append(&scene.entities, sm.id)
 
 		case "heightfield":
-			asset, has_asset := object["heightfield_asset"].(json.String)
-			if !has_asset || asset == "" {
-				log.warn("heightfield node missing generated asset, skipping:", node.name.? or_else "<unnamed>")
-				continue
-			}
-
+			asset := Handle(Heightfield_Asset) { strings.clone(object["heightfield_asset"].(json.String)) }
 			material := Handle(Material_Asset){strings.clone(object["material"].(json.String))}
-			uv_scale := json_f32(object["uv_scale"], 1.0)
 
 			terrain := new_entity(Terrain {
                 translation = node.translation,
                 rotation = node.rotation,
-                heightfield = strings.clone(asset),
+                heightfield = asset,
                 material = material,
-                uv_scale = uv_scale,
             })
 
 			append(&scene.entities, terrain.id)

@@ -1,5 +1,6 @@
 package game
 
+import "core:math"
 VEC3_UP :: Vec3{0, 1, 0}
 
 // f32
@@ -45,4 +46,8 @@ debug_draw_aabb :: proc(box: Aabb) {
 	debug_draw_dot(box.min + {offset.x, 0, offset.z})
 
 	debug_draw_dot(box.max)
+}
+
+is_finite :: proc "contextless" (value: f32) -> bool {
+	return !math.is_nan(value) && !math.is_inf(value)
 }

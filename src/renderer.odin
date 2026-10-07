@@ -221,9 +221,10 @@ draw :: proc() {
 	}
 
 	for terrain in get_entities(Terrain) {
+		heightfield_asset := get_asset(terrain.heightfield)
 		material_asset := get_asset(terrain.material)
-		if material_asset != nil {
-			draw_mesh(terrain.mesh, material_asset.material_id, terrain.translation, terrain.rotation, 1)
+		if heightfield_asset != nil && material_asset != nil {
+			draw_mesh(heightfield_asset.gpu_buffers, material_asset.material_id, terrain.translation, terrain.rotation, 1)
 		}
 	}
 

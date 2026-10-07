@@ -2,9 +2,12 @@ package game
 
 import "base:intrinsics"
 import "base:runtime"
+import "core:c"
+import "core:encoding/endian"
 import "core:encoding/json"
 import "core:fmt"
 import "core:log"
+import "core:math/linalg"
 import "core:mem"
 import "core:os"
 import "core:path/filepath"
@@ -232,6 +235,7 @@ register_assets :: proc() {
 	register_asset_type(Material_Asset, {load = load_material_asset, destroy = destroy_material_asset})
 	register_asset_type(Static_Mesh_Asset, {load = load_static_mesh_asset, destroy = destroy_static_mesh_asset})
 	register_asset_type(Shader_Asset, {load = load_shader_asset, destroy = destroy_shader_asset})
+	register_asset_type(Heightfield_Asset, {load = load_heightfield_asset, destroy = destroy_heightfield_asset})
 
 	register_asset_processor(Shader_Asset, ".slang", process_shader_asset_slang)
 }
@@ -600,4 +604,195 @@ process_shader_asset_slang :: proc(path: string, allocator: mem.Allocator) -> (o
 	ok = true
 
 	return
+}
+
+Heightfield_Data :: struct {
+	count_x:    int,
+	count_z:    int,
+	spacing_x:  f32,
+	spacing_z:  f32,
+	origin_x:   f32,
+	origin_z:   f32,
+	min_height: f32,
+	max_height: f32,
+	heights:    []f32,
+}
+
+Heightfield_Asset :: struct {
+	using base:       Asset,
+	gpu_buffers:      GPUMeshBuffers,
+	phys_heightfield: ^b3.HeightFieldData,
+}
+
+parse_heightfield_data :: proc(data: []u8, allocator := context.allocator) -> (source: Heightfield_Data, ok: bool) {
+	if len(data) < HEIGHTFIELD_HEADER_SIZE || data[0] != 'H' || data[1] != 'F' || data[2] != 'L' || data[3] != 'D' {
+		log.error("Invalid heightfield header")
+		return
+	}
+
+	version, version_ok := endian.get_u32(data[4:], .Little)
+	count_x_u32, count_x_ok := endian.get_u32(data[8:], .Little)
+	count_z_u32, count_z_ok := endian.get_u32(data[12:], .Little)
+	spacing_x, spacing_x_ok := endian.get_f32(data[16:], .Little)
+	spacing_z, spacing_z_ok := endian.get_f32(data[20:], .Little)
+	origin_x, origin_x_ok := endian.get_f32(data[24:], .Little)
+	origin_z, origin_z_ok := endian.get_f32(data[28:], .Little)
+	min_height, min_ok := endian.get_f32(data[32:], .Little)
+	max_height, max_ok := endian.get_f32(data[36:], .Little)
+
+	if !version_ok || !count_x_ok || !count_z_ok || !spacing_x_ok || !spacing_z_ok || !origin_x_ok || !origin_z_ok || !min_ok || !max_ok {
+		log.error("Truncated heightfield header")
+		return
+	}
+	if version != HEIGHTFIELD_FILE_VERSION {
+		log.error("Unsupported heightfield version:", version)
+		return
+	}
+	if count_x_u32 < 2 || count_z_u32 < 2 || count_x_u32 > HEIGHTFIELD_MAX_AXIS || count_z_u32 > HEIGHTFIELD_MAX_AXIS {
+		log.error("Invalid heightfield dimensions:", count_x_u32, count_z_u32)
+		return
+	}
+	if spacing_x <= 0 ||
+	   spacing_z <= 0 ||
+	   !is_finite(spacing_x) ||
+	   !is_finite(spacing_z) ||
+	   !is_finite(origin_x) ||
+	   !is_finite(origin_z) ||
+	   !is_finite(min_height) ||
+	   !is_finite(max_height) ||
+	   min_height > max_height {
+		log.error("Invalid heightfield bounds or spacing")
+		return
+	}
+
+	height_count_u64 := u64(count_x_u32) * u64(count_z_u32)
+	expected_size := u64(HEIGHTFIELD_HEADER_SIZE) + height_count_u64 * size_of(f32)
+	if u64(len(data)) != expected_size {
+		log.error("Heightfield payload size mismatch:")
+		return
+	}
+
+	source = {
+		count_x    = int(count_x_u32),
+		count_z    = int(count_z_u32),
+		spacing_x  = spacing_x,
+		spacing_z  = spacing_z,
+		origin_x   = origin_x,
+		origin_z   = origin_z,
+		min_height = min_height,
+		max_height = max_height,
+		heights    = make([]f32, int(height_count_u64), allocator),
+	}
+	for &height, index in source.heights {
+		value, value_ok := endian.get_f32(data[HEIGHTFIELD_HEADER_SIZE + index * size_of(f32):], .Little)
+		if !value_ok || !is_finite(value) {
+			log.error("Invalid height sample in:")
+			delete(source.heights, allocator)
+			source = {}
+			return
+		}
+		height = value
+	}
+
+	ok = true
+	return
+}
+
+heightfield_mesh :: proc(source: ^Heightfield_Data, allocator := context.allocator) -> Mesh {
+	mesh: Mesh
+	mesh.vertices = make([]Vertex, source.count_x * source.count_z, allocator)
+	mesh.indices = make([]u32, (source.count_x - 1) * (source.count_z - 1) * 6, allocator)
+
+	for z in 0 ..< source.count_z {
+		for x in 0 ..< source.count_x {
+			index := z * source.count_x + x
+			left := max(x - 1, 0)
+			right := min(x + 1, source.count_x - 1)
+			back := max(z - 1, 0)
+			front := min(z + 1, source.count_z - 1)
+
+			tangent_x := Vec3 {
+				f32(right - left) * source.spacing_x,
+				source.heights[z * source.count_x + right] - source.heights[z * source.count_x + left],
+				0,
+			}
+			tangent_z := Vec3 {
+				0,
+				source.heights[front * source.count_x + x] - source.heights[back * source.count_x + x],
+				f32(front - back) * source.spacing_z,
+			}
+			tangent_x = linalg.normalize0(tangent_x)
+			normal := linalg.normalize0(linalg.cross(tangent_z, tangent_x))
+
+			mesh.vertices[index] = {
+				position = {f32(x) * source.spacing_x, source.heights[index], f32(z) * source.spacing_z},
+				uv_x     = f32(x) / f32(source.count_x - 1),
+				normal   = normal,
+				uv_y     = f32(z) / f32(source.count_z - 1),
+				color    = 1,
+				tangent  = {tangent_x.x, tangent_x.y, tangent_x.z, 1},
+			}
+		}
+	}
+
+	write_index := 0
+	for z in 0 ..< source.count_z - 1 {
+		for x in 0 ..< source.count_x - 1 {
+			i00 := u32(z * source.count_x + x)
+			i01 := i00 + 1
+			i10 := i00 + u32(source.count_x)
+			i11 := i10 + 1
+
+			// Match Box3D's fixed heightfield diagonal and counter-clockwise top winding.
+			mesh.indices[write_index + 0] = i00
+			mesh.indices[write_index + 1] = i10
+			mesh.indices[write_index + 2] = i01
+			mesh.indices[write_index + 3] = i11
+			mesh.indices[write_index + 4] = i01
+			mesh.indices[write_index + 5] = i10
+			write_index += 6
+		}
+	}
+	return mesh
+}
+
+load_heightfield_asset :: proc(data: []u8, out: rawptr, allocator: mem.Allocator) -> bool {
+	asset := cast(^Heightfield_Asset)out
+
+	source, ok := parse_heightfield_data(data, context.temp_allocator)
+	mesh := heightfield_mesh(&source, context.temp_allocator)
+
+	gpu_mesh := upload_mesh_to_gpu(mesh)
+
+	heightfield_def := b3.HeightFieldDef {
+		heights             = raw_data(source.heights),
+		scale               = {source.spacing_x, 1, source.spacing_z},
+		countX              = c.int(source.count_x),
+		countZ              = c.int(source.count_z),
+		globalMinimumHeight = source.min_height,
+		globalMaximumHeight = source.max_height,
+		clockwiseWinding    = false,
+	}
+
+	heightfield := b3.CreateHeightField(heightfield_def)
+	if heightfield == nil {
+		log.error("Box3D failed to create heightfield:", heightfield)
+	}
+
+	asset^ = {
+		gpu_buffers      = gpu_mesh,
+		phys_heightfield = heightfield,
+	}
+
+	return true
+}
+
+destroy_heightfield_asset :: proc(raw: rawptr, allocator: mem.Allocator) {
+	asset := cast(^Heightfield_Asset)raw
+
+	gfx.destroy_buffer(&asset.gpu_buffers.vertex_buffer)
+	gfx.destroy_buffer(&asset.gpu_buffers.index_buffer)
+	gfx.destroy_accel(&asset.gpu_buffers.blas)
+
+	b3.DestroyHeightField(asset.phys_heightfield)
 }
