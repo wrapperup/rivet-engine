@@ -39,7 +39,9 @@ staging_write_mesh_buffers :: proc(buffers: ^GPUMeshBuffers, mesh: Mesh, loc := 
 	gfx.write_buffer_slice(&staging, mesh.vertices)
 	gfx.write_buffer_slice(&staging, mesh.indices, vertex_buffer_size)
 
-	if cmd, ok := gfx.immediate_submit(); ok {
+	{
+        cmd := gfx.immediate_submit()
+
 		vertex_copy := vk.BufferCopy {
 			dstOffset = 0,
 			srcOffset = 0,

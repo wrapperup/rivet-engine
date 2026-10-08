@@ -125,7 +125,8 @@ build_blas :: proc(
 	}
 
 	scratch: Buffer(u8)
-	if cmd, ok := immediate_submit(); ok {
+	{
+        cmd := immediate_submit()
 		blas, scratch = _build_accel(cmd, .BOTTOM_LEVEL, &geo, index_count / 3)
 	}
 	destroy_buffer(&scratch)

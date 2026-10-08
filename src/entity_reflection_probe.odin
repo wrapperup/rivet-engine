@@ -61,7 +61,9 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe) {
 	)
     gfx.defer_destroy(&probe.gpu_arena, probe.cube_image_id)
 
-	if cmd, ok := gfx.immediate_submit(); ok {
+	{
+        cmd := gfx.immediate_submit()
+
 		gfx.transition_image(cmd, probe.cube_image_id, .GENERAL)
 
 		black := vk.ClearColorValue {

@@ -124,7 +124,9 @@ ddgi_volume_resources_init :: proc(
 	gfx.defer_destroy(arena, volume.depth)
 	gfx.defer_destroy(arena, volume.offset)
 
-	if cmd, ok := gfx.immediate_submit(); ok {
+	{
+        cmd := gfx.immediate_submit()
+
 		gfx.transition_image(cmd, volume.irradiance, .GENERAL)
 		gfx.transition_image(cmd, volume.depth, .GENERAL)
 		gfx.transition_image(cmd, volume.offset, .GENERAL)

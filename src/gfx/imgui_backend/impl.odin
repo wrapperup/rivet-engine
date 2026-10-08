@@ -78,7 +78,9 @@ gfx_imgui_create_fonts_texture :: proc(this: ^GfxImgui) {
 
 		gfx.write_buffer_slice(&staging, slice.from_ptr(pixels, atlas_bytes))
 
-		if cmd, ok := gfx.immediate_submit(); ok {
+		{
+            cmd := gfx.immediate_submit()
+
 			gfx.transition_image(cmd, this.font_image, .TRANSFER_DST_OPTIMAL)
 
 			gfx.cmd_copy_buffer_to_image(

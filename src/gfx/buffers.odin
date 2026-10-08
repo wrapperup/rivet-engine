@@ -225,7 +225,9 @@ staging_write_buffer_slice :: proc(buffer: ^Buffer($Z), in_data: []$T, offset: v
 	staging := create_buffer(u8, size, .Staging)
 	write_buffer_slice(&staging, in_data)
 
-	if cmd, ok := immediate_submit(); ok {
+	{
+        cmd := immediate_submit()
+
 		region := vk.BufferCopy {
 			dstOffset = offset,
 			srcOffset = 0,

@@ -255,8 +255,8 @@ end_immediate_submit :: proc() {
 }
 
 @(deferred_in = end_immediate_submit)
-immediate_submit :: proc() -> (cmd: CommandBuffer, ready: bool) {
-	return begin_immediate_submit(), true
+immediate_submit :: proc() -> CommandBuffer {
+	return begin_immediate_submit()
 }
 
 current_frame_index :: proc() -> int {
