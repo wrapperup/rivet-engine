@@ -36,9 +36,6 @@ Asset_Load_Kind :: enum {
 	// Async,
 }
 
-// TODO:
-// Asset_Meta :: struct {}
-
 Handle :: struct($T: typeid) {
 	path: string,
 }
@@ -46,7 +43,6 @@ Handle :: struct($T: typeid) {
 Asset :: struct {
 	source_path: string,
 	status:      Asset_Load_Result,
-	// meta:        Asset_Meta,
 	ref_count:   int,
 }
 
@@ -115,7 +111,22 @@ get_asset_store :: proc($T: typeid) -> ^Asset_Store(T) {
 	return cast(^Asset_Store(T))&game.asset_system.stores[T]
 }
 
-load_asset :: proc(handle: Handle($T), method := Asset_Load_Kind.Block) -> (asset: ^T) where intrinsics.type_is_subtype_of(T, Asset) {
+load_asset_path :: proc(
+	$T: typeid,
+	path: string,
+	method := Asset_Load_Kind.Block,
+) -> (
+	asset: ^T,
+) where intrinsics.type_is_subtype_of(T, Asset) {
+	return load_asset_handle(Handle(T){path})
+}
+
+load_asset_handle :: proc(
+	handle: Handle($T),
+	method := Asset_Load_Kind.Block,
+) -> (
+	asset: ^T,
+) where intrinsics.type_is_subtype_of(T, Asset) {
 	if found_asset := get_asset(handle); found_asset != nil {
 		found_asset.ref_count += 1
 		return found_asset
@@ -171,6 +182,11 @@ load_asset :: proc(handle: Handle($T), method := Asset_Load_Kind.Block) -> (asse
 	return
 }
 
+load_asset :: proc {
+	load_asset_path,
+	load_asset_handle,
+}
+
 release_asset :: proc(handle: Handle($T)) -> (destroyed: bool) {
 	asset := get_asset(handle)
 	if asset == nil {
@@ -196,7 +212,11 @@ _destroy_asset :: proc(handle: Handle($T), allocator: mem.Allocator) {
 	delete_key(&store.assets, handle.path)
 }
 
-get_asset :: proc(handle: Handle($T)) -> ^T {
+get_asset_path :: proc($T: typeid, path: string) -> ^T {
+	return get_asset_handle(Handle(T){path})
+}
+
+get_asset_handle :: proc(handle: Handle($T)) -> ^T {
 	if store := get_asset_store(T); store != nil {
 		if asset, ok := &store.assets[handle.path]; ok {
 			return asset
@@ -204,6 +224,11 @@ get_asset :: proc(handle: Handle($T)) -> ^T {
 	}
 
 	return nil
+}
+
+get_asset :: proc {
+    get_asset_path,
+    get_asset_handle,
 }
 
 resolve_asset_path :: proc(handle: Handle($T), allocator := context.allocator) -> string {
@@ -366,7 +391,9 @@ load_image_from_ktx_texture :: proc(ktx_texture: ^ktx.Texture2, debug_name: cstr
 		}
 	}
 
-	if cmd, ok := gfx.immediate_submit(); ok {
+	{
+		cmd := gfx.immediate_submit()
+
 		gfx.transition_image(cmd, image, .TRANSFER_DST_OPTIMAL)
 		gfx.cmd_copy_buffer_to_image(cmd, staging, image, copy_regions[:])
 		gfx.transition_image(cmd, image, .SHADER_READ_ONLY_OPTIMAL)
