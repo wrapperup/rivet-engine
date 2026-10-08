@@ -73,6 +73,7 @@ init_ddgi_rp :: proc() {
 	ddgi_rp.border_pipeline = add_compute_shader({"shaders/ddgi_border.slang"}, "DDGI_Border", GPUDDGIUpdatePush)
 	ddgi_rp.relocate_pipeline = add_compute_shader({"shaders/ddgi_relocate.slang"}, "DDGI_Relocate", GPUDDGIRelocatePush)
 	ddgi_rp.debug_pipeline = add_compute_shader({"shaders/ddgi_debug_atlas.slang"}, "DDGI_Debug_Atlas", GPUDDGIDebugAtlasPush)
+
 	ddgi_rp.probe_pipeline = add_graphics_shader(
 		{"shaders/ddgi_debug_probes.slang"},
 		"DDGI_Debug_Probes",
@@ -283,11 +284,4 @@ record_ddgi_volume :: proc(cmd: gfx.CommandBuffer, volume: ^DDGI_Volume_Resource
 	gfx.image_barrier(cmd, volume.irradiance, src_access = .ComputeShaderWrite, dst_access = .AllShaderRead)
 	gfx.image_barrier(cmd, volume.depth, src_access = .ComputeShaderWrite, dst_access = .AllShaderRead)
 	gfx.image_barrier(cmd, volume.offset, src_access = .ComputeShaderWrite, dst_access = .AllShaderRead)
-}
-
-record_ddgi_debug_atlas_pass :: proc(cmd: gfx.CommandBuffer, volume: ^DDGI_Volume_Resources) {
-	gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .GENERAL)
-	gfx.cmd_bind_pipeline(cmd, game.render_state.ddgi_rp.debug_pipeline)
-	gfx.cmd_push_constants(cmd, GPUDDGIDebugAtlasPush{volume = ddgi_current_config(volume).ptr, out_image = gfx.r_ctx.resolve_image})
-	vk.CmdDispatch(cmd, u32(gfx.r_ctx.draw_extent.width + 15) / 16, u32(gfx.r_ctx.draw_extent.height + 15) / 16, 1)
 }

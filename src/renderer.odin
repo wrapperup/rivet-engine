@@ -1,8 +1,6 @@
 package game
 
-import "core:log"
 import "core:math/linalg"
-import "core:time"
 
 import im "deps:odin-imgui"
 import im_glfw "deps:odin-imgui/imgui_impl_glfw"
@@ -295,13 +293,6 @@ draw :: proc() {
 		final_image = game.render_state.shadow_rp.shadow_depth_image
 	case .Raytracing:
 		record_debug_rt_pass(cmd)
-		gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
-		final_image = gfx.r_ctx.resolve_image
-	case .DDGIAtlas:
-		if len(volumes) > 0 {
-			idx := clamp(int(game.render_state.ddgi_rp.debug_volume), 0, len(volumes) - 1)
-			record_ddgi_debug_atlas_pass(cmd, &volumes[idx].volume)
-		}
 		gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
 		final_image = gfx.r_ctx.resolve_image
 	case .SceneColor:

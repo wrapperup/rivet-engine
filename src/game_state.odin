@@ -20,7 +20,6 @@ ViewState :: enum {
 	SceneDepth,
 	ShadowDepth,
 	Raytracing,
-	DDGIAtlas,
 }
 
 SkeletalMeshInstance :: struct {
@@ -111,15 +110,4 @@ Environment :: struct {
 	sun_color:     Vec3,
 	sky_color:     Vec3,
 	sun_direction: Vec3,
-}
-
-PlayerController :: struct {
-	input: struct {
-		forward: bool,
-		back:    bool,
-		left:    bool,
-		right:   bool,
-		jump:    bool,
-		crouch:  bool,
-	},
 }
