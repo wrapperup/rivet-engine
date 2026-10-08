@@ -293,20 +293,19 @@ when EDITOR {
 		if im.Begin("DDGI") {
 			im.Checkbox("Update", &game.state.update_ddgi)
 			im.InputInt("Atlas debug volume", &game.render_state.ddgi_rp.debug_volume)
+			if im.Button("Bake Volumes") {
+				for &volume, i in get_entities(DDGIVolume) {
+					volume.bake_state = .Warmup
+				}
+			}
+
 			for &volume, i in get_entities(DDGIVolume) {
 				im.PushIDInt(i32(i))
 				counts := volume.gpu.grid_counts
 				im.SeparatorText(fmt.ctprintf("Volume %d (%dx%dx%d, prio %.0f)", i, counts[0], counts[1], counts[2], volume.gpu.priority))
-				im.SliderFloat("intensity", &volume.gpu.intensity, 0.0, 4.0)
-				im.SliderFloat("feedback", &volume.gpu.feedback, 0.0, 50.0)
-				im.SliderFloat("depth bias", &volume.gpu.depth_bias, -2.0, 4.0)
-				im.SliderFloat("reloc max", &volume.gpu.relocation_max, 0.0, 1.5)
-				im.SliderFloat("hysteresis", &volume.gpu.hysteresis, 0.9, 0.999)
-				im.SliderFloat("surface bias", &volume.gpu.normal_bias, 0.0, 2.0)
-				im.SliderFloat("cheb sharpness", &volume.gpu.cheb_sharpness, 1.0, 16.0)
-				im.SliderFloat("ray max", &volume.gpu.ray_max, 10.0, 500.0)
-				im.SliderFloat("max radiance", &volume.gpu.max_radiance, 0.0, 50.0)
-				im.SliderFloat("edge fade", &volume.gpu.edge_fade, 0.0, 10.0)
+				im.BeginDisabled(volume.bake_state == .Warmup || volume.bake_state == .Accumulate)
+				im.EndDisabled()
+				inspector_draw_any(volume)
 				im.PopID()
 			}
 		}

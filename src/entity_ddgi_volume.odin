@@ -41,13 +41,27 @@ GPUDDGIVolume :: struct #max_field_align(16) {
 
 MAX_DDGI_VOLUMES :: 8
 
+DDGI_Bake_State :: enum {
+	Realtime,
+	Warmup,
+	Accumulate,
+	Baked,
+}
+
 DDGI_Volume_Resources :: struct {
-	gpu:             GPUDDGIVolume,
-	config_buffers:  [gfx.FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume),
-	radiance_buffer: gfx.Buffer(Vec4), // rays_per_probe * num_probes
-	irradiance:      gfx.ImageId,
-	depth:           gfx.ImageId,
-	offset:          gfx.ImageId,
+	gpu:                 GPUDDGIVolume,
+	config_buffers:      [gfx.FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume), // TODO: separate this.
+	radiance_buffer:     gfx.Buffer(Vec4), // rays_per_probe * num_probes
+	irradiance:          gfx.ImageId,
+	depth:               gfx.ImageId,
+	offset:              gfx.ImageId,
+
+	// baking
+	bake_state:          DDGI_Bake_State,
+	bake_frame:          u32,
+	warmup_frames:       u32,
+	bake_frames:         u32,
+	realtime_hysteresis: f32,
 }
 
 @(entity)
@@ -55,6 +69,31 @@ DDGIVolume :: struct {
 	using entity: ^Entity,
 	translation:  Vec3,
 	using volume: DDGI_Volume_Resources,
+}
+
+ddgi_do_bake :: proc(resources: ^DDGI_Volume_Resources) -> (should_trace, should_relocate: bool) {
+	switch resources.bake_state {
+	case .Realtime:
+		resources.gpu.hysteresis = resources.realtime_hysteresis
+		return true, true
+	case .Warmup:
+		resources.gpu.hysteresis = 0.9
+		resources.bake_frame += 1
+		if resources.bake_frame >= resources.warmup_frames {resources.bake_state = .Accumulate; resources.bake_frame = 0}
+		return true, true
+	case .Accumulate:
+		n := f32(resources.bake_frame)
+		resources.gpu.hysteresis = n / (n + 1)
+		resources.bake_frame += 1
+		if resources.bake_frame >= resources.bake_frames {
+			resources.bake_state = .Baked
+            resources.bake_frame = 0
+		}
+		return true, false
+	case .Baked:
+		return false, false
+	}
+	return false, false
 }
 
 // TODO: make this part of the entity...
@@ -67,6 +106,12 @@ ddgi_volume_resources_init :: proc(
 	priority: f32 = 0.0,
 	edge_fade: f32 = 1.0,
 ) {
+	volume.bake_state = .Accumulate
+	volume.realtime_hysteresis = 0.99
+	volume.warmup_frames = 96
+	volume.bake_frames = 256
+	volume.realtime_hysteresis = 0.99
+
 	tiles_x := counts.x * counts.z
 	tiles_y := counts.y
 

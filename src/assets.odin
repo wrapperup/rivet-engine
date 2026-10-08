@@ -156,7 +156,7 @@ load_asset :: proc(handle: Handle($T), method := Asset_Load_Kind.Block) -> (asse
 			return
 		}
 
-		log.warn("Loaded asset:", handle)
+		log.debug("Loaded asset:", handle)
 
 		store.assets[handle.path] = new_asset
 		asset = &store.assets[handle.path]

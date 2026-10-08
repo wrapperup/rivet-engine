@@ -19,6 +19,7 @@ Scene :: struct {
 	arena:           virtual.Arena,
 	gpu_arena:       gfx.ResourceArena,
 	entities:        [dynamic]EntityId,
+	engine_ids:      map[EntityId]string,
 	initialized:     bool,
 }
 
@@ -109,12 +110,15 @@ json_f32 :: proc(v: json.Value, default: f32 = 0) -> f32 {
 }
 
 parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
+    allocator := virtual.arena_allocator(&scene.arena)
+
 	for node in data.nodes {
 		object, has_extras := node.extras.(json.Object)
 		if !has_extras {
 			continue
 		}
 		engine_type, _ := object["engine_type"].(json.String)
+        engine_id, has_engine_id := object["engine_id"].(json.String)
 
 		switch engine_type {
 		case "ddgi_volume":
@@ -130,9 +134,7 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 				spacing[i] = size / f32(counts[i] - 1)
 			}
 
-			vol := new_entity(DDGIVolume {
-                translation = origin + half
-            })
+			vol := new_entity(DDGIVolume{translation = origin + half})
 			ddgi_volume_resources_init(
 				&vol.volume,
 				origin,
@@ -144,6 +146,9 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 			)
 
 			append(&scene.entities, vol.id)
+            if has_engine_id {
+                scene.engine_ids[vol.id] = strings.clone(engine_id, allocator)
+            }
 
 		case "reflection_probe":
 			probe := new_entity(
@@ -157,10 +162,13 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 			)
 
 			append(&scene.entities, probe.id)
+            if has_engine_id {
+                scene.engine_ids[probe.id] = strings.clone(engine_id, allocator)
+            }
 
 		case "static_mesh":
-			asset := Handle(Static_Mesh_Asset){strings.clone(object["asset"].(json.String))}
-			material := Handle(Material_Asset){strings.clone(object["material"].(json.String))}
+			asset := Handle(Static_Mesh_Asset){strings.clone(object["asset"].(json.String), allocator)}
+			material := Handle(Material_Asset){strings.clone(object["material"].(json.String), allocator)}
 			sm := new_entity(
 				StaticMesh {
 					translation = node.translation,
@@ -172,19 +180,22 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 			)
 
 			append(&scene.entities, sm.id)
+            if has_engine_id {
+                scene.engine_ids[sm.id] = strings.clone(engine_id, allocator)
+            }
 
 		case "heightfield":
-			asset := Handle(Heightfield_Asset) { strings.clone(object["heightfield_asset"].(json.String)) }
-			material := Handle(Material_Asset){strings.clone(object["material"].(json.String))}
+			asset := Handle(Heightfield_Asset){strings.clone(object["heightfield_asset"].(json.String), allocator)}
+			material := Handle(Material_Asset){strings.clone(object["material"].(json.String), allocator)}
 
-			terrain := new_entity(Terrain {
-                translation = node.translation,
-                rotation = node.rotation,
-                heightfield = asset,
-                material = material,
-            })
+			terrain := new_entity(
+				Terrain{translation = node.translation, rotation = node.rotation, heightfield = asset, material = material},
+			)
 
 			append(&scene.entities, terrain.id)
+            if has_engine_id {
+                scene.engine_ids[terrain.id] = strings.clone(engine_id, allocator)
+            }
 		}
 	}
 }

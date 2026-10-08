@@ -156,7 +156,7 @@ main :: proc() {
 					sky_color = 1.0,
 					atmosphere = default_atmosphere_settings(),
 				},
-				update_ddgi = true, // DDGI must run for reflection capture (and GI) to populate
+				update_ddgi = true,
 			}
 
 			// TODO: asset system.

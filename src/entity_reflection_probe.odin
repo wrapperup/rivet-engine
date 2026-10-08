@@ -17,7 +17,7 @@ GPUReflectionProbe :: struct #max_field_align(16) {
 	priority:       f32,
 }
 
-@(entity, init = reflection_probe_init)
+@(entity, init = reflection_probe_init, destroy = reflection_probe_destroy)
 ReflectionProbe :: struct {
 	using entity:         ^Entity,
 	translation:          Vec3,
@@ -35,6 +35,7 @@ ReflectionProbe :: struct {
 	configs:              [gfx.FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
 	captured:             bool,
 	wants_recapture:      bool,
+	gpu_arena:            gfx.ResourceArena,
 }
 
 REFLECTION_PROBE_FACE_SIZE :: 128
@@ -58,6 +59,7 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe) {
 		array_layers = 6,
 		flags = {.CUBE_COMPATIBLE},
 	)
+    gfx.defer_destroy(&probe.gpu_arena, probe.cube_image_id)
 
 	if cmd, ok := gfx.immediate_submit(); ok {
 		gfx.transition_image(cmd, probe.cube_image_id, .GENERAL)
@@ -84,19 +86,28 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe) {
 			base_array_layer = 0,
 			array_layers = 6,
 		)
+        gfx.defer_destroy(&probe.gpu_arena, mip_view)
+
 		probe.cube_mip_storage_ids[mip] = mip_view
 	}
 
 	probe.gpu_sampler_id = gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, max_lod = f32(probe.mip_count - 1))
+    gfx.defer_destroy(&probe.gpu_arena, probe.gpu_sampler_id)
 
 	for &config in probe.configs {
+        // TODO: this is shit. just make 1 buffer.
 		config = gfx.create_buffer(GPUReflectionProbe, 1, .DynUniform)
+        gfx.defer_destroy(&probe.gpu_arena, config)
 	}
 
 	cfg := reflection_probe_to_gpu(probe)
 	for &config in probe.configs {
 		gfx.write_buffer(&config, &cfg)
 	}
+}
+
+reflection_probe_destroy :: proc(probe: ^ReflectionProbe) {
+    gfx.flush_vk_arena(&probe.gpu_arena)
 }
 
 reflection_probe_to_gpu :: proc(probe: ^ReflectionProbe) -> GPUReflectionProbe {
