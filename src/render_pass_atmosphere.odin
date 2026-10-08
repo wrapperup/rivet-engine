@@ -69,12 +69,12 @@ AtmosphereRenderPass :: struct {
 	environment_id:               gfx.ImageId,
 	environment_mips:             [9]gfx.ImageId,
 	parameters:                   GPUAtmosphere,
-	transmittance_pipeline:       ^gfx.ComputePipeline,
-	multiple_scattering_pipeline: ^gfx.ComputePipeline,
-	sky_view_pipeline:            ^gfx.ComputePipeline,
-	environment_pipeline:         ^gfx.ComputePipeline,
-	aerial_pipeline:              ^gfx.ComputePipeline,
-	draw_pipeline:                ^gfx.GraphicsPipeline,
+	transmittance_pipeline:       ^gfx.Pipeline,
+	multiple_scattering_pipeline: ^gfx.Pipeline,
+	sky_view_pipeline:            ^gfx.Pipeline,
+	environment_pipeline:         ^gfx.Pipeline,
+	aerial_pipeline:              ^gfx.Pipeline,
+	draw_pipeline:                ^gfx.Pipeline,
 	last_settings:                AtmosphereSettings,
 	last_sun_direction:           Vec3,
 	last_sun_color:               Vec3,
@@ -136,46 +136,28 @@ init_atmosphere_rp :: proc() {
 
 	rp.transmittance_pipeline = add_compute_shader(
 		{"shaders/atmosphere_transmittance.slang"},
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Atmosphere_Transmittance", module, GPUAtmosphereLutPush)
-		},
+		"Atmosphere_Transmittance",
+		GPUAtmosphereLutPush,
 	)
 
 	rp.multiple_scattering_pipeline = add_compute_shader(
 		{"shaders/atmosphere_multiple_scattering.slang"},
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Atmosphere_MultipleScattering", module, GPUAtmosphereLutPush)
-		},
+		"Atmosphere_MultipleScattering",
+		GPUAtmosphereLutPush,
 	)
 
-	rp.sky_view_pipeline = add_compute_shader({"shaders/atmosphere_sky_view.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("Atmosphere_SkyView", module, GPUAtmosphereLutPush)
-	})
+	rp.sky_view_pipeline = add_compute_shader({"shaders/atmosphere_sky_view.slang"}, "Atmosphere_SkyView", GPUAtmosphereLutPush)
 
-	rp.environment_pipeline = add_compute_shader(
-		{"shaders/atmosphere_environment.slang"},
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Atmosphere_Environment", module, GPUAtmosphereCubePush)
-		},
+	rp.environment_pipeline = add_compute_shader({"shaders/atmosphere_environment.slang"}, "Atmosphere_Environment", GPUAtmosphereCubePush)
+
+	rp.aerial_pipeline = add_compute_shader({"shaders/atmosphere_aerial.slang"}, "Atmosphere_Aerial", GPUAtmosphereAerialPush)
+
+	rp.draw_pipeline = add_graphics_shader(
+		{"shaders/atmosphere.slang"},
+		"Atmosphere_Sky",
+		GPUAtmosphereDrawPush,
+		{color_format = gfx.DRAW_FORMAT, msaa = true},
 	)
-
-	rp.aerial_pipeline = add_compute_shader({"shaders/atmosphere_aerial.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("Atmosphere_Aerial", module, GPUAtmosphereAerialPush)
-	})
-
-	rp.draw_pipeline = add_graphics_shader({"shaders/atmosphere.slang"}, proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-		return gfx.create_graphics_pipeline(
-			name = "Atmosphere_Sky",
-			shader = module,
-			input_topology = .TRIANGLE_LIST,
-			polygon_mode = .FILL,
-			cull_mode = {},
-			front_face = .COUNTER_CLOCKWISE,
-			color_format = .R32G32B32A32_SFLOAT,
-			multisampling_samples = gfx.msaa_samples(),
-			push_constants = GPUAtmosphereDrawPush,
-		)
-	})
 }
 
 atmosphere_prepare :: proc() {
@@ -219,7 +201,7 @@ atmosphere_prepare :: proc() {
 	game.render_state.global_data.atmosphere = a^
 }
 
-record_atmosphere_lut :: proc(cmd: gfx.CommandBuffer, pipeline: ^gfx.ComputePipeline, img: gfx.ImageId, id: gfx.ImageId) {
+record_atmosphere_lut :: proc(cmd: gfx.CommandBuffer, pipeline: ^gfx.Pipeline, img: gfx.ImageId, id: gfx.ImageId) {
 	gfx.image_barrier(cmd, img, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
 
 	gfx.cmd_bind_pipeline(cmd, pipeline)

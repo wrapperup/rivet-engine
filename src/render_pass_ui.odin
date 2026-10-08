@@ -41,7 +41,7 @@ UI_Push :: struct #max_field_align(16) {
 }
 
 UIRenderPass :: struct {
-	pipeline:        ^gfx.GraphicsPipeline,
+	pipeline:        ^gfx.Pipeline,
 	sampler:         gfx.SamplerId,
 	commands:        [dynamic]UI_Command,
 	num_commands:    int,
@@ -145,20 +145,12 @@ load_font :: proc(image_path: string, json_path: string, allocator := context.al
 init_ui_rp :: proc() {
 	ui_rp := &game.render_state.ui_rp
 
-	ui_rp.pipeline = add_graphics_shader({"shaders/ui.slang"}, proc(module: gfx.ShaderModule) -> gfx.GraphicsPipeline {
-		return gfx.create_graphics_pipeline(
-			name = "UI_Pipeline",
-			shader = module,
-			input_topology = .TRIANGLE_STRIP,
-			polygon_mode = .FILL,
-			cull_mode = {},
-			front_face = .CLOCKWISE,
-			color_format = gfx.image_meta(gfx.r_ctx.draw_image).format,
-			multisampling_samples = ._1,
-			push_constants = UI_Push,
-			blend_mode = .Alpha,
-		)
-	})
+	ui_rp.pipeline = add_graphics_shader(
+		{"shaders/ui.slang"},
+		"UI_Pipeline",
+		UI_Push,
+		{topology = .Triangle_Strip, front_face = .CLOCKWISE, color_format = gfx.DRAW_FORMAT, blend_mode = .Alpha},
+	)
 
 	ui_rp.sampler = gfx.create_sampler(.LINEAR, .REPEAT)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, ui_rp.sampler)

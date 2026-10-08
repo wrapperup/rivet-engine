@@ -23,7 +23,7 @@ GPUCascadeConfig :: struct #max_field_align(16) {
 }
 
 ShadowRenderPass :: struct {
-	mesh_shadow_pipeline:            ^gfx.GraphicsPipeline,
+	mesh_shadow_pipeline:            ^gfx.Pipeline,
 	shadow_depth_image:              gfx.ImageId,
 	shadow_sampler:                  gfx.SamplerId,
 	shadow_depth_attach_image_views: [NUM_CASCADES]gfx.ImageId,
@@ -61,21 +61,13 @@ init_shadow_maps :: proc() {
 init_shadow_rp :: proc() {
 	game.render_state.shadow_rp.mesh_shadow_pipeline = add_graphics_shader(
 	{"shaders/shadow_depth.slang"},
-	proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-		return gfx.create_graphics_pipeline(
-			name = "Shadow_Depth_Pipeline",
-			shader = module,
-			vertex_entry = "vertex_main",
-			fragment_entry = nil, // TODO: Only need vertex depth currently for shadow maps.
-			input_topology = .TRIANGLE_LIST,
-			polygon_mode = .FILL,
-			cull_mode = {},
-			// Keep distant casters beyond the depth slab without expanding its range.
-			depth_clamp = true,
-			front_face = .COUNTER_CLOCKWISE,
-			depth = {format = .D32_SFLOAT, compare_op = .LESS_OR_EQUAL, write_enabled = true},
-			push_constants = GPUDrawShadowDepthPushConstants,
-		)
+	"Shadow_Depth_Pipeline",
+	GPUDrawShadowDepthPushConstants,
+	{
+		depth_only = true, // TODO: Only need vertex depth currently for shadow maps.
+		// Keep distant casters beyond the depth slab without expanding its range.
+		depth_clamp = true,
+		depth = {format = .D32_SFLOAT, compare_op = .LESS_OR_EQUAL, write_enabled = true},
 	},
 	)
 

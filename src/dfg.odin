@@ -12,7 +12,7 @@ GPUDfgGeneratePassPC :: struct #max_field_align(16) {
 }
 
 DfgGeneratePass :: struct {
-	pipeline:                gfx.ComputePipeline,
+	pipeline:                gfx.Pipeline,
 
 	// Resources
 	dfg_image:               gfx.ImageId,

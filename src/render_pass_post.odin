@@ -15,15 +15,14 @@ GPUPostProcessingPushConstants :: struct #max_field_align(16) {
 
 PostProcessingRenderPass :: struct {
 	tony_mc_mapface_id:  gfx.ImageId,
-	tonemapper_pipeline: ^gfx.ComputePipeline,
+	tonemapper_pipeline: ^gfx.Pipeline,
 }
 
 init_post_process_rp :: proc() {
 	game.render_state.post_process_rp.tonemapper_pipeline = add_compute_shader(
 		{"shaders/tonemapping.slang"},
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Tonemapper_Pipeline", module, GPUPostProcessingPushConstants)
-		},
+		"Tonemapper_Pipeline",
+		GPUPostProcessingPushConstants,
 	)
 }
 

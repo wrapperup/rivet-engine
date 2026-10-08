@@ -52,12 +52,12 @@ GPUDDGIProbePush :: struct #max_field_align(16) {
 DDGI_UPDATE_BLOCKS_PER_PROBE :: (DDGI_PROBE_IRR_TEXELS * DDGI_PROBE_IRR_TEXELS + 63) / 64 + (DDGI_PROBE_DEPTH_TEXELS * DDGI_PROBE_DEPTH_TEXELS + 63) / 64
 
 DDGIRenderPass :: struct {
-	trace_pipeline:        ^gfx.ComputePipeline,
-	update_pipeline:       ^gfx.ComputePipeline,
-	border_pipeline:       ^gfx.ComputePipeline,
-	relocate_pipeline:     ^gfx.ComputePipeline,
-	debug_pipeline:        ^gfx.ComputePipeline,
-	probe_pipeline:        ^gfx.GraphicsPipeline,
+	trace_pipeline:        ^gfx.Pipeline,
+	update_pipeline:       ^gfx.Pipeline,
+	border_pipeline:       ^gfx.Pipeline,
+	relocate_pipeline:     ^gfx.Pipeline,
+	debug_pipeline:        ^gfx.Pipeline,
+	probe_pipeline:        ^gfx.Pipeline,
 	volumes_buffers:       [gfx.FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume),
 	debug_volume:          i32,
 	probe_vbuf:            gfx.Buffer(Vertex),
@@ -68,36 +68,19 @@ DDGIRenderPass :: struct {
 init_ddgi_rp :: proc() {
 	ddgi_rp := &game.render_state.ddgi_rp
 
-	ddgi_rp.trace_pipeline = add_compute_shader({"shaders/ddgi_trace.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("DDGI_Trace", module, GPUDDGITracePush)
-	})
-	ddgi_rp.update_pipeline = add_compute_shader({"shaders/ddgi_update.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("DDGI_Update", module, GPUDDGIUpdatePush)
-	})
-	ddgi_rp.border_pipeline = add_compute_shader({"shaders/ddgi_border.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("DDGI_Border", module, GPUDDGIUpdatePush)
-	})
-	ddgi_rp.relocate_pipeline = add_compute_shader({"shaders/ddgi_relocate.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("DDGI_Relocate", module, GPUDDGIRelocatePush)
-	})
-	ddgi_rp.debug_pipeline = add_compute_shader({"shaders/ddgi_debug_atlas.slang"}, proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-		return gfx.create_compute_pipeline("DDGI_Debug_Atlas", module, GPUDDGIDebugAtlasPush)
-	})
+	ddgi_rp.trace_pipeline = add_compute_shader({"shaders/ddgi_trace.slang"}, "DDGI_Trace", GPUDDGITracePush)
+	ddgi_rp.update_pipeline = add_compute_shader({"shaders/ddgi_update.slang"}, "DDGI_Update", GPUDDGIUpdatePush)
+	ddgi_rp.border_pipeline = add_compute_shader({"shaders/ddgi_border.slang"}, "DDGI_Border", GPUDDGIUpdatePush)
+	ddgi_rp.relocate_pipeline = add_compute_shader({"shaders/ddgi_relocate.slang"}, "DDGI_Relocate", GPUDDGIRelocatePush)
+	ddgi_rp.debug_pipeline = add_compute_shader({"shaders/ddgi_debug_atlas.slang"}, "DDGI_Debug_Atlas", GPUDDGIDebugAtlasPush)
 	ddgi_rp.probe_pipeline = add_graphics_shader(
 		{"shaders/ddgi_debug_probes.slang"},
-		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-			return gfx.create_graphics_pipeline(
-				name = "DDGI_Debug_Probes",
-				shader = module,
-				input_topology = .TRIANGLE_LIST,
-				polygon_mode = .FILL,
-				cull_mode = {},
-				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = .D32_SFLOAT, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
-				color_format = .R32G32B32A32_SFLOAT,
-				multisampling_samples = gfx.msaa_samples(),
-				push_constants = GPUDDGIProbePush,
-			)
+		"DDGI_Debug_Probes",
+		GPUDDGIProbePush,
+		{
+			depth = {format = gfx.DEPTH_FORMAT, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
+			color_format = gfx.DRAW_FORMAT,
+			msaa = true,
 		},
 	)
 

@@ -149,22 +149,7 @@ defer_destroy_sampler :: proc(arena: ^ResourceArena, id: SamplerId, debug: strin
 	defer_destroy_resource(arena, u64(id), .BindlessSampler, nil, debug, loc)
 }
 
-defer_destroy_graphics_pipeline :: proc(
-	arena: ^ResourceArena,
-	pipeline: GraphicsPipeline,
-	debug: string = "UNKNOWN",
-	loc := #caller_location,
-) {
-	defer_destroy_resource(arena, transmute(u64)pipeline.pipeline, .Pipeline, nil, debug, loc)
-	defer_destroy_resource(arena, transmute(u64)pipeline.layout, .PipelineLayout, nil, debug, loc)
-}
-
-defer_destroy_compute_pipeline :: proc(
-	arena: ^ResourceArena,
-	pipeline: ComputePipeline,
-	debug: string = "UNKNOWN",
-	loc := #caller_location,
-) {
+defer_destroy_pipeline :: proc(arena: ^ResourceArena, pipeline: Pipeline, debug: string = "UNKNOWN", loc := #caller_location) {
 	defer_destroy_resource(arena, transmute(u64)pipeline.pipeline, .Pipeline, nil, debug, loc)
 	defer_destroy_resource(arena, transmute(u64)pipeline.layout, .PipelineLayout, nil, debug, loc)
 }
@@ -216,8 +201,7 @@ defer_destroy :: proc {
 	defer_destroy_buffer,
 	defer_destroy_image,
 	defer_destroy_sampler,
-	defer_destroy_graphics_pipeline,
-	defer_destroy_compute_pipeline,
+	defer_destroy_pipeline,
 
 	// Vulkan-specific handle overloads
 	defer_destroy_vk_command_pool,

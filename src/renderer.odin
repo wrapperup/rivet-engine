@@ -71,16 +71,16 @@ RenderState :: struct {
 	ui_rp:                           UIRenderPass,
 
 	// Reflection probe pipelines
-	reflection_capture_pipeline:     ^gfx.ComputePipeline,
-	reflection_prefilter_pipeline:   ^gfx.ComputePipeline,
-	reflection_probe_debug_pipeline: ^gfx.GraphicsPipeline,
+	reflection_capture_pipeline:     ^gfx.Pipeline,
+	reflection_prefilter_pipeline:   ^gfx.Pipeline,
+	reflection_probe_debug_pipeline: ^gfx.Pipeline,
 	reflection_probes_buffers:       [gfx.FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
 	atmosphere_rp:                   AtmosphereRenderPass,
 	draw_sky:                        bool,
 	mesh_debug_view:                 i32,
 
 	// Debug
-	debug_rt_pipeline:               ^gfx.ComputePipeline,
+	debug_rt_pipeline:               ^gfx.Pipeline,
 
 	// Imgui
 	imgui_ctx:                       ^im.Context,

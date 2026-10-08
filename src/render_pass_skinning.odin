@@ -2,8 +2,6 @@ package game
 
 import "core:math"
 
-import vk "vendor:vulkan"
-
 import "gfx"
 
 @(shader_shared)
@@ -15,16 +13,11 @@ GPUSkinningPushConstants :: struct #max_field_align(16) {
 }
 
 SkinningRenderPass :: struct {
-	skinning_pipeline: ^gfx.ComputePipeline,
+	skinning_pipeline: ^gfx.Pipeline,
 }
 
 init_skinning_rp :: proc() {
-	game.render_state.skinning_rp.skinning_pipeline = add_compute_shader(
-		{"shaders/skinning.slang"},
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Skinning", module, GPUSkinningPushConstants)
-		},
-	)
+	game.render_state.skinning_rp.skinning_pipeline = add_compute_shader({"shaders/skinning.slang"}, "Skinning", GPUSkinningPushConstants)
 }
 
 init_skinning_instance :: proc(instance: ^SkeletalMeshInstance, animation: ^SkeletalAnimation) {

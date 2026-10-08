@@ -26,44 +26,32 @@ GPUDrawPushConstants :: struct #max_field_align(16) {
 }
 
 GeometryRenderPass :: struct {
-	depth_pipeline: ^gfx.GraphicsPipeline,
-	mesh_pipeline:  ^gfx.GraphicsPipeline,
+	depth_pipeline: ^gfx.Pipeline,
+	mesh_pipeline:  ^gfx.Pipeline,
 }
 
 init_geometry_rp :: proc() {
 	// Match vertex and raster state in both passes for depth equality.
 	game.render_state.geometry_rp.depth_pipeline = add_graphics_shader(
 		{"shaders/mesh.slang"},
-		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-			return gfx.create_graphics_pipeline(
-				name = "Mesh_Depth_Prepass",
-				shader = module,
-				fragment_entry = nil,
-				input_topology = .TRIANGLE_LIST,
-				polygon_mode = .FILL,
-				cull_mode = {.BACK},
-				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.image_meta(gfx.r_ctx.depth_image).format, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
-				multisampling_samples = gfx.msaa_samples(),
-				push_constants = GPUDrawPushConstants,
-			)
+		"Mesh_Depth_Prepass",
+		GPUDrawPushConstants,
+		{
+			depth_only = true,
+			cull_mode = {.BACK},
+			depth = {format = gfx.DEPTH_FORMAT, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
+			msaa = true,
 		},
 	)
 	game.render_state.geometry_rp.mesh_pipeline = add_graphics_shader(
 		{"shaders/mesh.slang"},
-		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-			return gfx.create_graphics_pipeline(
-				name = "Basic_Mesh_Pipeline",
-				shader = module,
-				input_topology = .TRIANGLE_LIST,
-				polygon_mode = .FILL,
-				cull_mode = {.BACK},
-				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.image_meta(gfx.r_ctx.depth_image).format, compare_op = .EQUAL, write_enabled = false},
-				color_format = gfx.image_meta(gfx.r_ctx.draw_image).format,
-				multisampling_samples = gfx.msaa_samples(),
-				push_constants = GPUDrawPushConstants,
-			)
+		"Basic_Mesh_Pipeline",
+		GPUDrawPushConstants,
+		{
+			cull_mode = {.BACK},
+			depth = {format = gfx.DEPTH_FORMAT, compare_op = .EQUAL, write_enabled = false},
+			color_format = gfx.DRAW_FORMAT,
+			msaa = true,
 		},
 	)
 

@@ -12,6 +12,9 @@ import vma "deps:odin-vma"
 import "vendor:glfw"
 import vk "vendor:vulkan"
 
+DRAW_FORMAT :: vk.Format.R32G32B32A32_SFLOAT
+DEPTH_FORMAT :: vk.Format.D32_SFLOAT
+
 log_normal :: proc(args: ..any) {
 	if r_ctx.enable_logs {
 		fmt.println(..args)
@@ -176,18 +179,17 @@ create_swapchain :: proc(old_swapchain: vk.SwapchainKHR = 0) {
 		defer_destroy(&swapchain.arena, swapchain.swapchain_images[i])
 	}
 
-	draw_image_format: vk.Format = .R32G32B32A32_SFLOAT
 	draw_image_extent := vk.Extent3D{extent.width, extent.height, 1}
 	draw_image_usages := vk.ImageUsageFlags{.TRANSFER_SRC, .TRANSFER_DST, .STORAGE, .COLOR_ATTACHMENT}
 
-	r_ctx.draw_image = create_image(draw_image_format, draw_image_extent, draw_image_usages, msaa_samples = r_ctx.msaa_samples)
+	r_ctx.draw_image = create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = r_ctx.msaa_samples)
 	defer_destroy(&swapchain.arena, r_ctx.draw_image)
 
 	// Used for MSAA resolution
-	r_ctx.resolve_image = create_image(draw_image_format, draw_image_extent, draw_image_usages, msaa_samples = ._1)
+	r_ctx.resolve_image = create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = ._1)
 	defer_destroy(&swapchain.arena, r_ctx.resolve_image)
 
-	r_ctx.depth_image = create_image(.D32_SFLOAT, draw_image_extent, {.DEPTH_STENCIL_ATTACHMENT}, msaa_samples = r_ctx.msaa_samples)
+	r_ctx.depth_image = create_image(DEPTH_FORMAT, draw_image_extent, {.DEPTH_STENCIL_ATTACHMENT}, msaa_samples = r_ctx.msaa_samples)
 	defer_destroy(&swapchain.arena, r_ctx.depth_image)
 
 	r_ctx.draw_extent.width = draw_image_extent.width

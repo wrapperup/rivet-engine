@@ -5,82 +5,62 @@ import "core:fmt"
 import "core:slice"
 import "core:strings"
 
-import vk "vendor:vulkan"
-
 import sp "deps:odin-slang/slang"
 
 import "gfx"
 
 ShaderManager :: struct {
-	graphics_shaders: [dynamic]Shader(gfx.GraphicsPipeline),
-	compute_shaders:  [dynamic]Shader(gfx.ComputePipeline),
+	shaders: [dynamic]Shader,
+}
+
+Shader :: struct {
+	asset:               Handle(Shader_Asset),
+	name:                cstring,
+	desc:                gfx.Pipeline_Desc,
+	push_constants_size: u32,
+	pipeline:            ^gfx.Pipeline,
 }
 
 add_graphics_shader :: proc(
 	asset: Handle(Shader_Asset),
-	pipeline_create_callback: proc(_: vk.ShaderModule) -> gfx.GraphicsPipeline,
-) -> ^gfx.GraphicsPipeline {
-	shader := init_shader(gfx.GraphicsPipeline, asset, pipeline_create_callback)
-	append(&game.render_state.shader_manager.graphics_shaders, shader)
-
-	return shader.pipeline
+	name: cstring,
+	$push_constants: typeid,
+	desc: gfx.Graphics_Pipeline_Desc = {},
+) -> ^gfx.Pipeline {
+	return add_shader(asset, name, desc, size_of(push_constants))
 }
 
-add_compute_shader :: proc(
-	asset: Handle(Shader_Asset),
-	pipeline_create_callback: proc(_: vk.ShaderModule) -> gfx.ComputePipeline,
-) -> ^gfx.ComputePipeline {
-	shader := init_shader(gfx.ComputePipeline, asset, pipeline_create_callback)
-	append(&game.render_state.shader_manager.compute_shaders, shader)
-
-	return shader.pipeline
+add_compute_shader :: proc(asset: Handle(Shader_Asset), name: cstring, $push_constants: typeid) -> ^gfx.Pipeline {
+	return add_shader(asset, name, gfx.Compute_Pipeline_Desc{}, size_of(push_constants))
 }
 
-// ================================================
-
-Shader :: struct($T: typeid) {
-	pipeline:                 ^T,
-	asset:                    Handle(Shader_Asset),
-	pipeline_create_callback: proc(_: vk.ShaderModule) -> T,
-}
-
-init_shader :: proc($T: typeid, asset: Handle(Shader_Asset), pipeline_create_callback: proc(_: vk.ShaderModule) -> T) -> Shader(T) {
-	shader := Shader(T) {
-		asset                    = asset,
-		pipeline_create_callback = pipeline_create_callback,
+add_shader :: proc(asset: Handle(Shader_Asset), name: cstring, desc: gfx.Pipeline_Desc, push_constants_size: u32) -> ^gfx.Pipeline {
+	shader := Shader {
+		asset               = asset,
+		name                = name,
+		desc                = desc,
+		push_constants_size = push_constants_size,
+		pipeline            = new(gfx.Pipeline),
 	}
 
-	assert(load_shader_pipeline(&shader))
+	assert(build_shader_pipeline(&shader))
+	append(&game.render_state.shader_manager.shaders, shader)
 
-	return shader
+	return shader.pipeline
 }
 
-load_shader_pipeline :: proc(shader: ^Shader($T)) -> bool {
+build_shader_pipeline :: proc(shader: ^Shader) -> bool {
 	code := load_asset(shader.asset).spirv_bytes
 
 	shader_module, f_ok := gfx.load_shader_module_from_bytes(code)
 	assert(f_ok, "Failed to load shaders.")
 
-	pipeline := shader.pipeline_create_callback(shader_module)
+	pipeline := gfx.create_pipeline_from_desc(shader.name, shader_module, shader.desc, shader.push_constants_size)
 
 	assert(pipeline.pipeline != 0)
 
-	if shader.pipeline != nil {
-		if shader.pipeline.pipeline != 0 {
-			vk.DestroyPipeline(gfx.r_ctx.device, shader.pipeline.pipeline, nil)
-		}
-		// Destroy the old layout too, or each hotreload leaks one (which validation
-		// then has to report at shutdown -> slow close after many reloads).
-		if shader.pipeline.layout != 0 {
-			vk.DestroyPipelineLayout(gfx.r_ctx.device, shader.pipeline.layout, nil)
-		}
-		// Update in place: pointers handed out by add_*_shader (e.g. the
-		// render_state.*_pipeline fields) alias this allocation, so it must NOT move.
-		shader.pipeline^ = pipeline
-	} else {
-		shader.pipeline = new(T)
-		shader.pipeline^ = pipeline
-	}
+	gfx.destroy_pipeline(shader.pipeline^)
+	shader.pipeline^ = pipeline
 
 	gfx.destroy_shader_module(shader_module)
 
@@ -175,14 +155,9 @@ safe_release :: proc(unknown: ^sp.IUnknown) {
 	}
 }
 
-shutdown_shader :: proc(shader: ^Shader($T)) {
+shutdown_shader :: proc(shader: ^Shader) {
 	if shader.pipeline != nil {
-		if shader.pipeline.pipeline != 0 {
-			vk.DestroyPipeline(gfx.r_ctx.device, shader.pipeline.pipeline, nil)
-		}
-		if shader.pipeline.layout != 0 {
-			vk.DestroyPipelineLayout(gfx.r_ctx.device, shader.pipeline.layout, nil)
-		}
+		gfx.destroy_pipeline(shader.pipeline^)
 		free(shader.pipeline)
 	}
 	release_asset(shader.asset)
@@ -190,14 +165,10 @@ shutdown_shader :: proc(shader: ^Shader($T)) {
 }
 
 shutdown_shader_manager :: proc() {
-	for &shader in game.render_state.shader_manager.graphics_shaders {
+	for &shader in game.render_state.shader_manager.shaders {
 		shutdown_shader(&shader)
 	}
-	for &shader in game.render_state.shader_manager.compute_shaders {
-		shutdown_shader(&shader)
-	}
-	delete(game.render_state.shader_manager.graphics_shaders)
-	delete(game.render_state.shader_manager.compute_shaders)
+	delete(game.render_state.shader_manager.shaders)
 	game.render_state.shader_manager = {}
 
 	if game.render_state.global_session != nil {

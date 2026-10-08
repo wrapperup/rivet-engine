@@ -16,7 +16,7 @@ PushConstants :: struct #max_field_align(16) {
 }
 
 GfxImgui :: struct {
-	pipeline:      gfx.GraphicsPipeline,
+	pipeline:      gfx.Pipeline,
 	vbuffers:      [gfx.FRAME_OVERLAP]gfx.Buffer(im.DrawVert),
 	ibuffers:      [gfx.FRAME_OVERLAP]gfx.Buffer(im.DrawIdx),
 	vbuffer_sizes: [gfx.FRAME_OVERLAP]int,
@@ -50,15 +50,10 @@ gfx_imgui_init :: proc() {
 	defer gfx.destroy_shader_module(shader_module)
 
 	this.pipeline = gfx.create_graphics_pipeline(
-		name = "Imgui_Pipeline",
-		shader = shader_module,
-		input_topology = .TRIANGLE_LIST,
-		polygon_mode = .FILL,
-		cull_mode = {},
-		front_face = .COUNTER_CLOCKWISE,
-		blend_mode = .Alpha,
-		color_format = gfx.r_ctx.swapchain.swapchain_image_format,
-		push_constants = PushConstants,
+		"Imgui_Pipeline",
+		shader_module,
+		PushConstants,
+		{blend_mode = .Alpha, color_format = gfx.r_ctx.swapchain.swapchain_image_format},
 	)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, this.pipeline)
 }

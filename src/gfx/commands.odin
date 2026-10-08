@@ -2,33 +2,20 @@ package gfx
 
 import vk "vendor:vulkan"
 
-cmd_bind_graphics_pipeline :: #force_inline proc(cmd: CommandBuffer, pipeline: GraphicsPipeline) {
-	vk.CmdBindDescriptorSets(cmd, .GRAPHICS, pipeline.layout, 0, 1, &r_ctx.bindless_system.descriptor_set, 0, nil)
-	vk.CmdBindPipeline(cmd, .GRAPHICS, pipeline.pipeline)
+cmd_bind_pipeline_value :: #force_inline proc(cmd: CommandBuffer, pipeline: Pipeline) {
+	vk.CmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, 1, &r_ctx.bindless_system.descriptor_set, 0, nil)
+	vk.CmdBindPipeline(cmd, pipeline.bind_point, pipeline.pipeline)
 
-	r_ctx.current_pipeline = pipeline.common
+	r_ctx.current_pipeline = pipeline
 }
 
-cmd_bind_graphics_pipeline_ptr :: #force_inline proc(cmd: CommandBuffer, pipeline: ^GraphicsPipeline) {
-	cmd_bind_graphics_pipeline(cmd, pipeline^)
-}
-
-cmd_bind_compute_pipeline :: #force_inline proc(cmd: CommandBuffer, pipeline: ComputePipeline) {
-	vk.CmdBindDescriptorSets(cmd, .COMPUTE, pipeline.layout, 0, 1, &r_ctx.bindless_system.descriptor_set, 0, nil)
-	vk.CmdBindPipeline(cmd, .COMPUTE, pipeline.pipeline)
-
-	r_ctx.current_pipeline = pipeline.common
-}
-
-cmd_bind_compute_pipeline_ptr :: #force_inline proc(cmd: CommandBuffer, pipeline: ^ComputePipeline) {
-	cmd_bind_compute_pipeline(cmd, pipeline^)
+cmd_bind_pipeline_ptr :: #force_inline proc(cmd: CommandBuffer, pipeline: ^Pipeline) {
+	cmd_bind_pipeline_value(cmd, pipeline^)
 }
 
 cmd_bind_pipeline :: proc {
-	cmd_bind_graphics_pipeline,
-	cmd_bind_graphics_pipeline_ptr,
-	cmd_bind_compute_pipeline,
-	cmd_bind_compute_pipeline_ptr,
+	cmd_bind_pipeline_value,
+	cmd_bind_pipeline_ptr,
 }
 
 

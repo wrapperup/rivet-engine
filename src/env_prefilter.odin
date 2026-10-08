@@ -18,7 +18,7 @@ PrefilteredCubeMapPushConstants :: struct {
 PrefilteredCubeMapPass :: struct {
 	descriptor_set_layout:         vk.DescriptorSetLayout,
 	descriptor_set:                vk.DescriptorSet,
-	pipeline:                      gfx.ComputePipeline,
+	pipeline:                      gfx.Pipeline,
 
 	// Resources
 	cube_image:                    gfx.ImageId,

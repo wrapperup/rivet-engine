@@ -41,15 +41,13 @@ REFLECTION_AUTO_CAPTURE_FRAME :: 200
 init_reflection_probe_rp :: proc() {
 	game.render_state.reflection_capture_pipeline = add_compute_shader(
 		{"shaders/reflection_capture.slang"},
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Reflection_Capture", module, GPUReflectionCapturePush)
-		},
+		"Reflection_Capture",
+		GPUReflectionCapturePush,
 	)
 	game.render_state.reflection_prefilter_pipeline = add_compute_shader(
 		{"shaders/reflection_prefilter.slang"},
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Reflection_Prefilter", module, GPUReflectionPrefilterPush)
-		},
+		"Reflection_Prefilter",
+		GPUReflectionPrefilterPush,
 	)
 	for &probes_buffer in game.render_state.reflection_probes_buffers {
 		probes_buffer = gfx.create_buffer(GPUReflectionProbe, MAX_REFLECTION_PROBES, .DynUniform)
@@ -57,19 +55,12 @@ init_reflection_probe_rp :: proc() {
 	}
 	game.render_state.reflection_probe_debug_pipeline = add_graphics_shader(
 		{"shaders/reflection_probe_debug.slang"},
-		proc(module: vk.ShaderModule) -> gfx.GraphicsPipeline {
-			return gfx.create_graphics_pipeline(
-				name = "Reflection_Probe_Debug",
-				shader = module,
-				input_topology = .TRIANGLE_LIST,
-				polygon_mode = .FILL,
-				cull_mode = {},
-				front_face = .COUNTER_CLOCKWISE,
-				depth = {format = gfx.image_meta(gfx.r_ctx.depth_image).format, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
-				color_format = gfx.image_meta(gfx.r_ctx.draw_image).format,
-				multisampling_samples = gfx.msaa_samples(),
-				push_constants = GPUReflectionProbeDebugPush,
-			)
+		"Reflection_Probe_Debug",
+		GPUReflectionProbeDebugPush,
+		{
+			depth = {format = gfx.DEPTH_FORMAT, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
+			color_format = gfx.DRAW_FORMAT,
+			msaa = true,
 		},
 	)
 }

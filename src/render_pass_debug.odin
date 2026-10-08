@@ -19,12 +19,7 @@ GPUDebugRTPushConstants :: struct #max_field_align(16) {
 }
 
 init_debug_rt_rp :: proc() {
-	game.render_state.debug_rt_pipeline = add_compute_shader(
-		{"shaders/debug_rt.slang"},
-		proc(module: vk.ShaderModule) -> gfx.ComputePipeline {
-			return gfx.create_compute_pipeline("Debug_RT_Pipeline", module, GPUDebugRTPushConstants)
-		},
-	)
+	game.render_state.debug_rt_pipeline = add_compute_shader({"shaders/debug_rt.slang"}, "Debug_RT_Pipeline", GPUDebugRTPushConstants)
 }
 
 record_debug_rt_pass :: proc(cmd: gfx.CommandBuffer) {
