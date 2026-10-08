@@ -7,6 +7,16 @@ import "gfx"
 MaterialId :: distinct u32
 
 @(shader_shared)
+GPUMaterial_Flag :: enum u32 {
+    Awesome,
+    Sauce,
+    Stuff,
+}
+
+@(shader_shared)
+GPUMaterial_Flags :: bit_set[GPUMaterial_Flag; u32]
+
+@(shader_shared)
 GPUMaterial :: struct #max_field_align(16) {
 	base_color_id:            gfx.ImageId `Image2D`,
 	normal_map_id:            gfx.ImageId `Image2D`,

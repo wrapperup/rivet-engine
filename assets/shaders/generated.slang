@@ -89,10 +89,10 @@ struct SkeletonVertexAttribute {
   f32 weights[4];
 };
 
-struct Material {
-  Image2D base_color_id;
-  Image2D normal_map_id;
-  Image2D ao_roughness_metallic_id;
+enum Material_Flag : u32 {
+  Awesome,
+  Sauce,
+  Stuff,
 };
 
 
@@ -100,6 +100,19 @@ struct Material {
 //
 // Generated from C:\Repos\odin\vulkan-playground\src\materials.odin
 //
+[Flags]
+enum Material_Flags : u32 {
+  Awesome = 1u << uint(Material_Flag.Awesome),
+  Sauce = 1u << uint(Material_Flag.Sauce),
+  Stuff = 1u << uint(Material_Flag.Stuff),
+};
+
+struct Material {
+  Image2D base_color_id;
+  Image2D normal_map_id;
+  Image2D ao_roughness_metallic_id;
+};
+
 struct Environment {
   Slice<PointLight> point_lights;
   ImageCube env_map;

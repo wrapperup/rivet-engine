@@ -6,21 +6,17 @@ package game
 
 // Entity System
 Entity_Kind :: enum {
-    DDGIVolume,
     Terrain,
-    Ball,
+    DDGIVolume,
     SoundSource,
     StaticMesh,
     PointLight,
-    ReflectionProbe,
     Player,
+    ReflectionProbe,
+    Ball,
 }
 
 register_entity_subtypes :: proc() {
-    {
-        procs: SubtypeProcs(DDGIVolume)
-        register_entity_subtype(DDGIVolume, procs)
-    }
     {
         procs: SubtypeProcs(Terrain)
         procs.init = terrain_init
@@ -28,9 +24,8 @@ register_entity_subtypes :: proc() {
         register_entity_subtype(Terrain, procs)
     }
     {
-        procs: SubtypeProcs(Ball)
-        procs.init = init_ball
-        register_entity_subtype(Ball, procs)
+        procs: SubtypeProcs(DDGIVolume)
+        register_entity_subtype(DDGIVolume, procs)
     }
     {
         procs: SubtypeProcs(SoundSource)
@@ -49,27 +44,32 @@ register_entity_subtypes :: proc() {
         register_entity_subtype(PointLight, procs)
     }
     {
+        procs: SubtypeProcs(Player)
+        register_entity_subtype(Player, procs)
+    }
+    {
         procs: SubtypeProcs(ReflectionProbe)
         procs.init = reflection_probe_init
         procs.destroy = reflection_probe_destroy
         register_entity_subtype(ReflectionProbe, procs)
     }
     {
-        procs: SubtypeProcs(Player)
-        register_entity_subtype(Player, procs)
+        procs: SubtypeProcs(Ball)
+        procs.init = init_ball
+        register_entity_subtype(Ball, procs)
     }
 }
 
 entity_type_to_kind :: proc($T: typeid) -> Entity_Kind {
     return .Base when T == Entity else
-           .DDGIVolume when T == DDGIVolume else
            .Terrain when T == Terrain else
-           .Ball when T == Ball else
+           .DDGIVolume when T == DDGIVolume else
            .SoundSource when T == SoundSource else
            .StaticMesh when T == StaticMesh else
            .PointLight when T == PointLight else
-           .ReflectionProbe when T == ReflectionProbe else
            .Player when T == Player else
+           .ReflectionProbe when T == ReflectionProbe else
+           .Ball when T == Ball else
            #panic("Unregistered entity type")
 }
 

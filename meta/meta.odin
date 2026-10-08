@@ -258,6 +258,23 @@ Thing :: enum {
 	Hey,
 }
 
+collect_enums :: proc(files: []^ast.File) -> map[string]^ast.Enum_Type {
+	set := make(map[string]^ast.Enum_Type)
+	for file in files {
+		for decl in file.decls {
+			value, ok := decl.derived_stmt.(^ast.Value_Decl)
+			if !ok do continue
+			if len(value.names) != 1 || len(value.values) != 1 do continue
+			ident, iok := value.names[0].derived.(^ast.Ident)
+			if !iok do continue
+			if e, eok := value.values[0].derived_expr.(^ast.Enum_Type); eok {
+				set[ident.name] = e
+			}
+		}
+	}
+	return set
+}
+
 generate_shader_bindings :: proc(files: []^ast.File) {
 	b: strings.Builder
 	strings.builder_init(&b)
@@ -267,6 +284,7 @@ generate_shader_bindings :: proc(files: []^ast.File) {
 	strings.write_string(&b, "//\n\n")
 
 	entity_kinds: [dynamic]^ast.Struct_Type
+	enums := collect_enums(files)
 
 	for file in files {
 		printed_header_once := false
@@ -365,10 +383,11 @@ generate_shader_bindings :: proc(files: []^ast.File) {
 								strings.write_string(&b, "enum ")
 								strings.write_string(&b, strip_gpu_name(name))
 								strings.write_string(&b, " : ")
-								type_string := "int"
-								if expr.base_type != nil {
-									type_string, _ = get_type_string(expr.base_type, file)
+								if expr.base_type == nil {
+									report_error("Backing type must be specified.", expr, file)
+									continue
 								}
+								type_string, _ := get_type_string(expr.base_type, file)
 								strings.write_string(&b, type_string)
 								strings.write_string(&b, " {\n")
 
@@ -388,6 +407,61 @@ generate_shader_bindings :: proc(files: []^ast.File) {
 									case:
 										report_error("Unsupported enum member.", field, file)
 									}
+								}
+								strings.write_string(&b, "};\n\n")
+
+							case ^ast.Bit_Set_Type:
+								_, elem_name, elem_ok := get_named_type_reference(expr.elem)
+								if !elem_ok {
+									continue
+								}
+								enum_expr, found_enum := enums[elem_name]
+								if !found_enum {
+									report_error("bit_set enum element must be declared in src.", expr.elem, file)
+									continue
+                                }
+
+								strings.write_string(&b, "[Flags]\n")
+								strings.write_string(&b, "enum ")
+								strings.write_string(&b, strip_gpu_name(name))
+								strings.write_string(&b, " : ")
+								if expr.underlying == nil {
+									report_error("Backing type must be specified.", expr, file)
+									continue
+								}
+								type_string, _ := get_type_string(expr.underlying, file)
+								strings.write_string(&b, type_string)
+								strings.write_string(&b, " {\n")
+
+
+								for field in enum_expr.fields {
+									field_name: string
+
+									#partial switch member in field.derived_expr {
+									case ^ast.Ident:
+										field_name = member.name
+
+									case ^ast.Field_Value:
+										member_name, ok := member.field.derived_expr.(^ast.Ident)
+										if !ok {
+											report_error("Enum member name must be an identifier.", member.field, file)
+											continue
+										}
+
+										field_name = member_name.name
+
+									case:
+										report_error("Unsupported enum member (for bit_set).", field, file)
+										continue
+									}
+
+									strings.write_string(&b, "  ")
+									strings.write_string(&b, field_name)
+									strings.write_string(&b, " = 1u << uint(")
+                                    strings.write_string(&b, strip_gpu_name(elem_name))
+									strings.write_string(&b, ".")
+									strings.write_string(&b, field_name)
+									strings.write_string(&b, "),\n")
 								}
 								strings.write_string(&b, "};\n\n")
 
@@ -680,12 +754,12 @@ generate_code :: proc(files: []^ast.File) {
 
 		bpln(&b, "    {")
 		bpln(&b, "        procs: SubtypeProcs(", kind.name, ")", sep = "")
-        if kind.init_name != "" {
-            bpln(&b, "        procs.init = ", kind.init_name, sep = "")
-        }
-        if kind.destroy_name != "" {
-            bpln(&b, "        procs.destroy = ", kind.destroy_name, sep = "")
-        }
+		if kind.init_name != "" {
+			bpln(&b, "        procs.init = ", kind.init_name, sep = "")
+		}
+		if kind.destroy_name != "" {
+			bpln(&b, "        procs.destroy = ", kind.destroy_name, sep = "")
+		}
 		bpln(&b, "        register_entity_subtype(", kind.name, ", procs)", sep = "")
 		bpln(&b, "    }")
 	}
