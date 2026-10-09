@@ -1,6 +1,7 @@
 import bindless;
 import brdf;
 import common;
+import standard_brdf;
 import types;
 
 struct PBR_Params {
@@ -89,4 +90,18 @@ Vec3 sample_reflection_probes(GlobalData* gd, Vec3 pos_ws, Vec3 r, f32 p_roughne
     ibl.default_sampler = gd.default_sampler;
     Vec3 env_refl = gd.sky_color * evaluate_specular_ibl(ibl, r, p_roughness);
     return probe_wsum > 0.0 ? lerp(env_refl, probe_sum / probe_wsum, probe_wsum) : env_refl;
+}
+
+Vec3 shade_indirect_specular(PBR_Surface surface, GlobalData* global) {
+  let env = global.environment;
+  PBR_Params ibl = { env.env_map, env.dfg, env.env_sampler, global.default_sampler };
+
+  let NoV = max(dot(surface.normal, surface.view_dir), 0.0);
+  let reflected = reflect(-surface.view_dir, surface.normal);
+
+  let dfg = sample_dfg(ibl, NoV, surface.perceptual_roughness).rg;
+  let specular = surface.f0 * dfg.r + fresnel_90(surface.f0) * dfg.g;
+  let radiance = sample_reflection_probes(global, surface.pos_ws, reflected, surface.perceptual_roughness);
+
+  return specular * radiance * surface.ao;
 }

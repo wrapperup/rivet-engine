@@ -90,9 +90,7 @@ struct SkeletonVertexAttribute {
 };
 
 enum Material_Flag : u32 {
-  Awesome,
-  Sauce,
-  Stuff,
+  Temp_World_Space,
 };
 
 
@@ -102,12 +100,12 @@ enum Material_Flag : u32 {
 //
 [Flags]
 enum Material_Flags : u32 {
-  Awesome = 1u << uint(Material_Flag.Awesome),
-  Sauce = 1u << uint(Material_Flag.Sauce),
-  Stuff = 1u << uint(Material_Flag.Stuff),
+  Temp_World_Space = 1u << uint(Material_Flag.Temp_World_Space),
 };
 
 struct Material {
+  Material_Flags flags;
+  f32 world_space_uv_scale;
   Image2D base_color_id;
   Image2D normal_map_id;
   Image2D ao_roughness_metallic_id;
@@ -140,7 +138,7 @@ struct GlobalData {
   Slice<DDGIVolume> ddgi_volumes;
   Slice<ReflectionProbe> reflection_probes;
   Atmosphere atmosphere;
-  u32 mesh_debug_view;
+  GeometryDebugView mesh_debug_view;
 };
 
 struct RenderInstance {
@@ -253,11 +251,14 @@ struct DebugRTPushConstants {
 //
 enum GeometryDebugView : u32 {
   None,
+  Shadow,
+  No_Shadow,
+  Base_Color,
   Normal,
   Tangent,
   Bitangent,
-  Specular,
   Irradiance,
+  Specular,
 };
 
 

@@ -9,6 +9,7 @@
 
 import bindless;
 import common;
+import standard_brdf;
 import types;
 
 static const float pi = 3.14159265358979;
@@ -409,4 +410,9 @@ Vec3 ddgi_sample_volumes(Slice<DDGIVolume> volumes, Vec3 pos, Vec3 n, Vec3 surfa
 
 Vec3 ddgi_sample_volumes(Slice<DDGIVolume> volumes, Vec3 pos, Vec3 n, Vec3 camera_pos) {
   return ddgi_sample_volumes(volumes, pos, n, n, camera_pos);
+}
+
+Vec3 shade_indirect_diffuse(PBR_Surface surface, GlobalData* global) {
+  let irradiance = ddgi_sample_volumes(global.ddgi_volumes, surface.pos_ws, surface.normal, surface.geometric_normal, global.camera_pos);
+  return surface.diffuse_color * surface.ao * irradiance;
 }

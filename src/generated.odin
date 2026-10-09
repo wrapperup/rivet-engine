@@ -7,13 +7,13 @@ package game
 // Entity System
 Entity_Kind :: enum {
     Ball,
-    Terrain,
     SoundSource,
-    PointLight,
-    ReflectionProbe,
     DDGIVolume,
-    Player,
+    ReflectionProbe,
     StaticMesh,
+    Terrain,
+    Player,
+    PointLight,
 }
 
 register_entity_subtypes :: proc() {
@@ -23,20 +23,14 @@ register_entity_subtypes :: proc() {
         register_entity_subtype(Ball, procs)
     }
     {
-        procs: SubtypeProcs(Terrain)
-        procs.init = terrain_init
-        procs.destroy = terrain_destroy
-        register_entity_subtype(Terrain, procs)
-    }
-    {
         procs: SubtypeProcs(SoundSource)
         procs.init = init_sound_source
         procs.destroy = destroy_sound_source
         register_entity_subtype(SoundSource, procs)
     }
     {
-        procs: SubtypeProcs(PointLight)
-        register_entity_subtype(PointLight, procs)
+        procs: SubtypeProcs(DDGIVolume)
+        register_entity_subtype(DDGIVolume, procs)
     }
     {
         procs: SubtypeProcs(ReflectionProbe)
@@ -45,31 +39,37 @@ register_entity_subtypes :: proc() {
         register_entity_subtype(ReflectionProbe, procs)
     }
     {
-        procs: SubtypeProcs(DDGIVolume)
-        register_entity_subtype(DDGIVolume, procs)
+        procs: SubtypeProcs(StaticMesh)
+        procs.init = static_mesh_init
+        procs.destroy = static_mesh_destroy
+        register_entity_subtype(StaticMesh, procs)
+    }
+    {
+        procs: SubtypeProcs(Terrain)
+        procs.init = terrain_init
+        procs.destroy = terrain_destroy
+        register_entity_subtype(Terrain, procs)
     }
     {
         procs: SubtypeProcs(Player)
         register_entity_subtype(Player, procs)
     }
     {
-        procs: SubtypeProcs(StaticMesh)
-        procs.init = static_mesh_init
-        procs.destroy = static_mesh_destroy
-        register_entity_subtype(StaticMesh, procs)
+        procs: SubtypeProcs(PointLight)
+        register_entity_subtype(PointLight, procs)
     }
 }
 
 entity_type_to_kind :: proc($T: typeid) -> Entity_Kind {
     return .Base when T == Entity else
            .Ball when T == Ball else
-           .Terrain when T == Terrain else
            .SoundSource when T == SoundSource else
-           .PointLight when T == PointLight else
-           .ReflectionProbe when T == ReflectionProbe else
            .DDGIVolume when T == DDGIVolume else
-           .Player when T == Player else
+           .ReflectionProbe when T == ReflectionProbe else
            .StaticMesh when T == StaticMesh else
+           .Terrain when T == Terrain else
+           .Player when T == Player else
+           .PointLight when T == PointLight else
            #panic("Unregistered entity type")
 }
 

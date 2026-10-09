@@ -24,44 +24,31 @@ struct VertexInput {
 
 [shader("vertex")]
 FragmentInput vertex_main(VertexInput input) {
+  let global = pc.global_data_buffer;
   let instance = pc.instances[pc.instance_index];
   let vertex = instance.vertex_buffer[input.vertex_index];
+  let material = pc.materials[instance.material_index];
 
-  let model_to_world = instance.model_to_world;
+  let model_to_world = (Mat3x3)instance.model_to_world;
+  let pos_ws = mul(instance.model_to_world, Vec4(vertex.position, 1.0));
+  let pos_vs = mul(global.world_to_view, pos_ws);
+  let normal_ws = transform_normal(model_to_world, vertex.normal);
 
-  let pos_ws = mul(model_to_world, Vec4(vertex.position, 1.0));
-  let uv = Vec2(vertex.uv_x, vertex.uv_y);
-
-  let N = normalize(mul((Mat3x3)model_to_world, -vertex.normal));
-  var tangent = vertex.tangent;
-  if (instance.material_index == 0) {
-    tangent = get_world_space_tangent(N);
+  Vec4 tangent_ws;
+  if (material.flags & Material_Flags.Temp_World_Space) {
+    tangent_ws = world_space_tangent(normal_ws);
+  } else {
+    tangent_ws = Vec4(normalize(mul(model_to_world, vertex.tangent.xyz)), vertex.tangent.w);
   }
-
-  let T = normalize(mul((Mat3x3)model_to_world, tangent.xyz));
-  let B = cross(N, T) * tangent.w;
-
-  let world_to_clip = mul(pc.global_data_buffer.view_to_clip,
-                                   pc.global_data_buffer.world_to_view);
 
   FragmentInput output;
   output.color = vertex.color.rgb;
-  output.pos_cs = mul(world_to_clip, pos_ws);
-  output.uv = uv;
-  output.pos_ws = pos_ws;
-  output.pos_vs = mul(pc.global_data_buffer.world_to_view, pos_ws);
-  output.tbn = Mat3x3(T, B, N);
-  // Inverse-transpose normal transform, including nonuniform and mirrored scale.
-  let axis_x = mul((Mat3x3)model_to_world, Vec3(1, 0, 0));
-  let axis_y = mul((Mat3x3)model_to_world, Vec3(0, 1, 0));
-  let axis_z = mul((Mat3x3)model_to_world, Vec3(0, 0, 1));
-  // Use outward glTF normals for the receiver offset; the lighting TBN negates them.
-  let cofactor_normal = cross(axis_y, axis_z) * vertex.normal.x +
-                        cross(axis_z, axis_x) * vertex.normal.y +
-                        cross(axis_x, axis_y) * vertex.normal.z;
-  output.shadow_normal = normalize(cofactor_normal) *
-                         (dot(axis_x, cross(axis_y, axis_z)) < 0 ? -1.0 : 1.0);
-
+  output.pos_cs = mul(global.view_to_clip, pos_vs);
+  output.uv = Vec2(vertex.uv_x, vertex.uv_y);
+  output.pos_ws = pos_ws.xyz;
+  output.view_depth = pos_vs.z;
+  output.normal_ws = normal_ws;
+  output.tangent_ws = tangent_ws;
   return output;
 }
 
@@ -69,11 +56,10 @@ struct FragmentInput {
   Vec4 pos_cs : SV_Position;
   Vec3 color : COLOR0;
   Vec2 uv : TEXCOORD0;
-  Vec4 pos_ws;
-  Vec4 pos_vs;
-  Mat3x3 tbn;
-  Vec3 shadow_normal;
-  u32 tex_id;
+  Vec3 pos_ws;
+  f32 view_depth;
+  Vec3 normal_ws;
+  Vec4 tangent_ws;
 };
 
 struct FragmentOutput {
@@ -81,132 +67,83 @@ struct FragmentOutput {
   Vec4 frag_color : COLOR0;
 };
 
-[shader("fragment")]
-FragmentOutput fragment_main(FragmentInput in) {
-  let pos_ws = in.pos_ws.xyz;
-  let camera_pos_ws = pc.global_data_buffer.camera_pos;
+PBR_Surface pbr_surface_from_material(FragmentInput in, Material material, GlobalData* global) {
+  PBR_Surface surface;
+  surface.pos_ws = in.pos_ws;
+  surface.view_dir = normalize(global.camera_pos - in.pos_ws);
+  surface.geometric_normal = normalize(in.normal_ws);
+  surface.tangent = in.tangent_ws.xyz;
+  surface.bitangent = cross(surface.geometric_normal, surface.tangent) * in.tangent_ws.w;
 
-  let instance = pc.instances[pc.instance_index];
-  let material = pc.materials[instance.material_index];
-
-  let receiver_normal = normalize(in.shadow_normal);
-
-  Vec2 uv = in.uv;
-  if (instance.material_index == 0) {
-    uv = get_world_space_uv(pos_ws, in.tbn[2]) / 4.f;
+  var uv = in.uv;
+  if (material.flags & Material_Flags.Temp_World_Space) {
+    uv = world_space_uv(in.pos_ws, surface.geometric_normal) * material.world_space_uv_scale;
   }
 
-  Vec3 normal =
-      material.normal_map_id.sample(pc.global_data_buffer.default_sampler, uv).rgb * 2.0 - 1.0;
-  normal.y *= -1;
-  normal = mul(normal, in.tbn); // Note: Matrices constructed in Slang/HLSL are row-major by default...
-  normal = normalize(normal);
+  let sampler = global.default_sampler;
+  let normal_ts = decode_normal_map(material.normal_map_id.sample(sampler, uv).rg);
+  surface.normal = normalize(tangent_to_world(normal_ts, surface.tangent, surface.bitangent, surface.geometric_normal));
 
-  Vec3 base_color =
-      material.base_color_id.sample(pc.global_data_buffer.default_sampler, uv).xyz * in.color;
-  f32 reflectance = 0.5f;
+  surface.base_color = material.base_color_id.sample(sampler, uv).rgb * in.color;
 
-  let ao_roughness_metallic =
-      material.ao_roughness_metallic_id.sample(pc.global_data_buffer.default_sampler, uv).rgb;
-
-  let ao = ao_roughness_metallic.r;
-  let proughness = ao_roughness_metallic.g;
+  let ao_roughness_metallic = material.ao_roughness_metallic_id.sample(sampler, uv).rgb;
+  surface.ao = ao_roughness_metallic.r;
+  surface.perceptual_roughness = ao_roughness_metallic.g;
   let metallic = ao_roughness_metallic.b;
 
-  Vec3 f0 = 0.16 * reflectance * reflectance * (1.0 - metallic) +
-            base_color * metallic;
+  surface.diffuse_color = (1.0 - metallic) * surface.base_color;
+  surface.f0 = fresnel_0(surface.base_color, metallic, DEFAULT_REFLECTANCE);
+  return surface;
+}
 
-  Vec3 diffuse = (1.0 - metallic) * base_color.rgb;
+[shader("fragment")]
+FragmentOutput fragment_main(FragmentInput in) {
+  let global = pc.global_data_buffer;
+  let instance = pc.instances[pc.instance_index];
+  let material = pc.materials[instance.material_index];
+  let debug_view = global.mesh_debug_view;
 
-  Vec3 n = normal;
-  Vec3 v = normalize(camera_pos_ws - pos_ws);
-  Vec3 l = normalize(pc.global_data_buffer.sun_direction); // Directional light
+  let surface = pbr_surface_from_material(in, material, global);
 
-  f32 sun_NoL = clamp(dot(n, l), 0.0, 1.0);
-
-  f32 shadow = sample_shadow_cascades(
-      pc.global_data_buffer, pc.shadow_depth, pc.shadow_sampler, pc.num_cascades,
-      pos_ws, receiver_normal, in.pos_vs.z, in.pos_cs.xy);
-
-  let debug_view = pc.global_data_buffer.mesh_debug_view;
-  if (debug_view >= 1 && debug_view <= 3) {
-    FragmentOutput diagnostic;
-    diagnostic.frag_color = Vec4(
-        debug_view == 1 ? Vec3(shadow)
-                        : (debug_view == 2 ? receiver_normal : n) * 0.5 + 0.5,
-        1);
-    return diagnostic;
-  }
-  if (debug_view == 4)
-    shadow = 1;
-
-  Vec3 frag_color = 0;
-  frag_color = (min(sun_NoL, ao) * shadow *
-                atmosphere_direct_sun(pc.global_data_buffer, pos_ws)) *
-               standard_bsdf(diffuse, proughness, v, l, n, f0, sun_NoL);
-
-  for (uint i = 0; i < pc.global_data_buffer.environment.point_lights.count; i++) {
-    let point_light = pc.global_data_buffer.environment.point_lights[i];
-
-    let light_pos_ws = point_light.world_pos;
-    let radius = point_light.radius;
-    let lumens = point_light.lumens;
-    let color = normalize(point_light.color);
-    let dist = distance(pos_ws, light_pos_ws);
-
-    if (dist <= radius) {
-      let pos_to_light = light_pos_ws - pos_ws;
-      let point_light_l = normalize(pos_to_light);
-      let point_light_h = normalize(v + point_light_l);
-      let point_light_NoL = clamp(dot(n, point_light_l), 0.0, 1.0);
-
-      let bsdf = standard_bsdf(diffuse, proughness, v, point_light_l, n, f0,
-                               point_light_NoL);
-      let attenuation =
-          get_square_falloff_attenuation(pos_to_light, 1.f / radius);
-
-      frag_color +=
-          (bsdf * lumens * attenuation * point_light_NoL) * color * ao;
-    }
+  f32 shadow = 1.0;
+  if (debug_view != GeometryDebugView.No_Shadow) {
+    shadow = sample_shadow_cascades(global, pc.shadow_depth, pc.shadow_sampler, pc.num_cascades,
+                                    surface.pos_ws, surface.geometric_normal, in.view_depth, in.pos_cs.xy);
   }
 
-  frag_color += diffuse * ao *
-                ddgi_sample_volumes(pc.global_data_buffer.ddgi_volumes, pos_ws, n,
-                          receiver_normal, pc.global_data_buffer.camera_pos);
+  var color = shade_sun(surface, global, shadow);
+  color += shade_point_lights(surface, global.environment.point_lights);
+  color += shade_indirect_diffuse(surface, global);
+  color += shade_indirect_specular(surface, global);
+  color = atmosphere_aerial(global, surface.pos_ws, color);
 
-  let env = pc.global_data_buffer.environment;
-  PBR_Params ibl_params;
-  ibl_params.env_map = env.env_map;
-  ibl_params.dfg = env.dfg;
-  ibl_params.env_sampler = env.env_sampler;
-  ibl_params.default_sampler = pc.global_data_buffer.default_sampler;
-
-  let NoV = max(dot(n, v), 0.0);
-  let r = reflect(-v, n);
-  let f90 = saturate(dot(f0, Vec3(50.0 * 0.33)));
-  let dfg = sample_dfg(ibl_params, NoV, proughness).rg;
-  let spec_brdf = f0 * dfg.r + f90 * dfg.g;
-
-  Vec3 refl = sample_reflection_probes(pc.global_data_buffer, pos_ws, r, proughness);
-
-  frag_color += spec_brdf * refl * ao;
-
-  // DEBUG
-  // frag_color = base_color;
-  // frag_color = 1;
-  // let r = reflect(-v, n);
-  // frag_color = sample_reflection_probes(pc.global_data_buffer, pos_ws, r, 0);
-  // frag_color = evaluate_specular_ibl(r, proughness);
-  // pc.global_data_buffer.environment.sh_volume[0]); frag_color = saturate(n);
-  // frag_color = saturate(i.tbn[0]); // Tangent
-  // frag_color = saturate(i.tbn[1]); // Bitangent
-  // frag_color = saturate(i.tbn[2]); // Normal
-  // frag_color = saturate(world_pos.xyz);
-  // frag_color = Vec3(saturate(in.pos.xyz/1920.f));
+  switch (debug_view) {
+  case GeometryDebugView.Shadow:
+    color = Vec3(shadow);
+    break;
+  case GeometryDebugView.Base_Color:
+    color = surface.base_color;
+    break;
+  case GeometryDebugView.Normal:
+    color = surface.normal * 0.5 + 0.5;
+    break;
+  case GeometryDebugView.Tangent:
+    color = surface.tangent * 0.5 + 0.5;
+    break;
+  case GeometryDebugView.Bitangent:
+    color = surface.bitangent * 0.5 + 0.5;
+    break;
+  case GeometryDebugView.Irradiance:
+    color = ddgi_sample_volumes(global.ddgi_volumes, surface.pos_ws, surface.normal, surface.geometric_normal, global.camera_pos);
+    break;
+  case GeometryDebugView.Specular:
+    color = shade_indirect_specular(surface, global);
+    break;
+  default:
+    break;
+  }
 
   FragmentOutput output;
-  output.frag_color =
-      Vec4(atmosphere_aerial(pc.global_data_buffer, pos_ws, frag_color), 1.0f);
-
+  output.frag_color = Vec4(color, 1.0);
   return output;
 }
