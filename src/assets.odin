@@ -22,8 +22,9 @@ import slang "deps:odin-slang/slang"
 
 import "gfx"
 
+REQUIRE_COOKED_ASSETS :: #config(REQUIRE_COOKED_ASSETS, false)
+COOKED_ASSET_DIR :: "build/cooked"
 BASE_ASSET_DIR :: "assets"
-COOKED_ASSET_DIR :: "cooked"
 
 AssetSystem :: struct {
 	allocator:   mem.Allocator,
@@ -143,21 +144,53 @@ load_asset_handle :: proc(
 
 	if method == .Block {
 		asset_path := resolve_asset_path(handle, context.temp_allocator)
-		asset_ext := filepath.ext(asset_path)
+		asset_ext := filepath.ext(handle.path)
 
 		bytes: []u8
-		if processor, found := store.loaders.processors[asset_ext]; found {
-			ok: bool
-			if bytes, ok = processor(asset_path, allocator); !ok {
-				log.warn("Failed to read and process asset:", handle, "with file ext:", asset_ext)
-				return
-			}
-		} else {
+		when REQUIRE_COOKED_ASSETS {
+			cooked_asset_path := resolve_cooked_asset_path(handle, context.temp_allocator)
+
 			err: os.Error
-			bytes, err = os.read_entire_file(asset_path, allocator)
+			bytes, err = os.read_entire_file(cooked_asset_path, allocator)
 			if err != nil {
 				log.warn("Failed to read asset:", handle)
 				return
+			}
+		} else {
+			cooked_asset_path := resolve_cooked_asset_path(handle, context.temp_allocator)
+
+			if os.exists(cooked_asset_path) {
+                err: os.Error
+                bytes, err = os.read_entire_file(cooked_asset_path, allocator)
+                if err != nil {
+                    log.warn("Failed to read asset:", handle)
+                    return
+                }
+			} else {
+				if processor, found := store.loaders.processors[asset_ext]; found {
+					ok: bool
+					if bytes, ok = processor(asset_path, allocator); !ok {
+						log.warn("Failed to read and process asset:", handle, "with file ext:", asset_ext)
+						return
+					}
+				} else {
+					err: os.Error
+					bytes, err = os.read_entire_file(asset_path, allocator)
+					if err != nil {
+						log.warn("Failed to read asset:", handle)
+						return
+					}
+				}
+
+				cooked_asset_dir := filepath.dir(cooked_asset_path)
+				if err := os.make_directory_all(cooked_asset_dir); err != nil {
+					log.warn("Failed to create cooked asset directory:", COOKED_ASSET_DIR)
+				}
+
+				write_err := os.write_entire_file(cooked_asset_path, bytes)
+				if write_err != nil {
+					log.warn("Failed to write to cooked asset directory:", cooked_asset_path)
+				}
 			}
 		}
 
@@ -233,6 +266,11 @@ get_asset :: proc {
 
 resolve_asset_path :: proc(handle: Handle($T), allocator := context.allocator) -> string {
 	resolved, err := filepath.join({BASE_ASSET_DIR, handle.path}, allocator)
+	return resolved
+}
+
+resolve_cooked_asset_path :: proc(handle: Handle($T), allocator := context.allocator) -> string {
+	resolved, err := filepath.join({COOKED_ASSET_DIR, handle.path}, allocator)
 	return resolved
 }
 
@@ -487,9 +525,6 @@ load_material_asset :: proc(bytes: []u8, out: rawptr, allocator := context.alloc
 	}
 
 	flags := slice.enum_slice_to_bitset(parsed.flags, GPUMaterial_Flags)
-
-	fmt.println(parsed.flags)
-	fmt.println(flags)
 
 	base_color_id := Handle(Image_Asset){parsed.base_color}
 	normal_map_id := Handle(Image_Asset){parsed.normal_map}
