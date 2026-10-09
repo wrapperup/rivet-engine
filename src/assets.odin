@@ -227,8 +227,8 @@ get_asset_handle :: proc(handle: Handle($T)) -> ^T {
 }
 
 get_asset :: proc {
-    get_asset_path,
-    get_asset_handle,
+	get_asset_path,
+	get_asset_handle,
 }
 
 resolve_asset_path :: proc(handle: Handle($T), allocator := context.allocator) -> string {
@@ -462,6 +462,8 @@ write_buffer_to_ktx_file :: proc(
 }
 
 Material_JSON :: struct {
+	flags:                  []GPUMaterial_Flag,
+	world_space_uv_scale:   f32,
 	base_color:             string,
 	normal_map:             string,
 	proughness_metallic_ao: string,
@@ -480,6 +482,14 @@ load_material_asset :: proc(bytes: []u8, out: rawptr, allocator := context.alloc
 
 	parsed: Material_JSON
 	parse_err := json.unmarshal(bytes, &parsed, spec = .Bitsquid, allocator = context.allocator)
+	if parse_err != nil {
+		return false
+	}
+
+	flags := slice.enum_slice_to_bitset(parsed.flags, GPUMaterial_Flags)
+
+	fmt.println(parsed.flags)
+	fmt.println(flags)
 
 	base_color_id := Handle(Image_Asset){parsed.base_color}
 	normal_map_id := Handle(Image_Asset){parsed.normal_map}
@@ -491,7 +501,13 @@ load_material_asset :: proc(bytes: []u8, out: rawptr, allocator := context.alloc
 	proughness_metallic_ao_image := load_asset(proughness_metallic_ao_id).image_id
 
 	material_id := add_material(
-		{base_color_id = base_color_image, normal_map_id = normal_map_image, ao_roughness_metallic_id = proughness_metallic_ao_image},
+		{
+			flags = flags,
+			world_space_uv_scale = parsed.world_space_uv_scale,
+			base_color_id = base_color_image,
+			normal_map_id = normal_map_image,
+			ao_roughness_metallic_id = proughness_metallic_ao_image,
+		},
 	)
 
 	asset^ = {

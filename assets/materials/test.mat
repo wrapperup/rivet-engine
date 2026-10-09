@@ -1,4 +1,12 @@
 type = "Pbr"
+
+flags = [
+    "Temp_World_Space",
+    "fuck",
+]
+
+world_space_uv_scale = 0.25
+
 base_color = "textures/t_test_basecolor2.ktx2"
 normal_map = "textures/t_test_normalmap.ktx2"
 proughness_metallic_ao = "textures/t_test_rma.ktx2"

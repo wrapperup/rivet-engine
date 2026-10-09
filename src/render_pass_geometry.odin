@@ -7,11 +7,14 @@ import "gfx"
 @(shader_shared)
 GPUGeometryDebugView :: enum u32 {
 	None,
-	Normal,
-	Tangent,
-	Bitangent,
-	Specular,
-	Irradiance,
+    Shadow,
+    No_Shadow,
+    Base_Color,
+    Normal,
+    Tangent,
+    Bitangent,
+    Irradiance,
+    Specular,
 }
 
 @(shader_shared)

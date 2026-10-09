@@ -41,7 +41,7 @@ GPUGlobalData :: struct #max_field_align(16) {
 	ddgi_volumes:             gfx.Slice(GPUDDGIVolume),
 	reflection_probes:        gfx.Slice(GPUReflectionProbe),
 	atmosphere:               GPUAtmosphere,
-	mesh_debug_view:          u32,
+	mesh_debug_view:          GPUGeometryDebugView,
 }
 
 RenderState :: struct {
@@ -75,7 +75,7 @@ RenderState :: struct {
 	reflection_probes_buffers:       [gfx.FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
 	atmosphere_rp:                   AtmosphereRenderPass,
 	draw_sky:                        bool,
-	mesh_debug_view:                 i32,
+	mesh_debug_view:                 GPUGeometryDebugView,
 
 	// Debug
 	debug_rt_pipeline:               ^gfx.Pipeline,
@@ -384,7 +384,7 @@ prepare_shared_frame_data :: proc() {
 
 	global_data.camera_pos = player != nil ? player.eye_pos : {0, 0, 0} // must match the render view (eye, not feet)
 	global_data.sun_direction = game.state.environment.sun_direction
-	global_data.mesh_debug_view = u32(game.render_state.mesh_debug_view)
+	global_data.mesh_debug_view = game.render_state.mesh_debug_view
 
 	point_light_count := min(len_entities(PointLight), len(game.render_state.scene_resources.point_lights))
 	global_data.environment.point_lights = gfx.slice(game.render_state.scene_resources.point_light_buffer, count = u64(point_light_count))
