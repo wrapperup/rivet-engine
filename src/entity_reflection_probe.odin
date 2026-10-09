@@ -98,7 +98,7 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe) {
 
 	for &config in probe.configs {
         // TODO: this is shit. just make 1 buffer.
-		config = gfx.create_buffer(GPUReflectionProbe, 1, .DynUniform)
+		config = gfx.create_buffer(GPUReflectionProbe, 1, .Host_Sequential_Write)
         gfx.defer_destroy(&probe.gpu_arena, config)
 	}
 

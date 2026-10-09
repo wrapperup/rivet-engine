@@ -73,13 +73,13 @@ gfx_imgui_create_fonts_texture :: proc(this: ^GfxImgui) {
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, this.font_image)
 
 	{
-		staging := gfx.create_buffer(u8, atlas_bytes, .Staging, name = "imgui_font_staging")
+		staging := gfx.create_buffer(u8, atlas_bytes, .Host_Sequential_Write, name = "imgui_font_staging")
 		defer gfx.destroy_buffer(&staging)
 
 		gfx.write_buffer_slice(&staging, slice.from_ptr(pixels, atlas_bytes))
 
 		{
-            cmd := gfx.immediate_submit()
+			cmd := gfx.immediate_submit()
 
 			gfx.transition_image(cmd, this.font_image, .TRANSFER_DST_OPTIMAL)
 
@@ -142,18 +142,18 @@ gfx_imgui_render :: proc(cmd: gfx.CommandBuffer, target_view: gfx.ImageId, targe
 
 	frame := gfx.current_frame_index()
 
-	if this.vbuffer_sizes[frame] != total_verts {
+	if this.vbuffer_sizes[frame] < total_verts {
 		if this.vbuffer_sizes[frame] != 0 {
 			gfx.defer_destroy_buffer(&gfx.current_frame().arena, this.vbuffers[frame])
 		}
-		this.vbuffers[frame] = gfx.create_buffer(im.DrawVert, total_verts, .Storage, name = "imgui_vbuf")
+		this.vbuffers[frame] = gfx.create_buffer(im.DrawVert, total_verts, .Host_Sequential_Write, name = "imgui_vbuf")
 		this.vbuffer_sizes[frame] = total_verts
 	}
-	if this.ibuffer_sizes[frame] != total_indices {
+	if this.ibuffer_sizes[frame] < total_indices {
 		if this.ibuffer_sizes[frame] != 0 {
 			gfx.defer_destroy_buffer(&gfx.current_frame().arena, this.ibuffers[frame])
 		}
-		this.ibuffers[frame] = gfx.create_buffer(im.DrawIdx, total_indices, .Index, name = "imgui_ibuf")
+		this.ibuffers[frame] = gfx.create_buffer(im.DrawIdx, total_indices, .Host_Sequential_Write, name = "imgui_ibuf")
 		this.ibuffer_sizes[frame] = total_indices
 	}
 
@@ -174,8 +174,8 @@ gfx_imgui_render :: proc(cmd: gfx.CommandBuffer, target_view: gfx.ImageId, targe
 		}
 	}
 
-	gfx.staging_write_buffer_slice(&this.vbuffers[frame], vertices)
-	gfx.staging_write_buffer_slice(&this.ibuffers[frame], indices)
+	gfx.write_buffer_slice(&this.vbuffers[frame], vertices)
+	gfx.write_buffer_slice(&this.ibuffers[frame], indices)
 
 	color_attachment := gfx.RenderingAttachmentInfo {
 		view   = target_view,

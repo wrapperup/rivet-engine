@@ -32,62 +32,50 @@ BufferAccess :: enum {
 // This is hopefully very common kinds of buffers
 // you may typically want to create. Uniform and Storage
 // buffers will always create a valid Ptr(T).
-BufferKind :: enum {
-	Storage, // Includes ptr
-	Index,
-	Staging, // For CPU -> GPU writes onto device-local buffers.
-	Scratch,
-	AccelStorage, // Raytracing accel structures.
-	AccelInstances, // Host-mapped TLAS instance buffer (AS build input).
-	Uniform, // Includes ptr. However, prefer uniform access for speed.
-	DynUniform, // Mapped uniform buffer // TODO: HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT
-	Readback, // For GPU -> CPU reads from device-local buffers.
+BufferMemoryFlag :: enum {
+	nil,
+	Host_Sequential_Write,
+	Host_Random,
 }
+BufferMemoryFlags :: bit_set[BufferMemoryFlag]
 
-vk_buffer_flags :: proc(kind: BufferKind) -> (vk.BufferUsageFlags, vma.AllocationCreateFlags) {
-	rt := vk.BufferUsageFlags{}
+vk_buffer_flags :: proc(alloc_flags: BufferMemoryFlags) -> (vk.BufferUsageFlags, vma.AllocationCreateFlags) {
+	usage_flags := vk.BufferUsageFlags {
+		.INDEX_BUFFER,
+		.TRANSFER_SRC,
+		.TRANSFER_DST,
+		.STORAGE_BUFFER,
+		.INDIRECT_BUFFER,
+		.SHADER_DEVICE_ADDRESS,
+	}
+	vma_alloc_flags := vma.AllocationCreateFlags{}
 
 	// TODO: Query.
 	if true {
-		rt = {.ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR}
+		usage_flags |= {.ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR, .ACCELERATION_STRUCTURE_STORAGE_KHR}
 	}
 
-	switch kind {
-	case .Storage:
-		return {.TRANSFER_DST, .STORAGE_BUFFER, .SHADER_DEVICE_ADDRESS} + rt, {}
-	case .Index:
-		return {.TRANSFER_DST, .INDEX_BUFFER, .SHADER_DEVICE_ADDRESS} + rt, {}
-	case .Staging:
-		return {.TRANSFER_SRC}, {.MAPPED, .HOST_ACCESS_SEQUENTIAL_WRITE}
-	case .Scratch:
-		return {.TRANSFER_SRC, .STORAGE_BUFFER, .SHADER_DEVICE_ADDRESS}, {.MAPPED, .HOST_ACCESS_SEQUENTIAL_WRITE}
-	case .AccelStorage:
-		return {.ACCELERATION_STRUCTURE_STORAGE_KHR, .SHADER_DEVICE_ADDRESS}, {}
-	case .AccelInstances:
-		return {.ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR, .SHADER_DEVICE_ADDRESS}, {.MAPPED, .HOST_ACCESS_SEQUENTIAL_WRITE}
-	// LEGACY
-	case .Uniform:
-		return {.TRANSFER_DST, .UNIFORM_BUFFER, .SHADER_DEVICE_ADDRESS}, {}
-	case .DynUniform:
-		return {.TRANSFER_DST, .UNIFORM_BUFFER, .SHADER_DEVICE_ADDRESS}, {.MAPPED, .HOST_ACCESS_RANDOM}
-	case .Readback:
-		return {.TRANSFER_DST}, {.MAPPED, .HOST_ACCESS_RANDOM}
+	if .Host_Sequential_Write in alloc_flags {
+		vma_alloc_flags |= {.MAPPED, .HOST_ACCESS_SEQUENTIAL_WRITE}
+	}
+	if .Host_Random in alloc_flags {
+		vma_alloc_flags |= {.MAPPED, .HOST_ACCESS_RANDOM}
 	}
 
-	unreachable()
+	return usage_flags, vma_alloc_flags
 }
 
 // This allocates on the GPU, make sure to call `destroy_buffer` or add to deletion queue when you are finished with the buffer.
 create_buffer :: proc(
 	$T: typeid,
 	#any_int size: vk.DeviceSize = 1,
-	kind: BufferKind = .Storage,
+	alloc_flags: BufferMemoryFlag = {},
 	name: cstring = nil,
 	loc := #caller_location,
 ) -> Buffer(T) {
 	alloc_size := cast(vk.DeviceSize)(size_of(T) * size)
 
-	vk_usage_flags, vma_create_flags := vk_buffer_flags(kind)
+	vk_usage_flags, vma_create_flags := vk_buffer_flags({alloc_flags})
 
 	buffer_info := vk.BufferCreateInfo {
 		sType = .BUFFER_CREATE_INFO,
@@ -96,7 +84,7 @@ create_buffer :: proc(
 	}
 
 	vma_alloc_info := vma.AllocationCreateInfo {
-		usage = .AUTO,
+		usage = .AUTO_PREFER_DEVICE,
 		flags = vma_create_flags,
 	}
 
@@ -107,9 +95,7 @@ create_buffer :: proc(
 		loc,
 	)
 
-	if .SHADER_DEVICE_ADDRESS in vk_usage_flags {
-		new_buffer.ptr.address = get_buffer_device_address(new_buffer)
-	}
+	new_buffer.ptr.address = get_buffer_device_address(new_buffer)
 
 	when ODIN_DEBUG {
 		if name == nil {
@@ -204,7 +190,7 @@ staging_write_buffer :: proc(buffer: ^Buffer($Z), in_data: ^$T, offset: vk.Devic
 	size := size_of(T)
 	assert(buffer.info.size >= vk.DeviceSize(u64(size) + u64(offset)), "The size of the data and offset is larger than the buffer", loc)
 
-	staging := create_buffer(u8, vk.DeviceSize(size_of(T)), .Staging)
+	staging := create_buffer(u8, vk.DeviceSize(size_of(T)), .Host_Sequential_Write)
 	write_buffer(&staging, in_data)
 
 	if cmd, ok := immediate_submit(); ok {
@@ -225,7 +211,7 @@ staging_write_buffer_slice :: proc(buffer: ^Buffer($Z), in_data: []$T, offset: v
 	size := size_of(T) * len(in_data)
 	assert(buffer.info.size >= vk.DeviceSize(u64(size) + u64(offset)), "The size of the slice and offset is larger than the buffer", loc)
 
-	staging := create_buffer(u8, size, .Staging)
+	staging := create_buffer(u8, size, .Host_Sequential_Write)
 	write_buffer_slice(&staging, in_data)
 
 	{
@@ -327,7 +313,7 @@ Scratch :: struct {
 }
 
 create_scratch :: proc(#any_int size: vk.DeviceSize, name: cstring = nil, loc := #caller_location) -> Scratch {
-	return {buffer = create_buffer(u8, size, .Scratch, name, loc)}
+	return {buffer = create_buffer(u8, size, .Host_Sequential_Write, name, loc)}
 }
 
 reset_scratch :: proc(scratch: ^Scratch) {

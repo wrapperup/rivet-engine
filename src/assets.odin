@@ -397,7 +397,7 @@ load_image_from_ktx_texture :: proc(ktx_texture: ^ktx.Texture2, debug_name: cstr
 	)
 
 	// Next, upload image data to vk Image
-	staging := gfx.create_buffer(u8, vk.DeviceSize(size), .Staging)
+	staging := gfx.create_buffer(u8, vk.DeviceSize(size), .Host_Sequential_Write)
 	mapped_data := staging.info.pMappedData
 
 	mem.copy(mapped_data, data, int(size))

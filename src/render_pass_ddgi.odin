@@ -86,7 +86,7 @@ init_ddgi_rp :: proc() {
 	)
 
 	for &volumes_buffer in ddgi_rp.volumes_buffers {
-		volumes_buffer = gfx.create_buffer(GPUDDGIVolume, MAX_DDGI_VOLUMES, .DynUniform)
+		volumes_buffer = gfx.create_buffer(GPUDDGIVolume, MAX_DDGI_VOLUMES, .Host_Sequential_Write)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, volumes_buffer)
 	}
 	ddgi_init_debug_sphere()
@@ -125,7 +125,7 @@ ddgi_init_debug_sphere :: proc() {
 	defer delete(indices)
 
 	rp.probe_vbuf = gfx.create_buffer(Vertex, len(verts))
-	rp.probe_ibuf = gfx.create_buffer(u32, len(indices), .Index)
+	rp.probe_ibuf = gfx.create_buffer(u32, len(indices))
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.probe_vbuf)
 	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.probe_ibuf)
 	gfx.staging_write_buffer_slice(&rp.probe_vbuf, verts)
@@ -211,7 +211,6 @@ record_ddgi_debug_probes_pass :: proc(cmd: gfx.CommandBuffer, volumes: []DDGIVol
 	}
 }
 
-// Trace + update for the volume, recorded into `cmd`. Uses the per-frame scene TLAS.
 record_ddgi_volume :: proc(cmd: gfx.CommandBuffer, volume: ^DDGI_Volume_Resources) {
 	counts := volume.gpu.grid_counts
 	num_probes := counts[0] * counts[1] * counts[2]

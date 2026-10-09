@@ -24,8 +24,8 @@ init_skinning_instance :: proc(instance: ^SkeletalMeshInstance, animation: ^Skel
 	init_skeleton_animator(&instance.animator, instance.skel, animation)
 
 	for i in 0 ..< gfx.FRAME_OVERLAP {
-		instance.joint_matrices_buffers[i] = gfx.create_buffer(Mat4x4, instance.skel.joint_count, .DynUniform)
-		instance.preskinned_vertex_buffers[i] = gfx.create_buffer(Vertex, instance.skel.buffers.vertex_count, .DynUniform)
+		instance.joint_matrices_buffers[i] = gfx.create_buffer(Mat4x4, instance.skel.joint_count, .Host_Sequential_Write)
+		instance.preskinned_vertex_buffers[i] = gfx.create_buffer(Vertex, instance.skel.buffers.vertex_count)
 
 		gfx.defer_destroy_buffer(&gfx.r_ctx.global_arena, instance.joint_matrices_buffers[i])
 		gfx.defer_destroy_buffer(&gfx.r_ctx.global_arena, instance.preskinned_vertex_buffers[i])

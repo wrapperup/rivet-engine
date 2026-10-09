@@ -72,8 +72,8 @@ init_shadow_rp :: proc() {
 	)
 
 	for &frame in game.render_state.frame_data {
-		frame.cascade_matrices_buffer = gfx.create_buffer(Mat4x4, NUM_CASCADES, .DynUniform)
-		frame.cascade_configs_buffer = gfx.create_buffer(GPUCascadeConfig, NUM_CASCADES, .DynUniform)
+		frame.cascade_matrices_buffer = gfx.create_buffer(Mat4x4, NUM_CASCADES, .Host_Sequential_Write)
+		frame.cascade_configs_buffer = gfx.create_buffer(GPUCascadeConfig, NUM_CASCADES, .Host_Sequential_Write)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.cascade_matrices_buffer)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.cascade_configs_buffer)
 	}

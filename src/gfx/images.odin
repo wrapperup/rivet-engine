@@ -516,7 +516,7 @@ staging_write_image :: proc(gpu_image: ^Image, in_data: ^$T, offset: vk.DeviceSi
 	gpu_size := gpu_image.extent.width * gpu_image.extent.height * gpu_image.extent.depth * size_of(T) // TODO: Validate this.
 	assert(gpu_size >= (u32(size) + u32(offset)), "The size of the data and offset is larger than the buffer", loc)
 
-	staging := create_buffer(u8, vk.DeviceSize(size_of(T)), {.TRANSFER_SRC}, .CPU_ONLY)
+	staging := create_buffer(u8, vk.DeviceSize(size_of(T)), .Host_Sequential_Write)
 	write_buffer(&staging, in_data)
 
 	if cmd, ok := immediate_submit(); ok {
@@ -546,7 +546,7 @@ staging_write_image_slice :: proc(gpu_image: ^Image, in_data: []$T, offset: vk.D
 	gpu_size := gpu_image.extent.width * gpu_image.extent.height * gpu_image.extent.depth * size_of(T) // TODO: Validate this.
 	assert(gpu_size >= (u32(size) + u32(offset)), "The size of the data and offset is larger than the buffer", loc)
 
-	staging := create_buffer(u8, size, {.TRANSFER_SRC}, .CPU_ONLY)
+	staging := create_buffer(u8, size, .Host_Sequential_Write)
 	write_buffer_slice(&staging, in_data)
 
 	if cmd, ok := immediate_submit(); ok {

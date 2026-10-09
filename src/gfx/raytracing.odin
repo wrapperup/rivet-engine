@@ -62,7 +62,7 @@ _build_accel :: proc(
 	vk.GetAccelerationStructureBuildSizesKHR(r_ctx.device, .DEVICE, &build_info, &prim_count, &sizes)
 
 	// 2. Backing storage + the AS handle (kind is fixed here, matched at build).
-	accel.buffer = create_buffer(u8, sizes.accelerationStructureSize, .AccelStorage, loc = loc)
+	accel.buffer = create_buffer(u8, sizes.accelerationStructureSize, loc = loc)
 
 	create_info := vk.AccelerationStructureCreateInfoKHR {
 		sType  = .ACCELERATION_STRUCTURE_CREATE_INFO_KHR,

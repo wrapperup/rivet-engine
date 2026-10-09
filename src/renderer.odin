@@ -172,13 +172,13 @@ init_render_passes :: proc() {
 
 init_shared_buffers :: proc() {
 	for &frame in game.render_state.frame_data {
-		frame.instances_buffer = gfx.create_buffer(GPURenderInstance, MAX_RENDER_INSTANCES, .DynUniform)
+		frame.instances_buffer = gfx.create_buffer(GPURenderInstance, MAX_RENDER_INSTANCES, .Host_Sequential_Write)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.instances_buffer)
 
 		frame.scratch = gfx.create_scratch(32 * mem.Megabyte, "Frame Scratch Buffer")
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.scratch)
 
-		frame.global_buffer = gfx.create_buffer(GPUGlobalData, 1, .DynUniform)
+		frame.global_buffer = gfx.create_buffer(GPUGlobalData, 1, .Host_Sequential_Write)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.global_buffer)
 	}
 

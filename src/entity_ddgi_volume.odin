@@ -179,12 +179,12 @@ ddgi_volume_resources_init :: proc(
 	}
 
 	for &config_buffer in volume.config_buffers {
-		config_buffer = gfx.create_buffer(GPUDDGIVolume, 1, .DynUniform)
+		config_buffer = gfx.create_buffer(GPUDDGIVolume, 1, .Host_Sequential_Write)
 		gfx.defer_destroy(arena, config_buffer)
 		gfx.write_buffer(&config_buffer, &volume.gpu)
 	}
 
 	num_probes := counts.x * counts.y * counts.z
-	volume.radiance_buffer = gfx.create_buffer(Vec4, num_probes * DDGI_RAYS_PER_PROBE, .Storage)
+	volume.radiance_buffer = gfx.create_buffer(Vec4, num_probes * DDGI_RAYS_PER_PROBE)
 	gfx.defer_destroy(arena, volume.radiance_buffer)
 }

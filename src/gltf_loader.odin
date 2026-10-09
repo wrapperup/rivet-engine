@@ -22,7 +22,7 @@ create_mesh_buffers :: proc(mesh: Mesh, loc := #caller_location) -> GPUMeshBuffe
 	new_surface.vertex_count = vertex_count
 
 	new_surface.vertex_buffer = gfx.create_buffer(Vertex, vertex_count, loc = loc)
-	new_surface.index_buffer = gfx.create_buffer(u32, index_count, .Index, loc = loc)
+	new_surface.index_buffer = gfx.create_buffer(u32, index_count, loc = loc)
 
 	return new_surface
 }
@@ -34,7 +34,7 @@ staging_write_mesh_buffers :: proc(buffers: ^GPUMeshBuffers, mesh: Mesh, loc := 
 	assert(buffers.index_count == u32(len(mesh.indices)))
 	assert(buffers.vertex_count == u32(len(mesh.vertices)))
 
-	staging := gfx.create_buffer(u8, vertex_buffer_size + index_buffer_size, .Staging, loc = loc)
+	staging := gfx.create_buffer(u8, vertex_buffer_size + index_buffer_size, .Host_Sequential_Write, loc = loc)
 
 	gfx.write_buffer_slice(&staging, mesh.vertices)
 	gfx.write_buffer_slice(&staging, mesh.indices, vertex_buffer_size)
