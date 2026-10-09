@@ -36,6 +36,7 @@ BufferKind :: enum {
 	Storage, // Includes ptr
 	Index,
 	Staging, // For CPU -> GPU writes onto device-local buffers.
+	Scratch,
 	AccelStorage, // Raytracing accel structures.
 	AccelInstances, // Host-mapped TLAS instance buffer (AS build input).
 	Uniform, // Includes ptr. However, prefer uniform access for speed.
@@ -58,6 +59,8 @@ vk_buffer_flags :: proc(kind: BufferKind) -> (vk.BufferUsageFlags, vma.Allocatio
 		return {.TRANSFER_DST, .INDEX_BUFFER, .SHADER_DEVICE_ADDRESS} + rt, {}
 	case .Staging:
 		return {.TRANSFER_SRC}, {.MAPPED, .HOST_ACCESS_SEQUENTIAL_WRITE}
+	case .Scratch:
+		return {.TRANSFER_SRC, .STORAGE_BUFFER, .SHADER_DEVICE_ADDRESS}, {.MAPPED, .HOST_ACCESS_SEQUENTIAL_WRITE}
 	case .AccelStorage:
 		return {.ACCELERATION_STRUCTURE_STORAGE_KHR, .SHADER_DEVICE_ADDRESS}, {}
 	case .AccelInstances:
@@ -226,7 +229,7 @@ staging_write_buffer_slice :: proc(buffer: ^Buffer($Z), in_data: []$T, offset: v
 	write_buffer_slice(&staging, in_data)
 
 	{
-        cmd := immediate_submit()
+		cmd := immediate_submit()
 
 		region := vk.BufferCopy {
 			dstOffset = offset,
@@ -316,6 +319,39 @@ buffer_barrier :: proc(
 	}
 
 	vk.CmdPipelineBarrier2(cmd, &dep_info)
+}
+
+Scratch :: struct {
+	buffer:         Buffer(u8),
+	current_offset: vk.DeviceSize,
+}
+
+create_scratch :: proc(#any_int size: vk.DeviceSize, name: cstring = nil, loc := #caller_location) -> Scratch {
+	return {buffer = create_buffer(u8, size, .Scratch, name, loc)}
+}
+
+reset_scratch :: proc(scratch: ^Scratch) {
+	scratch.current_offset = 0
+}
+
+write_scratch :: proc(scratch: ^Scratch, in_data: ^$T, loc := #caller_location) -> Ptr(T) {
+	return write_scratch_slice(buffer, slice.from_ptr(in_data, 1), loc).data
+}
+
+write_scratch_slice :: proc(scratch: ^Scratch, in_data: []$T, loc := #caller_location) -> Slice(T) {
+	size := size_of(T) * len(in_data)
+
+	offset := vk.DeviceSize(mem.align_forward_uint(uint(scratch.current_offset), uint(max(align_of(T), 16))))
+
+	assert(uint(offset) + uint(size) <= uint(scratch.buffer.info.size), "Scratch buffer overflow", loc)
+	scratch.current_offset = offset + vk.DeviceSize(size)
+
+	write_buffer_slice(&scratch.buffer, in_data, offset, loc)
+	return {data = {address = scratch.buffer.ptr.address + vk.DeviceAddress(offset)}, count = u64(len(in_data))}
+}
+
+destroy_scratch :: proc(scratch: ^Scratch) {
+	destroy_buffer(&scratch.buffer)
 }
 
 // TODO: Do we need this? It would be useful I think at some point.

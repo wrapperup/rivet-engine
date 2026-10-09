@@ -139,6 +139,10 @@ defer_destroy_buffer :: proc(arena: ^ResourceArena, buffer: Buffer($T), debug: s
 	defer_destroy_resource(arena, transmute(u64)buffer.buffer, .VmaBuffer, buffer.allocation)
 }
 
+defer_destroy_scratch :: proc(arena: ^ResourceArena, scratch: Scratch, debug: string = "UNKNOWN", loc := #caller_location) {
+	defer_destroy_resource(arena, transmute(u64)scratch.buffer.buffer, .VmaBuffer, scratch.buffer.allocation)
+}
+
 defer_destroy_image :: proc(arena: ^ResourceArena, id: ImageId, debug: string = "UNKNOWN", loc := #caller_location) {
 	// Keep the slot alive until the owning arena is safe to flush. destroy_image
 	// handles view-only IDs and releases the slot after destroying the resource.
@@ -199,6 +203,7 @@ defer_destroy_vk_swapchain :: proc(arena: ^ResourceArena, handle: vk.SwapchainKH
 
 defer_destroy :: proc {
 	defer_destroy_buffer,
+	defer_destroy_scratch,
 	defer_destroy_image,
 	defer_destroy_sampler,
 	defer_destroy_pipeline,

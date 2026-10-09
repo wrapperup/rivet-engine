@@ -45,7 +45,7 @@ UIRenderPass :: struct {
 	sampler:         gfx.SamplerId,
 	commands:        [dynamic]UI_Command,
 	num_commands:    int,
-	command_buffers: [gfx.FRAME_OVERLAP]gfx.Buffer(UI_Command),
+    command_buffers: [gfx.FRAME_OVERLAP]gfx.Slice(UI_Command),
 	font:            Font,
 }
 
@@ -157,13 +157,6 @@ init_ui_rp :: proc() {
 
 	// TODO: leak. asset system.
 	ui_rp.font = load_font("fonts/msdf/f_nunito_regular_mtsdf.ktx2", "assets/fonts/msdf/f_nunito_regular_mtsdf.json")
-
-	for i in 0 ..< gfx.FRAME_OVERLAP {
-		buffer := gfx.create_buffer(UI_Command, MAX_UI_COMMANDS, .Storage, "UI_Command_Buffer")
-		ui_rp.command_buffers[i] = buffer
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, buffer)
-	}
-
 }
 
 ui_rect :: proc(
@@ -407,7 +400,9 @@ ui_prepare :: proc() {
 	assert(len(ui_rp.commands) <= MAX_UI_COMMANDS, "Submitted too many UI commands.")
 
 	if len(ui_rp.commands) > 0 {
-		gfx.staging_write_buffer_slice(&ui_rp.command_buffers[gfx.current_frame_index()], ui_rp.commands[:])
+        scratch := &current_frame_game().scratch
+		slice := gfx.write_scratch_slice(scratch, ui_rp.commands[:])
+        ui_rp.command_buffers[gfx.current_frame_index()] = slice
 	}
 
 	ui_rp.num_commands = len(ui_rp.commands)
@@ -431,7 +426,7 @@ record_ui_pass :: proc(cmd: gfx.CommandBuffer) {
 
 		gfx.cmd_bind_pipeline(cmd, ui_rp.pipeline)
 
-		commands := gfx.slice(ui_rp.command_buffers[gfx.current_frame_index()])
+		commands := ui_rp.command_buffers[gfx.current_frame_index()]
 		gfx.cmd_push_constants(
 			cmd,
 			UI_Push{commands = commands, viewport_size = auto_cast (transmute([2]u32)game.renderer.draw_extent), sampler = ui_rp.sampler},

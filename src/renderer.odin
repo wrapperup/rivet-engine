@@ -1,6 +1,7 @@
 package game
 
 import "core:math/linalg"
+import "core:mem"
 
 import im "deps:odin-imgui"
 import im_glfw "deps:odin-imgui/imgui_impl_glfw"
@@ -50,8 +51,8 @@ RenderState :: struct {
 	// Bindless textures, etc
 	global_data:                     GPUGlobalData,
 	scene_resources:                 struct {
-		point_lights:       [256]GPUPointLight,
-		point_light_buffer: gfx.Buffer(GPUPointLight),
+		point_lights:      [256]GPUPointLight,
+		point_light_slice: gfx.Slice(GPUPointLight),
 	},
 	temp_resources:                  struct {
 		dfg_id:             ImageId,
@@ -86,6 +87,7 @@ RenderState :: struct {
 
 GameFrameData :: struct {
 	global_buffer:           gfx.Buffer(GPUGlobalData),
+	scratch:                 gfx.Scratch,
 	instances_buffer:        gfx.Buffer(GPURenderInstance),
 	cascade_matrices_buffer: gfx.Buffer(Mat4x4),
 	cascade_configs_buffer:  gfx.Buffer(GPUCascadeConfig),
@@ -172,20 +174,18 @@ init_shared_buffers :: proc() {
 	for &frame in game.render_state.frame_data {
 		frame.instances_buffer = gfx.create_buffer(GPURenderInstance, MAX_RENDER_INSTANCES, .DynUniform)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.instances_buffer)
+
+		frame.scratch = gfx.create_scratch(32 * mem.Megabyte, "Frame Scratch Buffer")
+		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.scratch)
+
 		frame.global_buffer = gfx.create_buffer(GPUGlobalData, 1, .DynUniform)
 		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.global_buffer)
 	}
 
 	environment := &game.render_state.global_data.environment
 
-	game.render_state.scene_resources.point_light_buffer = gfx.create_buffer(
-		GPUPointLight,
-		len(game.render_state.scene_resources.point_lights),
-	)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, game.render_state.scene_resources.point_light_buffer)
-
 	environment^ = {
-		point_lights = gfx.slice(game.render_state.scene_resources.point_light_buffer, count = 0),
+		point_lights = game.render_state.scene_resources.point_light_slice,
 		env_sampler  = game.render_state.temp_resources.env_sampler_id,
 		env_map      = game.render_state.atmosphere_rp.environment_id,
 		dfg          = game.render_state.temp_resources.dfg_id,
@@ -222,6 +222,8 @@ draw :: proc() {
 	frame := current_frame_game()
 	volumes := get_entities(DDGIVolume)
 	probes := get_entities(ReflectionProbe)
+
+	gfx.reset_scratch(&frame.scratch)
 
 	// Wait for this frame slot before writing any of its CPU-visible buffers.
 	cmd, frame_ready, swapchain_resized := gfx.begin_command_buffer()
@@ -367,10 +369,8 @@ prepare_shared_frame_data :: proc() {
 		if i >= len(game.render_state.scene_resources.point_lights) do break
 		game.render_state.scene_resources.point_lights[i] = point_light_to_gpu(point_light)
 	}
-	gfx.staging_write_buffer_slice(
-		&game.render_state.scene_resources.point_light_buffer,
-		game.render_state.scene_resources.point_lights[:],
-	)
+	point_light_count := min(len_entities(PointLight), len(game.render_state.scene_resources.point_lights))
+	point_lights_slice := gfx.write_scratch_slice(&current_frame_game().scratch, game.render_state.scene_resources.point_lights[:point_light_count])
 
 	global_data := &game.render_state.global_data
 	player := get_entity(game.state.player_id)
@@ -386,8 +386,7 @@ prepare_shared_frame_data :: proc() {
 	global_data.sun_direction = game.state.environment.sun_direction
 	global_data.mesh_debug_view = game.render_state.mesh_debug_view
 
-	point_light_count := min(len_entities(PointLight), len(game.render_state.scene_resources.point_lights))
-	global_data.environment.point_lights = gfx.slice(game.render_state.scene_resources.point_light_buffer, count = u64(point_light_count))
+	global_data.environment.point_lights = point_lights_slice
 
 	global_data.cascade_world_to_shadows = current_frame_game().cascade_matrices_buffer.ptr
 	global_data.cascade_configs = current_frame_game().cascade_configs_buffer.ptr
