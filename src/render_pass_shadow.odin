@@ -68,6 +68,7 @@ init_shadow_rp :: proc() {
 		// Keep distant casters beyond the depth slab without expanding its range.
 		depth_clamp = true,
 		depth = {format = .D32_SFLOAT, compare_op = .LESS_OR_EQUAL, write_enabled = true},
+		cull_mode = {.FRONT},
 	},
 	)
 
