@@ -32,17 +32,150 @@ when EDITOR {
 	Debug_Vis_Flags :: bit_set[Debug_Vis_Flag;u32]
 
 	Editor_Settings :: struct {
-		vis_flags: Debug_Vis_Flags,
+		vis_flags:   Debug_Vis_Flags,
+		show_editor: bool,
+		show_debug:  bool,
 	}
 
 	Editor_State :: struct {
-		settings:  Editor_Settings,
-		inspector: Inspector,
+		settings:        Editor_Settings,
+		inspector:       Inspector,
+		selected_entity: any,
+	}
+
+	Editor_Window :: struct {
+		name: cstring,
+		open: bool,
+		draw: proc(),
 	}
 
 	editor: Editor_State
 
-	configure_im :: proc() {
+	editor_windows := []Editor_Window {
+		{"Editor Settings", true, proc() {
+				inspector_draw_any(editor.settings)
+			}},
+		{"Physics", true, proc() {
+				inspector_draw_any(game.phys)
+			}},
+		{"Entities", true, proc() {
+				if im.CollapsingHeader("Raw Entities") {
+					im.Text("%d live entities across %d allocated slots", game.entity_system.live_count, game.entity_system.slot_count)
+					clipper: im.ListClipper
+					im.ListClipper_Begin(&clipper, i32(game.entity_system.slot_count))
+
+					for im.ListClipper_Step(&clipper) {
+						for i in clipper.DisplayStart ..< clipper.DisplayEnd {
+							entity := live_entity_at_index(&game.entity_system, u32(i))
+							if entity == nil do continue
+							im.Text("entity")
+							im.BulletText("id %d", entity.id.index)
+							im.BulletText("gen %d", entity.id.generation)
+						}
+					}
+				}
+
+				for subtype_ptr, i in game.entity_system.subtype_storage {
+					storage_raw := subtype_ptr.ptr
+					size_t := subtype_ptr.type_info.size
+
+					if im.SmallButton(fmt.ctprintf("Clear All %s", reflect.enum_string(i))) {
+						runtime.map_clear_dynamic(&storage_raw.sparse, &storage_raw.sparse_map_info)
+						storage_raw.dense.len = 0
+					}
+
+					im.SameLine()
+
+					if im.TreeNode(
+						fmt.ctprintf(
+							"%s Entities (num: %d)",
+							subtype_ptr.type_info.variant.(runtime.Type_Info_Named).name,
+							storage_raw.dense.len,
+						),
+					) {
+						clipper: im.ListClipper
+						im.ListClipper_Begin(&clipper, i32(storage_raw.dense.len))
+
+						for im.ListClipper_Step(&clipper) {
+							for i in clipper.DisplayStart ..< clipper.DisplayEnd {
+								data_ptr := (cast([^]u8)storage_raw.dense.data)[int(i) * size_t:]
+								inspector_draw_any({data_ptr, subtype_ptr.type_info.id})
+							}
+						}
+						im.TreePop()
+					}
+				}
+			}},
+		{"DDGI", true, proc() {
+				im.Checkbox("Update", &game.state.update_ddgi)
+				im.InputInt("Atlas debug volume", &game.render_state.ddgi_rp.debug_volume)
+				if im.Button("Bake Volumes") {
+					for &volume, i in get_entities(DDGIVolume) {
+						volume.bake_state = .Warmup
+					}
+				}
+
+				for &volume, i in get_entities(DDGIVolume) {
+					im.PushIDInt(i32(i))
+					counts := volume.gpu.grid_counts
+					im.SeparatorText(
+						fmt.ctprintf("Volume %d (%dx%dx%d, prio %.0f)", i, counts[0], counts[1], counts[2], volume.gpu.priority),
+					)
+					im.BeginDisabled(volume.bake_state == .Warmup || volume.bake_state == .Accumulate)
+					im.EndDisabled()
+					inspector_draw_any(volume)
+					im.PopID()
+				}
+			}},
+		{
+			"Reflection Probes",
+			true,
+			proc() {
+				im.Checkbox("Recapture every frame", &game.state.update_reflections)
+				// PushID per probe so widgets don't collide on shared labels when there are multiple.
+				for &probe, i in get_entities(ReflectionProbe) {
+					im.PushIDInt(i32(i))
+					im.SeparatorText(fmt.ctprintf("Probe %d", i))
+					if im.Button("Recapture") {
+						probe.wants_recapture = true // captures next frame, bypassing the auto gate
+					}
+					im.SliderFloat("Intensity", &probe.intensity, 0.0, 16.0)
+					im.SliderFloat("Blend distance", &probe.blend_distance, 0.01, 8.0)
+					im.InputFloat3("Position", &probe.translation)
+					im.InputFloat3("Half extents", &probe.half_extents)
+					im.PopID()
+				}
+			},
+		},
+		{"Environment", true, proc() {
+				inspector_draw_any(game.state.environment)
+			}},
+		{
+			"Stats",
+			true,
+			proc() {
+				smooth_alpha: f32 = 0.99
+
+				if game.frame_times_smooth[0] == 0 {
+					game.frame_times_smooth = game.frame_times
+				} else {
+					game.frame_times_smooth = math.lerp(game.frame_times, game.frame_times_smooth, smooth_alpha)
+				}
+
+				fields := reflect.enum_field_names(FrameTimeStats)
+
+				im.Text("%4.f FPS", (1 / game.frame_times_smooth[0]) * 1000)
+				for ms, i in game.frame_times_smooth {
+					text_proc := i == 0 ? im.Text : im.BulletText // kinda cursed but ok
+					text_proc("%s %2.2f ms", fmt.ctprint(fields[i]), ms)
+				}
+			},
+		},
+	}
+
+	init_editor :: proc() {
+		editor.settings.show_debug = true
+
 		io := im.GetIO()
 
 		io.ConfigFlags += {.DockingEnable}
@@ -99,7 +232,7 @@ when EDITOR {
 		style.Colors[im.Col.Border] = tone_2
 		style.Colors[im.Col.BorderShadow] = {0.0, 0.0, 0.0, 0.0}
 		style.Colors[im.Col.FrameBg] = tone_3
-		style.Colors[im.Col.FrameBgHovered] = tone_3
+		style.Colors[im.Col.FrameBgHovered] = tone_2
 		style.Colors[im.Col.FrameBgActive] = tone_3
 		style.Colors[im.Col.TitleBg] = tone_2
 		style.Colors[im.Col.TitleBgActive] = tone_2
@@ -107,19 +240,19 @@ when EDITOR {
 		style.Colors[im.Col.MenuBarBg] = tone_2
 		style.Colors[im.Col.ScrollbarBg] = tone_3
 		style.Colors[im.Col.ScrollbarGrab] = tone_1_e
-		style.Colors[im.Col.ScrollbarGrabHovered] = tone_1_e
+		style.Colors[im.Col.ScrollbarGrabHovered] = tone_2
 		style.Colors[im.Col.ScrollbarGrabActive] = tone_1_e_a
 		style.Colors[im.Col.CheckMark] = tone_1_e
 		style.Colors[im.Col.SliderGrab] = tone_1_e
 		style.Colors[im.Col.SliderGrabActive] = tone_1_e_a
 		style.Colors[im.Col.Button] = tone_2
-		style.Colors[im.Col.ButtonHovered] = tone_2
+		style.Colors[im.Col.ButtonHovered] = tone_3
 		style.Colors[im.Col.ButtonActive] = tone_3
 		style.Colors[im.Col.Header] = tone_2
-		style.Colors[im.Col.HeaderHovered] = tone_2
+		style.Colors[im.Col.HeaderHovered] = tone_3
 		style.Colors[im.Col.HeaderActive] = tone_2
 		style.Colors[im.Col.Separator] = tone_2
-		style.Colors[im.Col.SeparatorHovered] = tone_2
+		style.Colors[im.Col.SeparatorHovered] = tone_3
 		style.Colors[im.Col.SeparatorActive] = tone_2
 		style.Colors[im.Col.ResizeGrip] = {0.0, 0.0, 0.0, 0.0}
 		style.Colors[im.Col.ResizeGripHovered] = {0.0, 0.0, 0.0, 0.0}
@@ -184,8 +317,8 @@ when EDITOR {
 			physics_debug_draw(view_projection, bl)
 		}
 
-		if action_just_pressed(.ShowDebug) {
-			game.show_imgui = !game.show_imgui
+		if action_just_pressed(.ShowEditorUI) {
+			editor.settings.show_editor = !editor.settings.show_editor
 		}
 
 		if .Reflection_Probes in editor.settings.vis_flags {
@@ -194,9 +327,75 @@ when EDITOR {
 			}
 		}
 
-		if !game.show_imgui do return
-
 		im.DockSpaceOverViewport(flags = {.PassthruCentralNode})
+
+		if !editor.settings.show_debug {
+			return
+		}
+
+		@(static) show_messages := false
+		@(static) show_gizmos := false
+
+		debug_win_flags := im.WindowFlags {
+			.NoTitleBar,
+			.NoResize,
+			.NoMove,
+			.NoScrollbar,
+			.NoSavedSettings,
+			.NoMouseInputs,
+			.NoBackground,
+			.AlwaysAutoResize,
+		}
+
+		viewport := im.GetMainViewport()
+		padding: f32 = 20
+		im.SetNextWindowPos(viewport.WorkPos + padding)
+
+		if im.Begin("Test", flags = debug_win_flags) {
+			im.PushStyleColor(.Text, im.GetColorU32ImVec4(im.Vec4{1, 1, 1, 1}))
+			for i in 0 ..< 20 {
+				im.Text("Helllo!!!!!")
+			}
+			im.PopStyleColor()
+		}
+		im.End()
+
+		if !editor.settings.show_editor {
+			return
+		}
+
+		if im.BeginMainMenuBar() {
+			if im.BeginMenu("View") {
+				if im.MenuItem("Messages") {
+					show_messages = !show_messages
+				}
+				if im.MenuItem("Gizmos") {
+					show_gizmos = !show_gizmos
+				}
+				im.EndMenu()
+			}
+
+			if im.BeginMenu("Windows") {
+				for &window in editor_windows {
+					if im.MenuItem(window.name, nil, window.open) {
+						window.open = !window.open
+					}
+				}
+				im.EndMenu()
+			}
+
+			im.EndMainMenuBar()
+		}
+
+		for &window in editor_windows {
+            if window.open {
+                if im.Begin(window.name) {
+                    window.draw()
+                }
+                im.End()
+            }
+		}
+
 
 		dl := im.GetForegroundDrawList()
 		red := im.GetColorU32ImVec4({1.0, 0.0, 0.0, 1.0})
@@ -229,129 +428,6 @@ when EDITOR {
 			im.DrawList_AddLine(dl, origin, y_pos, green, 2)
 			im.DrawList_AddLine(dl, origin, z_pos, blue, 2)
 		}
-
-		if im.Begin("Physics") {
-			inspector_draw_any(game.phys)
-		}
-		im.End()
-
-		if im.Begin("Editor Settings") {
-			inspector_draw_any(editor.settings)
-		}
-		im.End()
-
-		if im.Begin("Entities") {
-			if im.CollapsingHeader("Raw Entities") {
-				im.Text("%d live entities across %d allocated slots", game.entity_system.live_count, game.entity_system.slot_count)
-				clipper: im.ListClipper
-				im.ListClipper_Begin(&clipper, i32(game.entity_system.slot_count))
-
-				for im.ListClipper_Step(&clipper) {
-					for i in clipper.DisplayStart ..< clipper.DisplayEnd {
-						entity := live_entity_at_index(&game.entity_system, u32(i))
-						if entity == nil do continue
-						im.Text("entity")
-						im.BulletText("id %d", entity.id.index)
-						im.BulletText("gen %d", entity.id.generation)
-					}
-				}
-			}
-
-			for subtype_ptr, i in game.entity_system.subtype_storage {
-				storage_raw := subtype_ptr.ptr
-				size_t := subtype_ptr.type_info.size
-
-				if im.SmallButton(fmt.ctprintf("Clear All %s", reflect.enum_string(i))) {
-					runtime.map_clear_dynamic(&storage_raw.sparse, &storage_raw.sparse_map_info)
-					storage_raw.dense.len = 0
-				}
-
-				im.SameLine()
-
-				if im.TreeNode(
-					fmt.ctprintf(
-						"%s Entities (num: %d)",
-						subtype_ptr.type_info.variant.(runtime.Type_Info_Named).name,
-						storage_raw.dense.len,
-					),
-				) {
-					clipper: im.ListClipper
-					im.ListClipper_Begin(&clipper, i32(storage_raw.dense.len))
-
-					for im.ListClipper_Step(&clipper) {
-						for i in clipper.DisplayStart ..< clipper.DisplayEnd {
-							data_ptr := (cast([^]u8)storage_raw.dense.data)[int(i) * size_t:]
-							inspector_draw_any({data_ptr, subtype_ptr.type_info.id})
-						}
-					}
-					im.TreePop()
-				}
-			}
-		}
-		im.End()
-
-		if im.Begin("DDGI") {
-			im.Checkbox("Update", &game.state.update_ddgi)
-			im.InputInt("Atlas debug volume", &game.render_state.ddgi_rp.debug_volume)
-			if im.Button("Bake Volumes") {
-				for &volume, i in get_entities(DDGIVolume) {
-					volume.bake_state = .Warmup
-				}
-			}
-
-			for &volume, i in get_entities(DDGIVolume) {
-				im.PushIDInt(i32(i))
-				counts := volume.gpu.grid_counts
-				im.SeparatorText(fmt.ctprintf("Volume %d (%dx%dx%d, prio %.0f)", i, counts[0], counts[1], counts[2], volume.gpu.priority))
-				im.BeginDisabled(volume.bake_state == .Warmup || volume.bake_state == .Accumulate)
-				im.EndDisabled()
-				inspector_draw_any(volume)
-				im.PopID()
-			}
-		}
-		im.End()
-
-		if im.Begin("Reflection Probes") {
-			im.Checkbox("Recapture every frame", &game.state.update_reflections)
-			// PushID per probe so widgets don't collide on shared labels when there are multiple.
-			for &probe, i in get_entities(ReflectionProbe) {
-				im.PushIDInt(i32(i))
-				im.SeparatorText(fmt.ctprintf("Probe %d", i))
-				if im.Button("Recapture") {
-					probe.wants_recapture = true // captures next frame, bypassing the auto gate
-				}
-				im.SliderFloat("Intensity", &probe.intensity, 0.0, 16.0)
-				im.SliderFloat("Blend distance", &probe.blend_distance, 0.01, 8.0)
-				im.InputFloat3("Position", &probe.translation)
-				im.InputFloat3("Half extents", &probe.half_extents)
-				im.PopID()
-			}
-		}
-		im.End()
-
-		if im.Begin("Environment") {
-			inspector_draw_any(game.state.environment)
-		}
-		im.End()
-
-		if (im.Begin("Stats")) {
-			smooth_alpha: f32 = 0.99
-
-			if game.frame_times_smooth[0] == 0 {
-				game.frame_times_smooth = game.frame_times
-			} else {
-				game.frame_times_smooth = math.lerp(game.frame_times, game.frame_times_smooth, smooth_alpha)
-			}
-
-			fields := reflect.enum_field_names(FrameTimeStats)
-
-			im.Text("%4.f FPS", (1 / game.frame_times_smooth[0]) * 1000)
-			for ms, i in game.frame_times_smooth {
-				text_proc := i == 0 ? im.Text : im.BulletText // kinda cursed but ok
-				text_proc("%s %2.2f ms", fmt.ctprint(fields[i]), ms)
-			}
-		}
-		im.End()
 	}
 
 	inspector_label :: proc(label: string) {

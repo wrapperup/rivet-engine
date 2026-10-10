@@ -69,9 +69,6 @@ Game :: struct {
 	delta_time:         f64,
 	live_time:          f64,
 
-	// Debug
-	show_imgui:         bool,
-
 	// TEMP storage
 	ball_mesh:          GPUMeshBuffers,
 }

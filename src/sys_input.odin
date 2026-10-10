@@ -13,7 +13,7 @@ Action :: enum {
 	LockCamera,
 	Fullscreen,
 	ExitGame,
-	ShowDebug,
+	ShowEditorUI,
 	ReloadScene,
 	Livepatch,
 }

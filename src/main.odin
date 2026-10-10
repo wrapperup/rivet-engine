@@ -105,7 +105,7 @@ main :: proc() {
 			add_action_key_mapping(.Sprint, glfw.KEY_LEFT_SHIFT)
 			add_action_key_mapping(.ToggleNoclip, glfw.KEY_V)
 			add_action_key_mapping(.LockCamera, glfw.KEY_M)
-			add_action_key_mapping(.ShowDebug, glfw.KEY_N)
+			add_action_key_mapping(.ShowEditorUI, glfw.KEY_N)
 			add_action_key_mapping(.Fullscreen, glfw.KEY_F10)
 			add_action_key_mapping(.ExitGame, glfw.KEY_ESCAPE)
 			add_action_key_mapping(.ReloadScene, glfw.KEY_R)
@@ -131,11 +131,11 @@ main :: proc() {
 		// Rendering
 		{
 			init_game_renderer()
-
-			when EDITOR {
-				configure_im()
-			}
 		}
+
+        when EDITOR {
+            init_editor()
+        }
 
 		// Scene
 		{
