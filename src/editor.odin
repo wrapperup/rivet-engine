@@ -40,7 +40,10 @@ when EDITOR {
 	Editor_State :: struct {
 		settings:        Editor_Settings,
 		inspector:       Inspector,
-		selected_entity: any,
+		selected_entity: struct {
+			id:   EntityId,
+			kind: Entity_Kind,
+		},
 	}
 
 	Editor_Window :: struct {
@@ -52,61 +55,57 @@ when EDITOR {
 	editor: Editor_State
 
 	editor_windows := []Editor_Window {
-		{"Editor Settings", true, proc() {
+		{
+            name = "Editor Settings",
+            open = true,
+            draw = proc() {
 				inspector_draw_any(editor.settings)
-			}},
-		{"Physics", true, proc() {
+			}
+        },
+		{
+            name = "Physics",
+            open = true,
+            draw = proc() {
 				inspector_draw_any(game.phys)
-			}},
-		{"Entities", true, proc() {
-				if im.CollapsingHeader("Raw Entities") {
-					im.Text("%d live entities across %d allocated slots", game.entity_system.live_count, game.entity_system.slot_count)
-					clipper: im.ListClipper
-					im.ListClipper_Begin(&clipper, i32(game.entity_system.slot_count))
+			}
+        },
+		{
+            name = "Entity Outliner",
+            open = true,
+            draw = proc() {
+				for i in 0 ..< game.entity_system.slot_count {
+					entity := live_entity_at_index(&game.entity_system, u32(i))
+					if entity == nil do continue
 
-					for im.ListClipper_Step(&clipper) {
-						for i in clipper.DisplayStart ..< clipper.DisplayEnd {
-							entity := live_entity_at_index(&game.entity_system, u32(i))
-							if entity == nil do continue
-							im.Text("entity")
-							im.BulletText("id %d", entity.id.index)
-							im.BulletText("gen %d", entity.id.generation)
-						}
+					if im.Selectable(fmt.ctprintf("%v #%d", entity.kind, entity.id.index), editor.selected_entity.id == entity.id) {
+						editor.selected_entity.id = entity.id
+						editor.selected_entity.kind = entity.kind
 					}
 				}
+			}
+        },
+		{
+            name = "Entity Inspector",
+            open = true,
+            draw = proc() {
+				if get_entity(editor.selected_entity.id) != nil {
+					raw_storage := game.entity_system.subtype_storage[editor.selected_entity.kind]
+					type_id := raw_storage.type_info.id
+					elem_size := raw_storage.type_info.size
 
-				for subtype_ptr, i in game.entity_system.subtype_storage {
-					storage_raw := subtype_ptr.ptr
-					size_t := subtype_ptr.type_info.size
+					set := raw_storage.ptr
+					index := set.sparse[editor.selected_entity.id]
 
-					if im.SmallButton(fmt.ctprintf("Clear All %s", reflect.enum_string(i))) {
-						runtime.map_clear_dynamic(&storage_raw.sparse, &storage_raw.sparse_map_info)
-						storage_raw.dense.len = 0
-					}
+					raw_entity := rawptr(uintptr(set.dense.data) + uintptr(index * elem_size))
 
-					im.SameLine()
-
-					if im.TreeNode(
-						fmt.ctprintf(
-							"%s Entities (num: %d)",
-							subtype_ptr.type_info.variant.(runtime.Type_Info_Named).name,
-							storage_raw.dense.len,
-						),
-					) {
-						clipper: im.ListClipper
-						im.ListClipper_Begin(&clipper, i32(storage_raw.dense.len))
-
-						for im.ListClipper_Step(&clipper) {
-							for i in clipper.DisplayStart ..< clipper.DisplayEnd {
-								data_ptr := (cast([^]u8)storage_raw.dense.data)[int(i) * size_t:]
-								inspector_draw_any({data_ptr, subtype_ptr.type_info.id})
-							}
-						}
-						im.TreePop()
-					}
+					inspector_draw_any({raw_entity, type_id})
 				}
-			}},
-		{"DDGI", true, proc() {
+			}
+        },
+		{
+            name = "DDGI",
+            open = true,
+            draw = proc() {
 				im.Checkbox("Update", &game.state.update_ddgi)
 				im.InputInt("Atlas debug volume", &game.render_state.ddgi_rp.debug_volume)
 				if im.Button("Bake Volumes") {
@@ -126,11 +125,12 @@ when EDITOR {
 					inspector_draw_any(volume)
 					im.PopID()
 				}
-			}},
+			}
+        },
 		{
-			"Reflection Probes",
-			true,
-			proc() {
+			name = "Reflection Probes",
+			open = true,
+			draw = proc() {
 				im.Checkbox("Recapture every frame", &game.state.update_reflections)
 				// PushID per probe so widgets don't collide on shared labels when there are multiple.
 				for &probe, i in get_entities(ReflectionProbe) {
@@ -147,13 +147,17 @@ when EDITOR {
 				}
 			},
 		},
-		{"Environment", true, proc() {
-				inspector_draw_any(game.state.environment)
-			}},
 		{
-			"Stats",
-			true,
-			proc() {
+            name = "Environment",
+            open = true,
+            draw = proc() {
+				inspector_draw_any(game.state.environment)
+			}
+        },
+		{
+			name = "Stats",
+			open = true,
+			draw = proc() {
 				smooth_alpha: f32 = 0.99
 
 				if game.frame_times_smooth[0] == 0 {
@@ -213,7 +217,7 @@ when EDITOR {
 		style := im.GetStyle()
 
 		tone_text_1: im.Vec4 : {0.69, 0.69, 0.69, 1.0}
-		tone_text_2: im.Vec4 : {0.69, 0.69, 0.69, 0.8}
+		tone_text_2: im.Vec4 : {0.45, 0.45, 0.47, 1.0}
 
 		tone_1: im.Vec4 : {0.16, 0.16, 0.18, 1.0}
 		// tone_1_b := tone_1 * 1.2
@@ -248,9 +252,10 @@ when EDITOR {
 		style.Colors[im.Col.Button] = tone_2
 		style.Colors[im.Col.ButtonHovered] = tone_3
 		style.Colors[im.Col.ButtonActive] = tone_3
-		style.Colors[im.Col.Header] = tone_2
-		style.Colors[im.Col.HeaderHovered] = tone_3
-		style.Colors[im.Col.HeaderActive] = tone_2
+		// Selection needs an accent; tone_2/tone_3 are indistinguishable from table row stripes.
+		style.Colors[im.Col.Header] = {0.20, 0.33, 0.50, 1.0}
+		style.Colors[im.Col.HeaderHovered] = {0.22, 0.22, 0.24, 1.0}
+		style.Colors[im.Col.HeaderActive] = {0.24, 0.38, 0.58, 1.0}
 		style.Colors[im.Col.Separator] = tone_2
 		style.Colors[im.Col.SeparatorHovered] = tone_3
 		style.Colors[im.Col.SeparatorActive] = tone_2
@@ -388,12 +393,12 @@ when EDITOR {
 		}
 
 		for &window in editor_windows {
-            if window.open {
-                if im.Begin(window.name) {
-                    window.draw()
-                }
-                im.End()
-            }
+			if window.open {
+				if im.Begin(window.name) {
+					window.draw()
+				}
+				im.End()
+			}
 		}
 
 
@@ -785,7 +790,7 @@ when EDITOR {
 				return false
 			}
 
-			if base != nil {
+			if base == nil {
 				im.TextUnformatted("nil")
 				return true
 			}
