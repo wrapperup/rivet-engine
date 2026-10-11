@@ -6,7 +6,7 @@ import "core:mem/virtual"
 import "core:reflect"
 
 RawSparseSet :: struct {
-	sparse:          runtime.Raw_Map,
+	sparse:          map[EntityId]int,
 	dense:           runtime.Raw_Dynamic_Array,
 	sparse_map_info: runtime.Map_Info,
 }
@@ -89,8 +89,8 @@ TypedEntityId :: struct($T: typeid) {
 // to be reasonably cache-friendly, so keep it small when
 // possible.
 Entity :: struct {
-	id:   EntityId,
-	kind: Entity_Kind,
+    id:   EntityId `edit:"-"`,
+	kind: Entity_Kind `edit:"-"`,
 }
 
 ENTITY_PAGE_SIZE :: 1024
