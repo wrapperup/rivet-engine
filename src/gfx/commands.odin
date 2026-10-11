@@ -97,17 +97,21 @@ cmd_dispatch :: #force_inline proc(cmd: CommandBuffer, group_count_x: u32 = 1, g
 }
 
 cmd_begin_label :: proc(cmd: CommandBuffer, label: cstring, color: [4]f32 = 1) {
-	vk_label := vk.DebugUtilsLabelEXT {
-		sType      = .DEBUG_UTILS_LABEL_EXT,
-		pLabelName = label,
-		color      = color,
-	}
+	if r_ctx.debug_messenger != 0 {
+		vk_label := vk.DebugUtilsLabelEXT {
+			sType      = .DEBUG_UTILS_LABEL_EXT,
+			pLabelName = label,
+			color      = color,
+		}
 
-	vk.CmdBeginDebugUtilsLabelEXT(cmd, &vk_label)
+		vk.CmdBeginDebugUtilsLabelEXT(cmd, &vk_label)
+	}
 }
 
 cmd_end_label :: #force_inline proc(cmd: CommandBuffer) {
-	vk.CmdEndDebugUtilsLabelEXT(cmd)
+	if r_ctx.debug_messenger != 0 {
+		vk.CmdEndDebugUtilsLabelEXT(cmd)
+	}
 }
 
 cmd_copy_buffer_to_image :: proc(cmd: CommandBuffer, src_buffer: Buffer($T), dst_image_id: ImageId, buffer_copies: []vk.BufferImageCopy) {

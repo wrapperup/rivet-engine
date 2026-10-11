@@ -40,8 +40,8 @@ vk_check :: proc(result: vk.Result, loc := #caller_location) {
 
 r_ctx: ^Renderer
 
-DeviceLimits :: struct {
-	max_anisotropy: f32,
+Capabilities :: struct {
+	ray_query: bool,
 }
 
 Renderer :: struct {
@@ -88,6 +88,7 @@ Renderer :: struct {
 
 	// Limits
 	limits:                      vk.PhysicalDeviceLimits, // TODO: Too big?
+	capabilities:                Capabilities,
 }
 
 Swapchain :: struct {
@@ -109,7 +110,6 @@ create_swapchain :: proc(old_swapchain: vk.SwapchainKHR = 0) {
 	formats := make([]vk.SurfaceFormatKHR, format_count)
 	defer delete(formats)
 	vk.GetPhysicalDeviceSurfaceFormatsKHR(r_ctx.physical_device, r_ctx.surface, &format_count, raw_data(formats))
-
 
 	present_mode_count: u32
 	vk.GetPhysicalDeviceSurfacePresentModesKHR(r_ctx.physical_device, r_ctx.surface, &present_mode_count, nil)
