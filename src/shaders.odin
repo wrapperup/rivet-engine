@@ -121,8 +121,8 @@ init_slang_session :: proc() -> ^sp.ISession {
 	options: []sp.CompilerOptionEntry = {
 		{name = .VulkanUseEntryPointName, value = {kind = .Int, intValue0 = 1}},
 		{name = .GLSLForceScalarLayout, value = {kind = .Int, intValue0 = 1}},
-		{name = .DebugInformation, value = {kind = .Int, intValue0 = 2}},
-		// {name = .Optimization, value = {kind = .Int, intValue0 = 3}},
+		// {name = .DebugInformation, value = {kind = .Int, intValue0 = 2}},
+		{name = .Optimization, value = {kind = .Int, intValue0 = 2}},
 	}
 
 	target_desc := sp.TargetDesc {
