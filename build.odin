@@ -26,15 +26,20 @@ run_command :: proc(command: []string) -> int {
 main :: proc() {
 	start_time := time.now()
 
+    force_debug := false
+    cooked := false
 	release := false
+
 	patch_directory := ""
 
 	for argument in os.args[1:] {
 		switch argument {
 		case "debug", "--debug":
-			release = false
+			force_debug = true
 		case "release", "--release", "1":
 			release = true
+        case "--cooked":
+			cooked = true
 		case "-h", "--help", "help":
 			fmt.println("Usage: build.bat [debug|release|1] (default: debug)")
 			fmt.println("Debug builds enable livepatch on Windows x64.")
@@ -113,11 +118,21 @@ main :: proc() {
 		}
 	}
 
+    if cooked {
+		append(&command, "-define:REQUIRE_COOKED_ASSETS=true")
+		append(&command, "-define:COOKED_ASSET_DIR=cooked")
+    }
+
 	if release {
 		append(&command, "-o:speed")
 	} else {
-		append(&command, "-debug", "-o:none")
+		append(&command, "-o:none")
+    }
+
+    if force_debug || !release {
+		append(&command, "-debug")
 	}
+
 	if patch_directory != "" {
 		append(&command, "-build-mode:obj", fmt.tprintf("-out:%s/", patch_directory))
 	} else {

@@ -22,9 +22,14 @@ import slang "deps:odin-slang/slang"
 
 import "gfx"
 
-REQUIRE_COOKED_ASSETS :: #config(REQUIRE_COOKED_ASSETS, false)
-COOKED_ASSET_DIR :: "build/cooked"
 BASE_ASSET_DIR :: "assets"
+REQUIRE_COOKED_ASSETS :: #config(REQUIRE_COOKED_ASSETS, false)
+
+when ODIN_DEBUG {
+    COOKED_ASSET_DIR :: #config(COOKED_ASSET_DIR, "build/debug/cooked")
+} else {
+    COOKED_ASSET_DIR :: #config(COOKED_ASSET_DIR, "build/release/cooked")
+}
 
 AssetSystem :: struct {
 	allocator:   mem.Allocator,
