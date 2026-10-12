@@ -74,9 +74,6 @@ Renderer :: struct {
 	draw_extent:                 vk.Extent2D,
 	msaa_samples:                vk.SampleCountFlag,
 
-	// Descriptors
-	global_descriptor_allocator: DescriptorAllocator,
-
 	// Immediate submit
 	imm_fence:                   vk.Fence,
 	imm_command_buffer:          CommandBuffer,
@@ -536,13 +533,6 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 		defer_destroy(&r_ctx.global_arena, r_ctx.imm_fence)
 	}
 
-	{
-		//create a descriptor pool that will hold 10 sets with 1 image each
-		ratio: f32 = 1.0 / 3.0
-		sizes: []PoolSizeRatio = {{.SAMPLER, ratio}, {.SAMPLED_IMAGE, ratio}, {.STORAGE_IMAGE, ratio}}
-		init_descriptor_allocator(&r_ctx.global_descriptor_allocator, r_ctx.device, 10, sizes, {.UPDATE_AFTER_BIND})
-	}
-
 	init_bindless_descriptors()
 
 	if r_ctx.window != nil {
@@ -569,9 +559,6 @@ cleanup_vulkan :: proc() {
 		flush_vk_arena(&frame.arena)
 		delete_vk_arena(frame.arena)
 	}
-
-	destroy_pools(&r_ctx.global_descriptor_allocator, r_ctx.device)
-	destroy_descriptor_allocator(&r_ctx.global_descriptor_allocator)
 
 	if r_ctx.swapchain.swapchain != 0 {
 		destroy_swapchain_resources(&r_ctx.swapchain)

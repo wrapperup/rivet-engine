@@ -15,6 +15,7 @@ SamplerId :: distinct u32
 
 BindlessSystem :: struct {
 	descriptor_layout: vk.DescriptorSetLayout,
+	pool:              vk.DescriptorPool,
 	descriptor_set:    vk.DescriptorSet,
 
 	// Storage
@@ -30,7 +31,7 @@ init_bindless_descriptors :: proc() {
 	bindless_system.descriptor_layout = create_descriptor_set_layout(
 		{
 			{binding = BINDLESS_SAMPLED_IMAGES, type = .SAMPLED_IMAGE, count = MAX_BINDLESS_IMAGES},
-			{binding = BINDLESS_SAMPLERS, type = .SAMPLER, count = MAX_BINDLESS_SAMPLERS},
+			{binding = BINDLESS_SAMPLERS,       type = .SAMPLER,       count = MAX_BINDLESS_SAMPLERS},
 			{binding = BINDLESS_STORAGE_IMAGES, type = .STORAGE_IMAGE, count = MAX_BINDLESS_IMAGES},
 		},
 		{.UPDATE_AFTER_BIND_POOL},
@@ -38,11 +39,17 @@ init_bindless_descriptors :: proc() {
 	)
 	defer_destroy(&r_ctx.global_arena, bindless_system.descriptor_layout)
 
-	bindless_system.descriptor_set = allocate_descriptor_set(
-		&r_ctx.global_descriptor_allocator,
-		r_ctx.device,
-		bindless_system.descriptor_layout,
+	bindless_system.pool = create_pool(
+		1,
+		{
+			{type = .SAMPLER,       descriptorCount = MAX_BINDLESS_SAMPLERS},
+			{type = .SAMPLED_IMAGE, descriptorCount = MAX_BINDLESS_IMAGES},
+			{type = .STORAGE_IMAGE, descriptorCount = MAX_BINDLESS_IMAGES},
+		},
+		{.UPDATE_AFTER_BIND},
+		"Bindless Descriptor Pool",
 	)
+	bindless_system.descriptor_set = allocate_descriptor_set(bindless_system.pool, bindless_system.descriptor_layout)
 }
 
 shutdown_bindless_descriptors :: proc() {

@@ -6,26 +6,32 @@ package game
 
 // Entity System
 Entity_Kind :: enum {
+    SoundSource,
     Player,
-    ReflectionProbe,
+    StaticMesh,
     PointLight,
     Terrain,
-    SoundSource,
-    StaticMesh,
     Ball,
     DDGIVolume,
+    ReflectionProbe,
 }
 
 register_entity_subtypes :: proc() {
+    {
+        procs: SubtypeProcs(SoundSource)
+        procs.init = init_sound_source
+        procs.destroy = destroy_sound_source
+        register_entity_subtype(SoundSource, procs)
+    }
     {
         procs: SubtypeProcs(Player)
         register_entity_subtype(Player, procs)
     }
     {
-        procs: SubtypeProcs(ReflectionProbe)
-        procs.init = reflection_probe_init
-        procs.destroy = reflection_probe_destroy
-        register_entity_subtype(ReflectionProbe, procs)
+        procs: SubtypeProcs(StaticMesh)
+        procs.init = static_mesh_init
+        procs.destroy = static_mesh_destroy
+        register_entity_subtype(StaticMesh, procs)
     }
     {
         procs: SubtypeProcs(PointLight)
@@ -38,18 +44,6 @@ register_entity_subtypes :: proc() {
         register_entity_subtype(Terrain, procs)
     }
     {
-        procs: SubtypeProcs(SoundSource)
-        procs.init = init_sound_source
-        procs.destroy = destroy_sound_source
-        register_entity_subtype(SoundSource, procs)
-    }
-    {
-        procs: SubtypeProcs(StaticMesh)
-        procs.init = static_mesh_init
-        procs.destroy = static_mesh_destroy
-        register_entity_subtype(StaticMesh, procs)
-    }
-    {
         procs: SubtypeProcs(Ball)
         procs.init = init_ball
         register_entity_subtype(Ball, procs)
@@ -58,18 +52,24 @@ register_entity_subtypes :: proc() {
         procs: SubtypeProcs(DDGIVolume)
         register_entity_subtype(DDGIVolume, procs)
     }
+    {
+        procs: SubtypeProcs(ReflectionProbe)
+        procs.init = reflection_probe_init
+        procs.destroy = reflection_probe_destroy
+        register_entity_subtype(ReflectionProbe, procs)
+    }
 }
 
 entity_type_to_kind :: proc($T: typeid) -> Entity_Kind {
     return .Base when T == Entity else
+           .SoundSource when T == SoundSource else
            .Player when T == Player else
-           .ReflectionProbe when T == ReflectionProbe else
+           .StaticMesh when T == StaticMesh else
            .PointLight when T == PointLight else
            .Terrain when T == Terrain else
-           .SoundSource when T == SoundSource else
-           .StaticMesh when T == StaticMesh else
            .Ball when T == Ball else
            .DDGIVolume when T == DDGIVolume else
+           .ReflectionProbe when T == ReflectionProbe else
            #panic("Unregistered entity type")
 }
 

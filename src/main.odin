@@ -82,7 +82,7 @@ main :: proc() {
 
 		game.window = window
 
-		game.renderer = gfx.init({window = game.window, msaa_samples = ._4, enable_validation_layers = true, enable_logs = true})
+		game.renderer = gfx.init({window = game.window, msaa_samples = ._4, enable_validation_layers = false, enable_logs = true})
 		if game.renderer == nil {
 			log.error("Graphics could not be initialized.")
 			return

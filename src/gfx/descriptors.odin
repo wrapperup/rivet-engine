@@ -51,123 +51,41 @@ create_descriptor_set_layout :: proc(
 	return set
 }
 
-DescriptorAllocator :: struct {
-	sets_per_pool: u32,
-	pool_ratios:   [dynamic]PoolSizeRatio,
-	ready_pools:   [dynamic]vk.DescriptorPool,
-	full_pools:    [dynamic]vk.DescriptorPool,
-	flags:         vk.DescriptorPoolCreateFlags,
-	debug_name:    cstring,
-}
-
-PoolSizeRatio :: struct {
-	type:  vk.DescriptorType,
-	ratio: f32,
-}
-
-init_descriptor_allocator :: proc(
-	allocator: ^DescriptorAllocator,
-	device: vk.Device,
+create_pool :: proc(
 	max_sets: u32,
-	pool_ratios: []PoolSizeRatio,
+	pool_sizes: []vk.DescriptorPoolSize,
 	flags: vk.DescriptorPoolCreateFlags = {},
 	debug_name: cstring = nil,
 	loc := #caller_location,
-) {
-	clear(&allocator.pool_ratios)
-
-	for &ratio in pool_ratios {
-		append(&allocator.pool_ratios, ratio)
-	}
-
-	new_pool := create_pool(allocator, device, max_sets, pool_ratios, flags)
-	allocator.flags = flags
-
-	when ODIN_DEBUG {
-		if debug_name == nil {
-			allocator.debug_name = fmt.ctprint(loc)
-		} else {
-			allocator.debug_name = debug_name
-		}
-	}
-
-	append(&allocator.ready_pools, new_pool)
-}
-
-get_pool :: proc(allocator: ^DescriptorAllocator, device: vk.Device) -> vk.DescriptorPool {
-	if len(allocator.ready_pools) > 0 {
-		return pop(&allocator.ready_pools)
-	} else {
-		return create_pool(allocator, device, allocator.sets_per_pool, allocator.pool_ratios[:], allocator.flags)
-	}
-}
-
-create_pool :: proc(
-	allocator: ^DescriptorAllocator,
-	device: vk.Device,
-	set_count: u32,
-	pool_ratios: []PoolSizeRatio,
-	flags: vk.DescriptorPoolCreateFlags = {},
 ) -> vk.DescriptorPool {
-	pool_sizes: [dynamic]vk.DescriptorPoolSize
-	defer delete(pool_sizes)
-
-	reserve(&pool_sizes, len(pool_ratios))
-
-	for ratio in pool_ratios {
-		append(&pool_sizes, vk.DescriptorPoolSize{type = ratio.type, descriptorCount = u32(f32(ratio.ratio) * f32(set_count))})
-	}
-
 	pool_info := vk.DescriptorPoolCreateInfo {
 		sType         = .DESCRIPTOR_POOL_CREATE_INFO,
 		flags         = flags,
-		maxSets       = set_count,
+		maxSets       = max_sets,
 		poolSizeCount = u32(len(pool_sizes)),
 		pPoolSizes    = raw_data(pool_sizes),
 	}
 
 	new_pool: vk.DescriptorPool
-	vk_check(vk.CreateDescriptorPool(device, &pool_info, nil, &new_pool))
+	vk_check(vk.CreateDescriptorPool(r_ctx.device, &pool_info, nil, &new_pool))
 
 	when ODIN_DEBUG {
-		debug_set_object_name(new_pool, allocator.debug_name)
+		if debug_name == nil {
+			debug_set_object_name(new_pool, fmt.ctprint(loc))
+		} else {
+			debug_set_object_name(new_pool, debug_name)
+		}
 	}
 
 	return new_pool
 }
 
-reset_pools :: proc(allocator: ^DescriptorAllocator, device: vk.Device) {
-	for &pool in &allocator.ready_pools {
-		vk.ResetDescriptorPool(device, pool, {})
-	}
-
-	for &pool in &allocator.full_pools {
-		vk.ResetDescriptorPool(device, pool, {})
-		append(&allocator.ready_pools, pool)
-	}
-	clear(&allocator.full_pools)
-}
-
-destroy_pools :: proc(allocator: ^DescriptorAllocator, device: vk.Device) {
-	for &pool in &allocator.ready_pools {
-		vk.DestroyDescriptorPool(device, pool, nil)
-	}
-	clear(&allocator.ready_pools)
-
-	for &pool in &allocator.full_pools {
-		vk.DestroyDescriptorPool(device, pool, nil)
-	}
-	clear(&allocator.full_pools)
-}
-
 allocate_descriptor_set :: proc(
-	allocator: ^DescriptorAllocator,
-	device: vk.Device,
+	pool: vk.DescriptorPool,
 	layout: vk.DescriptorSetLayout,
 	debug_name: cstring = nil,
 	loc := #caller_location,
 ) -> vk.DescriptorSet {
-	pool := get_pool(allocator, device)
 	layout := layout
 
 	alloc_info := vk.DescriptorSetAllocateInfo {
@@ -179,21 +97,7 @@ allocate_descriptor_set :: proc(
 	}
 
 	descriptor_set: vk.DescriptorSet
-	result := vk.AllocateDescriptorSets(device, &alloc_info, &descriptor_set)
-
-	if result == .ERROR_OUT_OF_POOL_MEMORY || result == .ERROR_FRAGMENTED_POOL {
-		append(&allocator.full_pools, pool)
-
-		pool = get_pool(allocator, device)
-		alloc_info.descriptorPool = pool
-
-		// Try again, if it fails then we're goofed anyway.
-		result = vk.AllocateDescriptorSets(device, &alloc_info, &descriptor_set)
-
-		vk_check(result)
-	}
-
-	append(&allocator.ready_pools, pool)
+	vk_check(vk.AllocateDescriptorSets(r_ctx.device, &alloc_info, &descriptor_set))
 
 	when ODIN_DEBUG {
 		if debug_name == nil {
@@ -205,12 +109,6 @@ allocate_descriptor_set :: proc(
 
 
 	return descriptor_set
-}
-
-destroy_descriptor_allocator :: proc(allocator: ^DescriptorAllocator) {
-	delete(allocator.pool_ratios)
-	delete(allocator.ready_pools)
-	delete(allocator.full_pools)
 }
 
 DescriptorWrite :: struct {
