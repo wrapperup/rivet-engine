@@ -13,17 +13,12 @@ import im_gfx "gfx/imgui_backend"
 
 NUM_CASCADES: u32 : 4
 
-@(private = "file")
-ImageId :: gfx.ImageId
-@(private = "file")
-SamplerId :: gfx.SamplerId
-
 @(shader_shared)
 GPUEnvironment :: struct #max_field_align(16) {
 	point_lights: gfx.Slice(GPUPointLight),
-	env_map:      ImageId `ImageCube`,
-	dfg:          ImageId `Image2D`,
-	env_sampler:  SamplerId `Sampler`,
+	env_map:      gfx.ImageId `ImageCube`,
+	dfg:          gfx.ImageId `Image2D`,
+	env_sampler:  gfx.SamplerId `Sampler`,
 }
 
 @(shader_shared)
@@ -38,7 +33,7 @@ GPUGlobalData :: struct #max_field_align(16) {
 	sky_color:                Vec3,
 	camera_pos:               Vec3,
 	sun_direction:            Vec3,
-	default_sampler:          SamplerId `Sampler`,
+	default_sampler:          gfx.SamplerId `Sampler`,
 	ddgi_volumes:             gfx.Slice(GPUDDGIVolume),
 	reflection_probes:        gfx.Slice(GPUReflectionProbe),
 	atmosphere:               GPUAtmosphere,
@@ -55,9 +50,9 @@ RenderState :: struct {
 		point_light_slice: gfx.Slice(GPUPointLight),
 	},
 	temp_resources:                  struct {
-		dfg_id:             ImageId,
-		default_sampler_id: SamplerId,
-		env_sampler_id:     SamplerId,
+		dfg_id:             gfx.ImageId,
+		default_sampler_id: gfx.SamplerId,
+		env_sampler_id:     gfx.SamplerId,
 	},
 	material_store:                  Material_Store,
 	shader_manager:                  ShaderManager,
