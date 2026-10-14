@@ -27,11 +27,17 @@ Axis :: enum {
 }
 
 InputSystem :: struct {
-	initialized:  bool,
-	actions:      [Action]ActionState,
-	axes:         [Axis]AxisState, // Yes, I looked it up. Plural of axis is axes. Yargh!!!!
-	mouse_locked: bool,
+	initialized:       bool,
+	actions:           [Action]ActionState,
+	axes:              [Axis]AxisState, // Yes, I looked it up. Plural of axis is axes. Yargh!!!!
+	mouse_locked:      bool,
+
+	gamepad_connected: bool,
+	gamepad:           glfw.GamepadState,
 }
+
+GAMEPAD_STICK_DEADZONE :: 0.15
+GAMEPAD_TRIGGER_THRESHOLD :: 0.5
 
 init_input_system :: proc(mouse_locked := false) {
 	game.input_system.initialized = true
@@ -63,10 +69,13 @@ MAX_ACTION_STATE_MOUSE :: 2
 MAX_ACTION_STATE_JOYSTICK :: 2
 
 ActionState :: struct {
-	key_codes:      sm.Small_Array(MAX_ACTION_STATE_KEYS, i32),
-	mouse_codes:    sm.Small_Array(MAX_ACTION_STATE_KEYS, i32),
-	previous_state: bool,
-	current_state:  bool,
+	key_codes:        sm.Small_Array(MAX_ACTION_STATE_KEYS, i32),
+	mouse_codes:      sm.Small_Array(MAX_ACTION_STATE_KEYS, i32),
+	gamepad_buttons:  sm.Small_Array(MAX_ACTION_STATE_JOYSTICK, i32),
+	// Gamepad axes (usually triggers) that press the action past GAMEPAD_TRIGGER_THRESHOLD.
+	gamepad_triggers: sm.Small_Array(MAX_ACTION_STATE_JOYSTICK, i32),
+	previous_state:   bool,
+	current_state:    bool,
 }
 
 update_action_state :: proc(state: ^ActionState, pressed: bool) {
@@ -82,6 +91,16 @@ add_action_key_mapping :: proc(action: Action, glfw_key_code: i32) {
 add_action_mouse_mapping :: proc(action: Action, glfw_key_code: i32) {
 	assert(game.input_system.initialized)
 	sm.append(&game.input_system.actions[action].mouse_codes, glfw_key_code)
+}
+
+add_action_gamepad_button_mapping :: proc(action: Action, glfw_gamepad_button: i32) {
+	assert(game.input_system.initialized)
+	sm.append(&game.input_system.actions[action].gamepad_buttons, glfw_gamepad_button)
+}
+
+add_action_gamepad_trigger_mapping :: proc(action: Action, glfw_gamepad_axis: i32) {
+	assert(game.input_system.initialized)
+	sm.append(&game.input_system.actions[action].gamepad_triggers, glfw_gamepad_axis)
 }
 
 // Returns true if the action is pressed, false if released.
@@ -121,8 +140,15 @@ AxisCodeValue :: struct {
 	value:    f64,
 }
 
+AxisGamepadMapping :: struct {
+	gamepad_axis: i32,
+	scale:        f64,
+	per_second:   bool,
+}
+
 AxisState :: struct {
 	keys:         sm.Small_Array(MAX_AXIS_STATE_KEYS, AxisCodeValue),
+	gamepad_axes: sm.Small_Array(MAX_AXIS_STATE_JOYSTICK, AxisGamepadMapping),
 	read_mouse_x: bool,
 	read_mouse_y: bool,
 	value:        f64,
@@ -144,23 +170,72 @@ add_axis_mouse_axis :: proc(axis: Axis, mouse_x: bool = false, mouse_y: bool = f
 	game.input_system.axes[axis].read_mouse_y = mouse_y
 }
 
+add_axis_gamepad_mapping :: proc(axis: Axis, glfw_gamepad_axis: i32, scale: f64, per_second := false) {
+	assert(game.input_system.initialized)
+	mapping := AxisGamepadMapping {
+		gamepad_axis = glfw_gamepad_axis,
+		scale        = scale,
+		per_second   = per_second,
+	}
+
+	sm.append(&game.input_system.axes[axis].gamepad_axes, mapping)
+}
+
 axis_get_value :: proc(axis: Axis) -> f64 {
 	assert(game.input_system.initialized)
 	return game.input_system.axes[axis].value
 }
 
-axis_get_2d_normalized :: proc(axis_x, axis_y: Axis) -> (f64, f64) {
+axis_get_2d_clamped :: proc(axis_x, axis_y: Axis) -> (f64, f64) {
 	assert(game.input_system.initialized)
 	a := game.input_system.axes[axis_x].value
 	b := game.input_system.axes[axis_y].value
 
-	normalized := linalg.normalize0([2]f64{a, b})
-	return normalized[0], normalized[1]
+	clamped := [2]f64{a, b}
+	if length := linalg.length(clamped); length > 1 {
+		clamped /= length
+	}
+	return clamped[0], clamped[1]
 }
 
 simulate_input :: proc() {
 	assert(game.input_system.initialized)
 	mouse_x, mouse_y := glfw.GetCursorPos(game.window)
+
+	{
+		input := &game.input_system
+		input.gamepad_connected = false
+		input.gamepad = {}
+
+		for joystick_id in glfw.JOYSTICK_1 ..= glfw.JOYSTICK_LAST {
+			if glfw.JoystickIsGamepad(i32(joystick_id)) && glfw.GetGamepadState(i32(joystick_id), &input.gamepad) {
+				input.gamepad_connected = true
+				break
+			}
+		}
+
+        // HACK?: need to deal with this cleaner, but it's whatever.
+		if input.gamepad_connected {
+			sticks := [2][2]i32{{glfw.GAMEPAD_AXIS_LEFT_X, glfw.GAMEPAD_AXIS_LEFT_Y}, {glfw.GAMEPAD_AXIS_RIGHT_X, glfw.GAMEPAD_AXIS_RIGHT_Y}}
+			for stick in sticks {
+				value := [2]f32{input.gamepad.axes[stick.x], input.gamepad.axes[stick.y]}
+				length := linalg.length(value)
+
+				if length < GAMEPAD_STICK_DEADZONE {
+					value = 0
+				} else {
+					value *= min((length - GAMEPAD_STICK_DEADZONE) / (1 - GAMEPAD_STICK_DEADZONE), 1) / length
+				}
+
+				input.gamepad.axes[stick.x] = value.x
+				input.gamepad.axes[stick.y] = value.y
+			}
+
+			for trigger in ([2]i32{glfw.GAMEPAD_AXIS_LEFT_TRIGGER, glfw.GAMEPAD_AXIS_RIGHT_TRIGGER}) {
+				input.gamepad.axes[trigger] = (input.gamepad.axes[trigger] + 1) * 0.5
+			}
+		}
+	}
 
 	for &action_state in game.input_system.actions {
 		pressed := false
@@ -174,6 +249,18 @@ simulate_input :: proc() {
 			for i in 0 ..< action_state.mouse_codes.len {
 				code := action_state.mouse_codes.data[i]
 				pressed = pressed || glfw.PRESS == glfw.GetMouseButton(game.window, code)
+			}
+		}
+
+		if game.input_system.gamepad_connected {
+			for i in 0 ..< action_state.gamepad_buttons.len {
+				button := action_state.gamepad_buttons.data[i]
+				pressed = pressed || game.input_system.gamepad.buttons[button] == glfw.PRESS
+			}
+
+			for i in 0 ..< action_state.gamepad_triggers.len {
+				trigger := action_state.gamepad_triggers.data[i]
+				pressed = pressed || game.input_system.gamepad.axes[trigger] > GAMEPAD_TRIGGER_THRESHOLD
 			}
 		}
 
@@ -196,6 +283,14 @@ simulate_input :: proc() {
 
 			if axis_state.read_mouse_y {
 				value += mouse_y
+			}
+		}
+
+		if game.input_system.gamepad_connected {
+			for i in 0 ..< axis_state.gamepad_axes.len {
+				mapping := axis_state.gamepad_axes.data[i]
+				axis_value := f64(game.input_system.gamepad.axes[mapping.gamepad_axis]) * mapping.scale
+				value += mapping.per_second ? axis_value * game.delta_time : axis_value
 			}
 		}
 

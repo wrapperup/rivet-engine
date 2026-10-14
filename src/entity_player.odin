@@ -95,7 +95,7 @@ update_player :: proc(player: ^Player, dt: f64) {
 		player.rotation = look * tilt
 	}
 
-	f, r := axis_get_2d_normalized(.MoveForward, .MoveRight)
+	f, r := axis_get_2d_clamped(.MoveForward, .MoveRight)
 	move_forward, move_right := cast(f32)f, cast(f32)r
 
 	move_direction := move_forward * forward + move_right * right

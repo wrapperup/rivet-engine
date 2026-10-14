@@ -28,10 +28,11 @@ NvOptimusEnablement: u32 = 1
 @(export)
 AmdPowerXpressRequestHighPerformance: i32 = 1
 
-DEBUG :: ODIN_DEBUG
-
 start_live_time := time.tick_now()
 game: ^Game
+
+ENABLE_VALIDATION :: #config(VALIDATION, false)
+BUILD_COMMAND :: #config(BUILD_COMMAND, "")
 
 main :: proc() {
 	when ODIN_OS == .Windows {
@@ -82,7 +83,7 @@ main :: proc() {
 
 		game.window = window
 
-		game.renderer = gfx.init({window = game.window, msaa_samples = ._4, enable_validation_layers = false, enable_logs = true})
+		game.renderer = gfx.init({window = game.window, msaa_samples = ._4, enable_validation_layers = ENABLE_VALIDATION, enable_logs = true})
 		if game.renderer == nil {
 			log.error("Graphics could not be initialized.")
 			return
@@ -121,6 +122,21 @@ main :: proc() {
 
 			add_axis_mouse_axis(.LookRight, mouse_x = true)
 			add_axis_mouse_axis(.LookUp, mouse_y = true)
+
+            // steam deck
+			add_action_gamepad_button_mapping(.Jump, glfw.GAMEPAD_BUTTON_A)
+			add_action_gamepad_button_mapping(.Sprint, glfw.GAMEPAD_BUTTON_LEFT_THUMB)
+			add_action_gamepad_button_mapping(.ToggleNoclip, glfw.GAMEPAD_BUTTON_Y)
+			add_action_gamepad_button_mapping(.ShowEditorUI, glfw.GAMEPAD_BUTTON_BACK)
+
+			add_action_gamepad_trigger_mapping(.Fire, glfw.GAMEPAD_AXIS_RIGHT_TRIGGER)
+			add_action_gamepad_trigger_mapping(.AltFire, glfw.GAMEPAD_AXIS_LEFT_TRIGGER)
+
+			add_axis_gamepad_mapping(.MoveForward, glfw.GAMEPAD_AXIS_LEFT_Y, -1.0)
+			add_axis_gamepad_mapping(.MoveRight, glfw.GAMEPAD_AXIS_LEFT_X, 1.0)
+
+			add_axis_gamepad_mapping(.LookRight, glfw.GAMEPAD_AXIS_RIGHT_X, 7200.0, per_second = true)
+			add_axis_gamepad_mapping(.LookUp, glfw.GAMEPAD_AXIS_RIGHT_Y, 7200.0, per_second = true)
 		}
 
 		{
@@ -133,9 +149,9 @@ main :: proc() {
 			init_game_renderer()
 		}
 
-        when EDITOR {
-            init_editor()
-        }
+		when EDITOR {
+			init_editor()
+		}
 
 		// Scene
 		{
@@ -172,7 +188,7 @@ main :: proc() {
 				)
 			}
 
-			load_scene_from_file(&game.state.current_scene, "assets/meshes/static/scene_map_test.glb")
+			load_scene_from_file(&game.state.current_scene, "assets/meshes/static/scene_map_small.glb")
 		}
 
 		game.frame_time_start = time.tick_now()
@@ -203,9 +219,7 @@ main :: proc() {
 			patch_requested = true
 		}
 		if patch_requested {
-			path, err := filepath.abs("build_livepatch.bat", context.temp_allocator)
-			assert(err == nil)
-			if patch_error := livepatch.patch(path); patch_error != nil {
+			if patch_error := livepatch.patch(BUILD_COMMAND); patch_error != nil {
 				fmt.eprintln("Livepatch failed:", patch_error)
 				livepatch.error_delete(patch_error)
 			} else {
