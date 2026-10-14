@@ -71,13 +71,6 @@ Asset_Store :: struct($T: typeid) where intrinsics.type_is_subtype_of(T, Asset) 
 	loaders: Asset_Loaders,
 }
 
-Asset_Debug_Entry :: struct {
-	path:       string,
-	asset_type: typeid,
-	status:     Asset_Load_Result,
-	ref_count:  int,
-}
-
 Asset_Load_Result :: enum {
 	NotAvailable,
 	Ready,
