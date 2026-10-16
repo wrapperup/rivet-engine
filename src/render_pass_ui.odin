@@ -334,7 +334,7 @@ ui_command :: proc(
 	outline_width: f32 = 0,
 	pixel_snap_x: bool = false,
 ) {
-	draw_extent := Vec2(transmute([2]u32)game.renderer.draw_extent)
+	draw_extent := Vec2(transmute([2]u32)gfx.r_ctx.draw_extent)
 
 	scale := draw_extent / UI_REFERENCE_SIZE
 	min_scale := slice.min(scale[:])
@@ -429,7 +429,7 @@ record_ui_pass :: proc(cmd: gfx.CommandBuffer) {
 		commands := ui_rp.command_buffers[gfx.current_frame_index()]
 		gfx.cmd_push_constants(
 			cmd,
-			UI_Push{commands = commands, viewport_size = auto_cast (transmute([2]u32)game.renderer.draw_extent), sampler = ui_rp.sampler},
+			UI_Push{commands = commands, viewport_size = auto_cast (transmute([2]u32)gfx.r_ctx.draw_extent), sampler = ui_rp.sampler},
 		)
 
 		gfx.cmd_draw(cmd, 4, u32(game.render_state.ui_rp.num_commands))

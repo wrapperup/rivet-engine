@@ -48,7 +48,6 @@ Game :: struct {
 	},
 	config:             GameConfig,
 	state:              GameState,
-	renderer:           ^gfx.Renderer,
 
 	// Systems
 	entity_system:      EntitySystem,

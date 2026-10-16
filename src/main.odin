@@ -83,8 +83,8 @@ main :: proc() {
 
 		game.window = window
 
-		game.renderer = gfx.init({window = game.window, msaa_samples = ._4, enable_validation_layers = ENABLE_VALIDATION, enable_logs = true})
-		if game.renderer == nil {
+		renderer := gfx.init({window = game.window, msaa_samples = ._4, enable_validation_layers = ENABLE_VALIDATION, enable_logs = true})
+		if renderer == nil {
 			log.error("Graphics could not be initialized.")
 			return
 		}
@@ -341,11 +341,8 @@ main :: proc() {
 	{
 		if game == nil do return
 
-		if game.renderer != nil {
-			gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
-			scene_shutdown(&game.state.current_scene)
-		}
-
+        gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
+        scene_shutdown(&game.state.current_scene)
 
 		shutdown_shader_manager()
 		shutdown_asset_system()
@@ -353,11 +350,8 @@ main :: proc() {
 		physics_shutdown()
 		shutdown_sound_system()
 
-		if game.renderer != nil {
-			renderer_shutdown()
-			gfx.shutdown()
-			game.renderer = nil
-		}
+        renderer_shutdown()
+        gfx.shutdown()
 
 		if game.window != nil {
 			glfw.DestroyWindow(game.window)
