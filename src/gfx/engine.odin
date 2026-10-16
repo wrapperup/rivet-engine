@@ -478,7 +478,7 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 			physicalDevice   = r_ctx.physical_device,
 			device           = r_ctx.device,
 			instance         = r_ctx.instance,
-			flags            = {.BUFFER_DEVICE_ADDRESS},
+			flags            = {.BUFFER_DEVICE_ADDRESS, .EXT_MEMORY_BUDGET},
 			pVulkanFunctions = &vulkan_functions,
 		}
 

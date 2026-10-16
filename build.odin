@@ -1,94 +1,50 @@
 package main
 
+import "core:path/filepath"
+import "core:strings"
+import "core:flags"
 import "core:fmt"
 import "core:os"
-import "core:strings"
 import "core:time"
 
 import build_meta "meta"
 
-run_command :: proc(command: []string) -> int {
-	process, start_err := os.process_start({command = command, stdin = os.stdin, stdout = os.stdout, stderr = os.stderr})
-	if start_err != nil {
-		fmt.eprintln("Failed to exec:", start_err)
-		return 1
-	}
+Flavor :: enum {
+	debug_editor,
+	debug_game,
+	release_game,
+}
 
-	state, wait_err := os.process_wait(process)
-	if wait_err != nil || !state.exited {
-		fmt.eprintln("Failed to exec:", wait_err)
-		return 1
-	}
-
-	return state.exit_code
+Build_Command_Flags :: struct {
+	flavor: Flavor `args:"pos=0" usage:"Kind of build to make."`,
 }
 
 main :: proc() {
 	start_time := time.now()
 
-    force_debug := false
-    cooked := false
-	release := false
+	args := Build_Command_Flags{}
 
-	patch_directory := ""
-
-	for argument in os.args[1:] {
-		switch argument {
-		case "debug", "--debug":
-			force_debug = true
-		case "release", "--release", "1":
-			release = true
-        case "--cooked":
-			cooked = true
-		case "-h", "--help", "help":
-			fmt.println("Usage: build.bat [debug|release|1] (default: debug)")
-			fmt.println("Debug builds enable livepatch on Windows x64.")
-			fmt.println("  build.bat --patch-dir=<directory>    Build livepatch objects")
-			os.exit(0)
-		case:
-			if strings.has_prefix(argument, "--patch-dir=") {
-				patch_directory = strings.trim_prefix(argument, "--patch-dir=")
-				if patch_directory != "" do continue
-			}
-			fmt.eprintln("Unknown build argument:", argument)
-			os.exit(2)
-		}
-	}
-
-	livepatch := !release && ODIN_OS == .Windows && ODIN_ARCH == .amd64
-	if patch_directory != "" && !livepatch {
-		fmt.eprintln("Livepatch objects require a Windows x64 debug build.")
-		os.exit(2)
-	}
-
-	output_directory := "build/release" if release else "build/debug"
-	if patch_directory != "" do output_directory = patch_directory
-	if err := os.make_directory_all(output_directory); err != nil {
-		fmt.eprintln("Failed to create output directory:", err)
+	error := flags.parse(&args, os.args[1:])
+	switch v in error {
+	case flags.Help_Request:
+		fmt.println("Usage:")
+		fmt.println("  build [target=debug_editor]")
+		os.exit(0)
+	case flags.Parse_Error:
+		fmt.println(v.message)
+		os.exit(1)
+	case flags.Open_File_Error:
+		fmt.println("could not open", v.filename)
+		os.exit(1)
+	case flags.Validation_Error:
+		fmt.println(v.message)
 		os.exit(1)
 	}
 
-	if patch_directory == "" && !build_meta.generate() {
-		fmt.eprintln("Source generation failed.")
-		os.exit(1)
-	}
-
-	if ODIN_OS == .Windows && patch_directory == "" {
-		runtime_dlls := []string{"gfx.dll", "slang.dll", "slang-glsl-module.dll", "slang-glslang.dll", "slang-llvm.dll", "slang-rt.dll"}
-		for filename in runtime_dlls {
-			source := fmt.tprintf("deps/odin-slang/slang/bin/%s", filename)
-			destination := fmt.tprintf("%s/%s", output_directory, filename)
-			if os.exists(destination) do continue
-			if err := os.copy_file(destination, source); err != nil {
-				fmt.eprintln("Failed to copy runtime library:", source, "->", destination, err)
-				os.exit(1)
-			}
-			fmt.println("Copied", destination)
-		}
-	}
+	output_directory: string
+    livepatch := true
 
 	command: [dynamic]string
-
 	compiler, found := os.lookup_env("ODIN", context.temp_allocator)
 	if !found || compiler == "" {
 		compiler = "odin"
@@ -106,38 +62,47 @@ main :: proc() {
 		"-custom-attribute:destroy",
 		"-show-timings",
 	)
-	when ODIN_OS == .Windows {
-		if livepatch {
-			append(
-				&command,
-				"-use-separate-modules",
-				"-define:LIVEPATCH=true",
-				"-extra-linker-flags:/OPT:NOREF /OPT:NOICF /MAP:build/debug/main.map",
-			)
-		} else {
-		}
-	}
 
-    if cooked {
-		append(&command, "-define:REQUIRE_COOKED_ASSETS=true")
-		append(&command, "-define:COOKED_ASSET_DIR=cooked")
-    }
-
-	if release {
-		append(&command, "-o:speed")
-	} else {
+	switch args.flavor {
+	case .debug_editor:
+		output_directory = "build/debug"
 		append(&command, "-o:none")
-    }
-
-    if force_debug || !release {
 		append(&command, "-debug")
+
+		append(&command, "-define:EDITOR=true")
+	case .debug_game:
+		output_directory = "build/debug"
+		append(&command, "-o:none")
+		append(&command, "-debug")
+
+		append(&command, "-define:EDITOR=false")
+		append(&command, "-define:REQUIRE_COOKED_ASSETS=true")
+
+	case .release_game:
+		output_directory = "build/release"
+		append(&command, "-o:speed")
+
+		append(&command, "-define:EDITOR=false")
+		append(&command, "-define:REQUIRE_COOKED_ASSETS=true")
 	}
 
-	if patch_directory != "" {
-		append(&command, "-build-mode:obj", fmt.tprintf("-out:%s/", patch_directory))
-	} else {
-		executable := "/main.exe" when ODIN_OS == .Windows else "/main"
-		append(&command, fmt.tprintf("-out:%s%s", output_directory, executable))
+	if livepatch {
+        path, _ := filepath.abs(os.args[0])
+		append(
+			&command,
+			"-use-separate-modules",
+			"-define:LIVEPATCH=true",
+			fmt.tprintf("-define:BUILD_COMMAND=%s %s", path, strings.join(os.args[1:], " ")),
+			"-extra-linker-flags:/OPT:NOREF /OPT:NOICF /MAP:build/debug/main.map",
+		)
+	}
+
+	executable := "/main.exe" when ODIN_OS == .Windows else "/main"
+	append(&command, fmt.tprintf("-out:%s%s", output_directory, executable))
+
+	if !build_meta.generate() {
+		fmt.eprintln("Source generation failed.")
+		os.exit(1)
 	}
 
 	code := run_command(command[:])
@@ -145,4 +110,20 @@ main :: proc() {
 	fmt.eprintln("Total build time:", time.since(start_time))
 
 	os.exit(code)
+}
+
+run_command :: proc(command: []string) -> int {
+	process, start_err := os.process_start({command = command, stdin = os.stdin, stdout = os.stdout, stderr = os.stderr})
+	if start_err != nil {
+		fmt.eprintln("Failed to exec:", start_err)
+		return 1
+	}
+
+	state, wait_err := os.process_wait(process)
+	if wait_err != nil || !state.exited {
+		fmt.eprintln("Failed to exec:", wait_err)
+		return 1
+	}
+
+	return state.exit_code
 }

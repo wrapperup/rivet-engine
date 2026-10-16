@@ -91,14 +91,6 @@ GameFrameData :: struct {
 	rt:                      RaytracingResources,
 }
 
-GPU_Font_Instance :: struct {
-	pos_min: Vec2,
-	pos_max: Vec2,
-	uv_min:  Vec2,
-	uv_max:  Vec2,
-	color:   Vec4,
-}
-
 current_frame_game :: proc() -> ^GameFrameData {
 	return &game.render_state.frame_data[gfx.current_frame_index()]
 }
