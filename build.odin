@@ -102,6 +102,8 @@ main :: proc() {
 	executable := "/main.exe" when ODIN_OS == .Windows else "/main"
 	append(&command, fmt.tprintf("-out:%s%s", output_directory, executable))
 
+    os.make_directory_all(output_directory)
+
 	if !build_meta.generate() {
 		fmt.eprintln("Source generation failed.")
 		os.exit(1)
