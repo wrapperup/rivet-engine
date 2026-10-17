@@ -52,7 +52,8 @@ RenderState :: struct {
     frame_count:  int,
     global_arena: gfx.ResourceArena,
 
-    swapchain:   gfx.Swapchain,
+    swapchain:              gfx.Swapchain,
+    swapchain_needs_resize: bool,
 
 	// Bindless textures, etc
 	global_data:                     GPUGlobalData,
@@ -124,6 +125,26 @@ frame_arena :: proc() -> ^gfx.ResourceArena {
 	return &game.render_state.frame_data[current_frame_index()].arena
 }
 
+create_draw_images :: proc(arena: ^gfx.ResourceArena, extent: vk.Extent2D) {
+    state := &game.render_state
+
+    draw_image_extent := vk.Extent3D{extent.width, extent.height, 1}
+	draw_image_usages := vk.ImageUsageFlags{.TRANSFER_SRC, .TRANSFER_DST, .STORAGE, .COLOR_ATTACHMENT}
+
+	state.draw_image = gfx.create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = state.msaa_samples)
+	gfx.defer_destroy(arena, state.draw_image)
+
+	// Used for MSAA resolution
+	state.resolve_image = gfx.create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = ._1)
+	gfx.defer_destroy(&state.global_arena, state.resolve_image)
+
+	state.depth_image = gfx.create_image(DEPTH_FORMAT, draw_image_extent, {.DEPTH_STENCIL_ATTACHMENT}, msaa_samples = state.msaa_samples)
+	gfx.defer_destroy(&state.global_arena, state.depth_image)
+
+	state.draw_extent.width = draw_image_extent.width
+	state.draw_extent.height = draw_image_extent.height
+}
+
 init_game_renderer :: proc() {
     state := &game.render_state
 
@@ -138,24 +159,7 @@ init_game_renderer :: proc() {
         cast([2]int)([2]i32{width, height}),
         FRAME_OVERLAP,
     )
-
-    extent := state.swapchain.swapchain_extent
-
-    draw_image_extent := vk.Extent3D{extent.width, extent.height, 1}
-	draw_image_usages := vk.ImageUsageFlags{.TRANSFER_SRC, .TRANSFER_DST, .STORAGE, .COLOR_ATTACHMENT}
-
-	state.draw_image = gfx.create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = state.msaa_samples)
-	gfx.defer_destroy(&state.global_arena, state.draw_image)
-
-	// Used for MSAA resolution
-	state.resolve_image = gfx.create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = ._1)
-	gfx.defer_destroy(&state.global_arena, state.resolve_image)
-
-	state.depth_image = gfx.create_image(DEPTH_FORMAT, draw_image_extent, {.DEPTH_STENCIL_ATTACHMENT}, msaa_samples = state.msaa_samples)
-	gfx.defer_destroy(&state.global_arena, state.depth_image)
-
-	state.draw_extent.width = draw_image_extent.width
-	state.draw_extent.height = draw_image_extent.height
+    create_draw_images(&state.swapchain.arena, {u32(width), u32(height)})
 
 	init_imgui()
 	init_shadow_maps()
@@ -242,6 +246,18 @@ draw :: proc() {
 
     gfx.wait_semaphore(current_frame_game().render_semaphore_pair)
 
+    if state.swapchain_needs_resize {
+        width, height := glfw.GetFramebufferSize(game.window)
+        if width == 0 || height == 0 {
+            return 
+        }
+
+        gfx.swapchain_resize(&state.swapchain, cast([2]int)[2]i32{width, height})
+        create_draw_images(&state.swapchain.arena, {u32(width), u32(height)})
+
+        state.swapchain_needs_resize = false
+    }
+
 	// TEMP: test draw command
 	for &ball in get_entities(Ball) {
 		material_asset := get_asset(Material_Asset, "materials/test.mat")
@@ -272,7 +288,13 @@ draw :: proc() {
 
 	gfx.reset_scratch(&frame.scratch)
 
-    gfx.swapchain_acquire(&state.swapchain)
+    swapchain_image, out_of_date := gfx.swapchain_acquire_next_image(&state.swapchain)
+
+    if out_of_date {
+        state.swapchain_needs_resize = true
+        return
+    }
+
 	cmd := gfx.begin_command_buffer(.Main)
 
 	// CPU preparation and uploads happen before command recording.
@@ -344,7 +366,7 @@ draw :: proc() {
 		final_image = game.render_state.resolve_image
 	}
 
-	gfx.copy_image_to_swapchain(cmd, final_image, state.draw_extent, &state.swapchain)
+	gfx.copy_image_to_image(cmd, final_image, swapchain_image, state.draw_extent, state.draw_extent)
 
 	sc := &state.swapchain
 	sc_image := sc.swapchain_images[sc.swapchain_image_index]
@@ -356,7 +378,10 @@ draw :: proc() {
 
 	gfx.transition_image(cmd, sc_image, .TRANSFER_DST_OPTIMAL)
 
-	current_frame_game().render_semaphore_pair = gfx.queue_submit(.Main, cmd, swapchain = &state.swapchain)
+	current_frame_game().render_semaphore_pair =
+        gfx.queue_submit(.Main, cmd, swapchain = &state.swapchain)
+
+    state.swapchain_needs_resize = gfx.swapchain_present(&state.swapchain, .Main)
 
     game.render_state.frame_count += 1
 

@@ -1,5 +1,6 @@
 package game
 
+import "core:os"
 import vk "vendor:vulkan"
 
 import "gfx"
@@ -29,7 +30,10 @@ create_dfg_generate_pipeline :: proc(width, height: u32) -> DfgGeneratePass {
 	}
 
 	// Load shader
-	dfg_shader, f_ok := gfx.load_shader_module("shaders/out/dfg.spv", context.temp_allocator)
+    bytes, err := os.read_entire_file("shaders/out/dfg.spv", context.temp_allocator)
+    assert(err == nil)
+
+	dfg_shader, f_ok := gfx.load_shader_module_from_bytes(bytes)
 	assert(f_ok, "Failed to load shaders.")
 
 	pass.pipeline = gfx.create_compute_pipeline("DFG", dfg_shader, GPUDfgGeneratePassPC)
