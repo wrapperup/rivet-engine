@@ -176,7 +176,7 @@ init_imgui :: proc() {
 
         im_glfw.InitForVulkan(game.window, true)
 
-        im_gfx.gfx_imgui_init()
+        im_gfx.gfx_imgui_init(game.render_state.swapchain.swapchain_image_format)
     }
 }
 
@@ -362,13 +362,13 @@ draw :: proc() {
 		final_image = game.render_state.resolve_image
 	}
 
+	gfx.transition_image(cmd, swapchain_image, .TRANSFER_DST_OPTIMAL)
+	gfx.copy_image_to_image(cmd, final_image, swapchain_image, state.draw_extent, state.draw_extent)
+
     when EDITOR {
         gfx.transition_image(cmd, swapchain_image, .COLOR_ATTACHMENT_OPTIMAL)
         im_gfx.gfx_imgui_render(cmd, swapchain_image, state.draw_extent)
     }
-
-	gfx.transition_image(cmd, swapchain_image, .TRANSFER_DST_OPTIMAL)
-	gfx.copy_image_to_image(cmd, final_image, swapchain_image, state.draw_extent, state.draw_extent)
 
 	current_frame_game().render_semaphore_pair =
         gfx.queue_submit(.Main, cmd, swapchain = &state.swapchain)

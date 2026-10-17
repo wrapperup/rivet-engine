@@ -69,7 +69,7 @@ main :: proc() {
 		append(&command, "-o:none")
 		append(&command, "-debug")
 
-		append(&command, "-define:EDITOR=false")
+		append(&command, "-define:EDITOR=true")
 		append(&command, "-define:VALIDATION=true")
 	case .debug_game:
 		output_directory = "build/debug"
