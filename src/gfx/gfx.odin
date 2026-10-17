@@ -33,22 +33,22 @@ Clear_Value :: vk.ClearValue
 Shader_Module :: vk.ShaderModule
 
 Gfx_Context :: struct {
-	debug_messenger: vk.DebugUtilsMessengerEXT,
-	enable_logs:     bool,
-    debug_logger:    log.Logger,
+	debug_messenger:  vk.DebugUtilsMessengerEXT,
+	enable_logs:      bool,
+    debug_logger:     log.Logger,
 
-	instance:        vk.Instance,
-	physical_device: vk.PhysicalDevice,
-	device:          vk.Device,
-	allocator:       vma.Allocator,
+	instance:         vk.Instance,
+	physical_device:  vk.PhysicalDevice,
+	device:           vk.Device,
+	allocator:        vma.Allocator,
 
-    queues:          [Queue_Kind]Queue,
+    queues:           [Queue_Kind]Queue,
 
 	bindless_system:  Bindless_System,
 	current_pipeline: Pipeline,
 
-	limits:       vk.PhysicalDeviceLimits, // TODO: Too big?
-	capabilities: Capabilities,
+	limits:           vk.PhysicalDeviceLimits, // TODO: Too big?
+	capabilities:     Capabilities,
 }
 
 Capabilities :: struct {
@@ -160,6 +160,8 @@ Resource_Type :: enum {
 	Pipeline_Layout,
 	Acceleration_Structure,
 	Swapchain,
+	Surface,
+	Semaphore,
 }
 
 Rendering_Attachment_Info :: struct {
@@ -293,8 +295,8 @@ Swapchain :: struct {
 	swapchain_image_index:  u32,
 	swapchain_image_format: vk.Format,
 	swapchain_extent:       vk.Extent2D,
-    acquire_semaphores:     []vk.Semaphore,
     present_semaphores:     []vk.Semaphore,
+    acquire_semaphores:     []vk.Semaphore,
     present_mode:           vk.PresentModeKHR,
     max_frames_in_flight:   int,
     frame_index:            int,
@@ -664,22 +666,6 @@ init_vulkan :: proc(config: Init_Config) -> bool {
 	return true
 }
 
-cleanup_vulkan :: proc() {
-	vk.DeviceWaitIdle(r_ctx.device)
-
-	// Deferred image/sampler destruction resolves IDs through these tables.
-	shutdown_bindless_descriptors()
-
-	vma.DestroyAllocator(r_ctx.allocator)
-	vk.DestroyDevice(r_ctx.device, nil)
-
-	if r_ctx.debug_messenger != 0 {
-		vk.DestroyDebugUtilsMessengerEXT(r_ctx.instance, r_ctx.debug_messenger, nil)
-	}
-
-	vk.DestroyInstance(r_ctx.instance, nil)
-}
-
 set_viewport_and_scissor_2d :: proc(cmd: Command_Buffer, extent: vk.Extent2D) {
 	set_viewport_and_scissor_3d(cmd, {extent.width, extent.height, 1})
 }
@@ -734,6 +720,7 @@ _get_command_buffer :: proc(kind: Queue_Kind) -> Command_Buffer {
 
     cmd: Command_Buffer
     vk_check(vk.AllocateCommandBuffers(r_ctx.device, &alloc_info, &cmd))
+
     return cmd
 }
 
@@ -821,7 +808,7 @@ queue_submit :: proc(
         signal_info := vk.SemaphoreSubmitInfo {
             sType       = .SEMAPHORE_SUBMIT_INFO,
             pNext       = nil,
-            semaphore   = swapchain.present_semaphores[swapchain.frame_index],
+            semaphore   = swapchain.present_semaphores[swapchain.swapchain_image_index],
             stageMask   = {.ALL_GRAPHICS},
             deviceIndex = 0,
             value       = 1,
@@ -1102,6 +1089,28 @@ shutdown :: proc() {
 	free(r_ctx)
 	r_ctx = nil
 }
+
+cleanup_vulkan :: proc() {
+	vk.DeviceWaitIdle(r_ctx.device)
+
+    for queue in r_ctx.queues {
+        vk.DestroyCommandPool(r_ctx.device, queue.command_pool, nil)
+        destroy_semaphore(queue.semaphore)
+    }
+
+	// Deferred image/sampler destruction resolves IDs through these tables.
+	shutdown_bindless_descriptors()
+
+	vma.DestroyAllocator(r_ctx.allocator)
+	vk.DestroyDevice(r_ctx.device, nil)
+
+	if r_ctx.debug_messenger != 0 {
+		vk.DestroyDebugUtilsMessengerEXT(r_ctx.instance, r_ctx.debug_messenger, nil)
+	}
+
+	vk.DestroyInstance(r_ctx.instance, nil)
+}
+
 
 // This allocates on the GPU, make sure to call `destroy_image` or add to the deletion queue when you are finished with the image.
 create_image :: proc(
@@ -1854,6 +1863,10 @@ vk_destroy_resource_by_handle :: proc(resource: Resource_Handle) {
 		vk.DestroyAccelerationStructureKHR(r_ctx.device, cast(vk.AccelerationStructureKHR)resource.handle, nil)
 	case .Swapchain:
 		vk.DestroySwapchainKHR(r_ctx.device, cast(vk.SwapchainKHR)resource.handle, nil)
+    case .Surface:
+		vk.DestroySurfaceKHR(r_ctx.instance, cast(vk.SurfaceKHR)resource.handle, nil)
+    case .Semaphore:
+        vk.DestroySemaphore(r_ctx.device, cast(vk.Semaphore)resource.handle, nil)
 	}
 }
 
@@ -1872,6 +1885,7 @@ resource_type_of_handle :: proc($T: typeid) -> Resource_Type {
 		.Pipeline_Layout when T == vk.PipelineLayout else
 		.Acceleration_Structure when T == vk.AccelerationStructureKHR else
 		.Swapchain when T == vk.SwapchainKHR else
+		.Surface when T == vk.SurfaceKHR else
 		#panic("Handle type is not a valid resource")
 	//odinfmt: enable
 }
@@ -1936,6 +1950,14 @@ defer_destroy_pipeline :: proc(arena: ^Deletion_Queue, pipeline: Pipeline, debug
 	defer_destroy_resource(arena, transmute(u64)pipeline.layout, .Pipeline_Layout, nil, debug, loc)
 }
 
+defer_destroy_surface :: proc(arena: ^Deletion_Queue, surface: vk.SurfaceKHR, debug: string = "UNKNOWN", loc := #caller_location) {
+	defer_destroy_resource(arena, transmute(u64)surface, .Surface, nil, debug, loc)
+}
+
+defer_destroy_semaphore :: proc(arena: ^Deletion_Queue, sema: Semaphore, debug: string = "UNKNOWN", loc := #caller_location) {
+	defer_destroy_resource(arena, transmute(u64)sema, .Semaphore, nil, debug, loc)
+}
+
 defer_destroy_vk_command_pool :: proc(arena: ^Deletion_Queue, handle: vk.CommandPool, debug: string = "UNKNOWN", loc := #caller_location) {
 	defer_destroy_resource(arena, transmute(u64)handle, .Command_Pool, nil, debug, loc)
 }
@@ -1979,12 +2001,18 @@ defer_destroy_vk_swapchain :: proc(arena: ^Deletion_Queue, handle: vk.SwapchainK
 	defer_destroy_resource(arena, transmute(u64)handle, .Swapchain, nil, debug, loc)
 }
 
+defer_destroy_vk_semaphore :: proc(arena: ^Deletion_Queue, sema: vk.Semaphore, debug := "", loc := #caller_location) {
+	defer_destroy_resource(arena, transmute(u64)sema, .Semaphore, nil, debug, loc)
+}
+
 defer_destroy :: proc {
 	defer_destroy_buffer,
 	defer_destroy_scratch,
 	defer_destroy_image,
 	defer_destroy_sampler,
 	defer_destroy_pipeline,
+	defer_destroy_surface,
+	defer_destroy_semaphore,
 
 	// Vulkan-specific handle overloads
 	defer_destroy_vk_command_pool,
@@ -1994,6 +2022,7 @@ defer_destroy :: proc {
 	defer_destroy_vk_pipeline,
 	defer_destroy_vk_pipeline_layout,
 	defer_destroy_vk_swapchain,
+	defer_destroy_vk_semaphore,
 }
 
 flush_vk_arena :: proc(arena: ^Deletion_Queue) {
@@ -2022,6 +2051,7 @@ object_type_of_handle :: proc($T: typeid) -> vk.ObjectType {
 		.PIPELINE when T == vk.Pipeline else
 		.PIPELINE_LAYOUT when T == vk.PipelineLayout else
 		.SAMPLER when T == vk.Sampler else
+		.SEMAPHORE when T == vk.Semaphore else
 		#panic("Handle type is not a valid resource")
 	//odinfmt: enable
 }
@@ -2100,7 +2130,9 @@ cmd_begin_rendering :: proc(
 	depth_attachment: ^Rendering_Attachment_Info = nil,
 ) {
 	vk_color_attachment: vk.RenderingAttachmentInfo
+    has_color := false
 	vk_depth_attachment: vk.RenderingAttachmentInfo
+    has_depth := false
 
 	if color_attachment != nil {
 		color_attachment_meta := image_meta(color_attachment.view)
@@ -2112,6 +2144,8 @@ cmd_begin_rendering :: proc(
             storeOp            = .STORE,
             clearValue         = color_attachment.clear_value != nil ? color_attachment.clear_value^ : {},
         }
+
+        has_color = true
 	}
 
 	if depth_attachment != nil {
@@ -2124,15 +2158,17 @@ cmd_begin_rendering :: proc(
             storeOp            = .STORE,
             clearValue         = depth_attachment.clear_value != nil ? depth_attachment.clear_value^ : {},
         }
+
+        has_depth = true
 	}
 
 	render_info := vk.RenderingInfo {
 		sType = .RENDERING_INFO,
 		layerCount = 1,
 		renderArea = {extent = area},
-        pColorAttachments = &vk_color_attachment,
-		pDepthAttachment = &vk_depth_attachment,
-		colorAttachmentCount = color_attachment != nil ? 1 : 0,
+        pColorAttachments = has_color ? &vk_color_attachment : nil,
+		colorAttachmentCount = has_color ? 1 : 0,
+        pDepthAttachment = has_depth ? &vk_depth_attachment : nil,
 	}
 
 	vk.CmdBeginRendering(cmd, &render_info)
@@ -2472,7 +2508,6 @@ init_bindless_descriptors :: proc() {
 		{.UPDATE_AFTER_BIND_POOL},
 		{.VERTEX, .FRAGMENT, .COMPUTE},
 	)
-	// defer_destroy(&r_ctx.global_arena, bindless_system.descriptor_layout)
 
 	bindless_system.pool = create_pool(
 		1,
@@ -2485,6 +2520,10 @@ init_bindless_descriptors :: proc() {
 		"Bindless Descriptor Pool",
 	)
 	bindless_system.descriptor_set = allocate_descriptor_set(bindless_system.pool, bindless_system.descriptor_layout)
+
+    // burn one slot
+    append(&bindless_system.images,   {})
+    append(&bindless_system.samplers, {})
 }
 
 shutdown_bindless_descriptors :: proc() {
@@ -2492,6 +2531,8 @@ shutdown_bindless_descriptors :: proc() {
 	delete(r_ctx.bindless_system.samplers)
 	delete(r_ctx.bindless_system.free_images)
 	delete(r_ctx.bindless_system.free_samplers)
+    vk.DestroyDescriptorSetLayout(r_ctx.device, r_ctx.bindless_system.descriptor_layout, nil)
+    vk.DestroyDescriptorPool(r_ctx.device, r_ctx.bindless_system.pool, nil)
 	r_ctx.bindless_system = {}
 }
 
@@ -2550,6 +2591,8 @@ add_image_impl :: proc(image: Image) -> Image_Id {
 		)
 	}
 
+    assert(image_id != 0)
+
 	return image_id
 }
 
@@ -2577,6 +2620,8 @@ add_sampler :: proc(sampler: vk.Sampler) -> Sampler_Id {
 		bindless_system.descriptor_set,
 		{{binding = BINDLESS_SAMPLERS, type = .SAMPLER, sampler = sampler, array_index = u32(sampler_id)}},
 	)
+
+    assert(sampler_id != 0)
 
 	return sampler_id
 }
@@ -3152,10 +3197,15 @@ create_swapchain :: proc(
 
     // create sync structures
     swapchain.acquire_semaphores = make([]vk.Semaphore, swapchain.max_frames_in_flight)
-    swapchain.present_semaphores = make([]vk.Semaphore, swapchain.max_frames_in_flight)
     for i in 0 ..< swapchain.max_frames_in_flight {
         vk_check(vk.CreateSemaphore(r_ctx.device, &{sType = .SEMAPHORE_CREATE_INFO}, nil, &swapchain.acquire_semaphores[i]))
+        defer_destroy(&swapchain.arena, swapchain.acquire_semaphores[i])
+    }
+
+    swapchain.present_semaphores = make([]vk.Semaphore, image_count)
+    for i in 0 ..< image_count {
         vk_check(vk.CreateSemaphore(r_ctx.device, &{sType = .SEMAPHORE_CREATE_INFO}, nil, &swapchain.present_semaphores[i]))
+        defer_destroy(&swapchain.arena, swapchain.present_semaphores[i])
     }
 
     return swapchain
@@ -3181,8 +3231,8 @@ swapchain_resize :: proc(swapchain: ^Swapchain, new_size: [2]int) {
     swapchain^ = new_swapchain
 }
 
-swapchain_acquire_next_image :: proc(swapchain: ^Swapchain) -> (image: Image_Id, out_of_date: bool) {
-	acquire_image_result := vk.AcquireNextImageKHR(
+swapchain_acquire_next_image :: proc(swapchain: ^Swapchain) -> (image: Image_Id) {
+	result := vk.AcquireNextImageKHR(
 		r_ctx.device,
 		swapchain.swapchain,
 		1_000_000_000,
@@ -3191,11 +3241,21 @@ swapchain_acquire_next_image :: proc(swapchain: ^Swapchain) -> (image: Image_Id,
 		&swapchain.swapchain_image_index,
 	)
 
-    if acquire_image_result != .SUCCESS {
-        return {}, true
+    if result == .ERROR_OUT_OF_DATE_KHR {
+        log.warn("Swapchain out of date!")
+        return {}
     }
 
-    return swapchain.swapchain_images[swapchain.swapchain_image_index], false
+    if result != .SUBOPTIMAL_KHR {
+        vk_check(result)
+    }
+
+    return swapchain.swapchain_images[swapchain.swapchain_image_index]
+}
+
+swapchain_destroy :: proc(swapchain: ^Swapchain) {
+    flush_vk_arena(&swapchain.arena)
+    vk.DestroySwapchainKHR(r_ctx.device, swapchain.swapchain, nil)
 }
 
 _choose_swap_extent :: proc(desired: [2]int, capabilities: ^vk.SurfaceCapabilitiesKHR) -> vk.Extent2D {
@@ -3218,20 +3278,19 @@ swapchain_present :: proc(swapchain: ^Swapchain, queue_kind: Queue_Kind) -> (out
         sType              = .PRESENT_INFO_KHR,
         pSwapchains        = &swapchain.swapchain,
         swapchainCount     = 1,
-        pWaitSemaphores    = &swapchain.present_semaphores[swapchain.frame_index],
+        pWaitSemaphores    = &swapchain.present_semaphores[swapchain.swapchain_image_index],
         waitSemaphoreCount = 1,
         pImageIndices      = &swapchain.swapchain_image_index,
     }
 
+    // TODO: do we actually care?
     queue_present_result := vk.QueuePresentKHR(r_ctx.queues[queue_kind].queue, &present_info)
-    if queue_present_result != .SUCCESS {
-        out_of_date = true
-    }
+    swapchain.frame_index = (swapchain.frame_index + 1) % swapchain.max_frames_in_flight
 
     return
 }
 
-create_semaphore :: proc(init_value: u64) -> Semaphore {
+create_semaphore :: proc(init_value: u64, debug_name: cstring = nil, loc := #caller_location) -> Semaphore {
     sema: vk.Semaphore
 
     result := vk.CreateSemaphore(
@@ -3247,8 +3306,15 @@ create_semaphore :: proc(init_value: u64) -> Semaphore {
         nil,
         &sema,
     )
-
     vk_check(result)
+
+	when ODIN_DEBUG {
+		if debug_name == nil {
+			debug_set_object_name(sema, fmt.ctprint(loc))
+		} else {
+			debug_set_object_name(sema, debug_name)
+		}
+	}
 
     return Semaphore(sema)
 }
@@ -3279,4 +3345,8 @@ get_semaphore_value :: proc(sema: Semaphore) -> u64 {
     vk.GetSemaphoreCounterValue(r_ctx.device, vk.Semaphore(sema), &value)
 
     return value
+}
+
+wait_idle :: proc() {
+    vk_check(vk.DeviceWaitIdle(r_ctx.device))
 }

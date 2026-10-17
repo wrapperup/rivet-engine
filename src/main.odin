@@ -177,7 +177,7 @@ main :: proc() {
 
 			// TODO: asset system.
 			game.ball_mesh, _ = load_gpu_mesh_from_file("assets/meshes/static/demo_ball.glb", context.temp_allocator)
-			defer_destroy_gpu_mesh(frame_arena(), game.ball_mesh)
+			defer_destroy_gpu_mesh(&game.render_state.global_arena, game.ball_mesh)
 
 			for i in 0 ..< 256 {
 				new_entity(

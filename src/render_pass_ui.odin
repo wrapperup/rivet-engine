@@ -153,7 +153,7 @@ init_ui_rp :: proc() {
 	)
 
 	ui_rp.sampler = gfx.create_sampler(.LINEAR, .REPEAT)
-	gfx.defer_destroy(frame_arena(), ui_rp.sampler)
+	gfx.defer_destroy(&game.render_state.global_arena, ui_rp.sampler)
 
 	// TODO: leak. asset system.
 	ui_rp.font = load_font("fonts/msdf/f_nunito_regular_mtsdf.ktx2", "assets/fonts/msdf/f_nunito_regular_mtsdf.json")

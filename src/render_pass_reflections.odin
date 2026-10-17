@@ -51,7 +51,7 @@ init_reflection_probe_rp :: proc() {
 	)
 	for &probes_buffer in game.render_state.reflection_probes_buffers {
 		probes_buffer = gfx.create_buffer(GPUReflectionProbe, MAX_REFLECTION_PROBES, .Host_Sequential_Write)
-		gfx.defer_destroy(frame_arena(), probes_buffer)
+		gfx.defer_destroy(&game.render_state.global_arena, probes_buffer)
 	}
 	game.render_state.reflection_probe_debug_pipeline = add_graphics_shader(
 		{"shaders/reflection_probe_debug.slang"},

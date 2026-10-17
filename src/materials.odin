@@ -33,7 +33,7 @@ init_material_store :: proc() {
 	material_store := &game.render_state.material_store
 
 	material_store.materials_buffer = gfx.create_buffer(GPUMaterial, 20)
-	gfx.defer_destroy(frame_arena(), material_store.materials_buffer)
+	gfx.defer_destroy(&game.render_state.global_arena, material_store.materials_buffer)
 }
 
 add_material :: proc(material: GPUMaterial) -> (material_id: MaterialId) {

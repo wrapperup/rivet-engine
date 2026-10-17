@@ -53,7 +53,6 @@ RenderState :: struct {
     global_arena: gfx.Deletion_Queue,
 
     swapchain:              gfx.Swapchain,
-    swapchain_needs_resize: bool,
 
 	// Bindless textures, etc
 	global_data:                     GPUGlobalData,
@@ -150,6 +149,7 @@ init_game_renderer :: proc() {
 
     surface: vk.SurfaceKHR
     gfx.vk_check(glfw.CreateWindowSurface(gfx.r_ctx.instance, game.window, nil, &surface))
+    gfx.defer_destroy(&state.global_arena, surface)
 
     width, height := glfw.GetFramebufferSize(game.window)
 
@@ -183,10 +183,10 @@ init_imgui :: proc() {
 init_test_resources :: proc() {
 	// Default Image Sampler
 	default_sampler := gfx.create_sampler(.LINEAR, .REPEAT, max_lod = 10.0, max_anisotropy = gfx.r_ctx.limits.maxSamplerAnisotropy)
-	gfx.defer_destroy(frame_arena(), default_sampler)
+	gfx.defer_destroy(&game.render_state.global_arena, default_sampler)
 
 	env_sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, max_lod = 8.0)
-	gfx.defer_destroy(frame_arena(), env_sampler)
+	gfx.defer_destroy(&game.render_state.global_arena, env_sampler)
 
 	{
 		rs := &game.render_state
@@ -220,13 +220,13 @@ init_render_passes :: proc() {
 init_shared_buffers :: proc() {
 	for &frame in game.render_state.frame_data {
 		frame.instances_buffer = gfx.create_buffer(GPURenderInstance, MAX_RENDER_INSTANCES, .Host_Sequential_Write)
-		gfx.defer_destroy(frame_arena(), frame.instances_buffer)
+		gfx.defer_destroy(&game.render_state.global_arena, frame.instances_buffer)
 
 		frame.scratch = gfx.create_scratch(32 * mem.Megabyte, "Frame Scratch Buffer")
-		gfx.defer_destroy(frame_arena(), frame.scratch)
+		gfx.defer_destroy(&game.render_state.global_arena, frame.scratch)
 
 		frame.global_buffer = gfx.create_buffer(GPUGlobalData, 1, .Host_Sequential_Write)
-		gfx.defer_destroy(frame_arena(), frame.global_buffer)
+		gfx.defer_destroy(&game.render_state.global_arena, frame.global_buffer)
 	}
 
 	environment := &game.render_state.global_data.environment
@@ -245,18 +245,7 @@ draw :: proc() {
 	scope_stat_time(.Render)
 
     gfx.wait_semaphore(current_frame_game().render_semaphore_pair)
-
-    if state.swapchain_needs_resize {
-        width, height := glfw.GetFramebufferSize(game.window)
-        if width == 0 || height == 0 {
-            return 
-        }
-
-        gfx.swapchain_resize(&state.swapchain, cast([2]int)[2]i32{width, height})
-        create_draw_images(&state.swapchain.arena, {u32(width), u32(height)})
-
-        state.swapchain_needs_resize = false
-    }
+    gfx.flush_vk_arena(frame_arena())
 
 	// TEMP: test draw command
 	for &ball in get_entities(Ball) {
@@ -286,12 +275,19 @@ draw :: proc() {
 	volumes := get_entities(DDGIVolume)
 	probes := get_entities(ReflectionProbe)
 
+    gfx.flush_vk_arena(&frame.arena)
 	gfx.reset_scratch(&frame.scratch)
 
-    swapchain_image, out_of_date := gfx.swapchain_acquire_next_image(&state.swapchain)
+    swapchain_image := gfx.swapchain_acquire_next_image(&state.swapchain)
+    if swapchain_image == {} {
+        width, height := glfw.GetFramebufferSize(game.window)
+        if width == 0 || height == 0 {
+            return 
+        }
 
-    if out_of_date {
-        state.swapchain_needs_resize = true
+        gfx.swapchain_resize(&state.swapchain, cast([2]int)[2]i32{width, height})
+        create_draw_images(&state.swapchain.arena, {u32(width), u32(height)})
+
         return
     }
 
@@ -366,22 +362,18 @@ draw :: proc() {
 		final_image = game.render_state.resolve_image
 	}
 
-	gfx.copy_image_to_image(cmd, final_image, swapchain_image, state.draw_extent, state.draw_extent)
-
-	sc := &state.swapchain
-	sc_image := sc.swapchain_images[sc.swapchain_image_index]
-
     when EDITOR {
-        gfx.transition_image(cmd, sc_image, .COLOR_ATTACHMENT_OPTIMAL)
-        im_gfx.gfx_imgui_render(cmd, sc_image, sc.swapchain_extent)
+        gfx.transition_image(cmd, swapchain_image, .COLOR_ATTACHMENT_OPTIMAL)
+        im_gfx.gfx_imgui_render(cmd, swapchain_image, state.draw_extent)
     }
 
-	gfx.transition_image(cmd, sc_image, .TRANSFER_DST_OPTIMAL)
+	gfx.transition_image(cmd, swapchain_image, .TRANSFER_DST_OPTIMAL)
+	gfx.copy_image_to_image(cmd, final_image, swapchain_image, state.draw_extent, state.draw_extent)
 
 	current_frame_game().render_semaphore_pair =
         gfx.queue_submit(.Main, cmd, swapchain = &state.swapchain)
 
-    state.swapchain_needs_resize = gfx.swapchain_present(&state.swapchain, .Main)
+    gfx.swapchain_present(&state.swapchain, .Main)
 
     game.render_state.frame_count += 1
 
@@ -470,9 +462,16 @@ prepare_shared_frame_data :: proc() {
 }
 
 renderer_shutdown :: proc() {
-	// Wait for the GPU to finish before tearing down resources still in use (e.g. the
-	// imgui buffers referenced by the last in-flight command buffer).
-	gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
+	gfx.wait_idle()
+
+    gfx.swapchain_destroy(&game.render_state.swapchain)
+
+    for &frame in game.render_state.frame_data {
+        gfx.defer_destroy_accel(&frame.arena, frame.rt.tlas)
+        gfx.flush_vk_arena(&frame.arena)
+    }
+
+    gfx.flush_vk_arena(&game.render_state.global_arena)
 
     when EDITOR {
         im_gfx.gfx_imgui_destroy()
@@ -483,8 +482,6 @@ renderer_shutdown :: proc() {
 
 	for &frame in game.render_state.frame_data {
 		delete(frame.instances)
-		// Replaced TLASes are retired per frame; the last one still needs retiring on shutdown.
-		gfx.defer_destroy_accel(frame_arena(), frame.rt.tlas)
 		delete(frame.skel_instances)
 	}
 }

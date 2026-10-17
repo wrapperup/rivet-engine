@@ -42,7 +42,7 @@ init_shadow_maps :: proc() {
 		{.DEPTH_STENCIL_ATTACHMENT, .SAMPLED},
 		array_layers = NUM_CASCADES,
 	)
-	gfx.defer_destroy(frame_arena(), shadow_rp.shadow_depth_image)
+	gfx.defer_destroy(&game.render_state.global_arena, shadow_rp.shadow_depth_image)
 
 	shadow_rp.shadow_sampler = gfx.create_sampler(
 		.LINEAR,
@@ -50,11 +50,11 @@ init_shadow_maps :: proc() {
 		compare_op = .LESS_OR_EQUAL,
 		border_color = .FLOAT_OPAQUE_WHITE,
 	)
-	gfx.defer_destroy(frame_arena(), shadow_rp.shadow_sampler)
+	gfx.defer_destroy(&game.render_state.global_arena, shadow_rp.shadow_sampler)
 
 	for &view, i in shadow_rp.shadow_depth_attach_image_views {
 		view = gfx.create_image_view(shadow_rp.shadow_depth_image, .D32_SFLOAT, .D2, 0, 1, i, 1)
-		gfx.defer_destroy(frame_arena(), view)
+		gfx.defer_destroy(&game.render_state.global_arena, view)
 	}
 }
 
@@ -75,8 +75,8 @@ init_shadow_rp :: proc() {
 	for &frame in game.render_state.frame_data {
 		frame.cascade_matrices_buffer = gfx.create_buffer(Mat4x4, NUM_CASCADES, .Host_Sequential_Write)
 		frame.cascade_configs_buffer = gfx.create_buffer(GPUCascadeConfig, NUM_CASCADES, .Host_Sequential_Write)
-		gfx.defer_destroy(frame_arena(), frame.cascade_matrices_buffer)
-		gfx.defer_destroy(frame_arena(), frame.cascade_configs_buffer)
+		gfx.defer_destroy(&game.render_state.global_arena, frame.cascade_matrices_buffer)
+		gfx.defer_destroy(&game.render_state.global_arena, frame.cascade_configs_buffer)
 	}
 }
 

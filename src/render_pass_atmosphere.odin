@@ -89,19 +89,19 @@ init_atmosphere_rp :: proc() {
 	a := &rp.parameters
 
 	rp.transmittance = gfx.create_image(.R16G16B16A16_SFLOAT, {256, 64, 1}, {.SAMPLED, .STORAGE})
-	gfx.defer_destroy(frame_arena(), rp.transmittance)
+	gfx.defer_destroy(&game.render_state.global_arena, rp.transmittance)
 
 	rp.multiple_scattering = gfx.create_image(.R16G16B16A16_SFLOAT, {32, 32, 1}, {.SAMPLED, .STORAGE})
-	gfx.defer_destroy(frame_arena(), rp.multiple_scattering)
+	gfx.defer_destroy(&game.render_state.global_arena, rp.multiple_scattering)
 
 	rp.sky_view = gfx.create_image(.R16G16B16A16_SFLOAT, {192, 108, 1}, {.SAMPLED, .STORAGE, .TRANSFER_SRC})
-	gfx.defer_destroy(frame_arena(), rp.sky_view)
+	gfx.defer_destroy(&game.render_state.global_arena, rp.sky_view)
 
 	rp.aerial_scattering = gfx.create_image(.R16G16B16A16_SFLOAT, {32, 32, 32}, {.SAMPLED, .STORAGE}, image_type = .D3)
-	gfx.defer_destroy(frame_arena(), rp.aerial_scattering)
+	gfx.defer_destroy(&game.render_state.global_arena, rp.aerial_scattering)
 
 	rp.aerial_transmittance = gfx.create_image(.R16G16B16A16_SFLOAT, {32, 32, 32}, {.SAMPLED, .STORAGE}, image_type = .D3)
-	gfx.defer_destroy(frame_arena(), rp.aerial_transmittance)
+	gfx.defer_destroy(&game.render_state.global_arena, rp.aerial_transmittance)
 
 	a.transmittance = rp.transmittance
 	a.multiple_scattering = rp.multiple_scattering
@@ -119,7 +119,7 @@ init_atmosphere_rp :: proc() {
 		array_layers = 6,
 		flags = {.CUBE_COMPATIBLE},
 	)
-	gfx.defer_destroy(frame_arena(), rp.environment_id)
+	gfx.defer_destroy(&game.render_state.global_arena, rp.environment_id)
 
 	for &id, mip in rp.environment_mips {
 		view := gfx.create_image_view(
@@ -130,7 +130,7 @@ init_atmosphere_rp :: proc() {
 			mip_levels = 1,
 			array_layers = 6,
 		)
-		gfx.defer_destroy(frame_arena(), view)
+		gfx.defer_destroy(&game.render_state.global_arena, view)
 		id = view
 	}
 

@@ -87,7 +87,7 @@ init_ddgi_rp :: proc() {
 
 	for &volumes_buffer in ddgi_rp.volumes_buffers {
 		volumes_buffer = gfx.create_buffer(GPUDDGIVolume, MAX_DDGI_VOLUMES, .Host_Sequential_Write)
-		gfx.defer_destroy(frame_arena(), volumes_buffer)
+		gfx.defer_destroy(&game.render_state.global_arena, volumes_buffer)
 	}
 	ddgi_init_debug_sphere()
 }
@@ -119,13 +119,18 @@ ddgi_make_sphere :: proc(rings, sectors: int) -> ([]Vertex, []u32) {
 }
 
 ddgi_init_debug_sphere :: proc() {
+    state := &game.render_state
 	rp := &game.render_state.ddgi_rp
 	verts, indices := ddgi_make_sphere(12, 16)
 	defer delete(verts)
 	defer delete(indices)
 
 	rp.probe_vbuf = gfx.create_buffer(Vertex, len(verts))
+    gfx.defer_destroy(&state.global_arena, rp.probe_vbuf)
+
 	rp.probe_ibuf = gfx.create_buffer(u32, len(indices))
+    gfx.defer_destroy(&state.global_arena, rp.probe_ibuf)
+
 	rp.probe_index_count = u32(len(indices))
 
 	staging_vbuf := gfx.create_buffer(Vertex, len(verts), .Host_Sequential_Write)

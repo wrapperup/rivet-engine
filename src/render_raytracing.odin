@@ -12,7 +12,7 @@ RaytracingResources :: struct {
 init_raytracing :: proc() {
 	for &frame in game.render_state.frame_data {
 		frame.rt.instances_buffer = gfx.create_buffer(vk.AccelerationStructureInstanceKHR, MAX_RENDER_INSTANCES, .Host_Sequential_Write)
-		gfx.defer_destroy(frame_arena(), frame.rt.instances_buffer)
+		gfx.defer_destroy(&game.render_state.global_arena, frame.rt.instances_buffer)
 	}
 }
 
