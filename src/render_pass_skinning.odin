@@ -21,19 +21,21 @@ init_skinning_rp :: proc() {
 }
 
 init_skinning_instance :: proc(instance: ^SkeletalMeshInstance, animation: ^SkeletalAnimation) {
+    state := &game.render_state
+
 	init_skeleton_animator(&instance.animator, instance.skel, animation)
 
-	for i in 0 ..< gfx.FRAME_OVERLAP {
+	for i in 0 ..< FRAME_OVERLAP {
 		instance.joint_matrices_buffers[i] = gfx.create_buffer(Mat4x4, instance.skel.joint_count, .Host_Sequential_Write)
 		instance.preskinned_vertex_buffers[i] = gfx.create_buffer(Vertex, instance.skel.buffers.vertex_count)
 
-		gfx.defer_destroy_buffer(&gfx.r_ctx.global_arena, instance.joint_matrices_buffers[i])
-		gfx.defer_destroy_buffer(&gfx.r_ctx.global_arena, instance.preskinned_vertex_buffers[i])
+		gfx.defer_destroy_buffer(&state.global_arena, instance.joint_matrices_buffers[i])
+		gfx.defer_destroy_buffer(&state.global_arena, instance.preskinned_vertex_buffers[i])
 	}
 }
 
 skinning_prepare :: proc(instances: []^SkeletalMeshInstance) {
-	frame_index := gfx.current_frame_index()
+	frame_index := current_frame_index()
 	for instance in instances {
 		sample_animation(&instance.animator, f32(game.live_time))
 		gfx.write_buffer_slice(&instance.joint_matrices_buffers[frame_index], instance.animator.calc_joints[:])
@@ -44,7 +46,7 @@ record_skinning_pass :: proc(cmd: gfx.CommandBuffer, instances: []^SkeletalMeshI
 	if len(instances) == 0 do return
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.skinning_rp.skinning_pipeline)
-	frame_index := gfx.current_frame_index()
+	frame_index := current_frame_index()
 
 	for instance in instances {
 		output := instance.preskinned_vertex_buffers[frame_index]

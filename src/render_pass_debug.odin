@@ -23,7 +23,9 @@ init_debug_rt_rp :: proc() {
 }
 
 record_debug_rt_pass :: proc(cmd: gfx.CommandBuffer) {
-	gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .GENERAL)
+    state := &game.render_state
+
+	gfx.transition_image(cmd, state.resolve_image, .GENERAL)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.debug_rt_pipeline)
 	gfx.cmd_push_constants(
 		cmd,
@@ -32,14 +34,14 @@ record_debug_rt_pass :: proc(cmd: gfx.CommandBuffer) {
 			instances = current_frame_game().instances_buffer.ptr,
 			materials = game.render_state.material_store.materials_buffer.ptr,
 			tlas = current_frame_game().rt.tlas.address,
-			out_image = gfx.r_ctx.resolve_image,
+			out_image = state.resolve_image,
 		},
 	)
 
 	vk.CmdDispatch(
 		cmd,
-		u32(math.ceil(f32(gfx.r_ctx.draw_extent.width) / 16.0)),
-		u32(math.ceil(f32(gfx.r_ctx.draw_extent.height) / 16.0)),
+		u32(math.ceil(f32(state.draw_extent.width) / 16.0)),
+		u32(math.ceil(f32(state.draw_extent.height) / 16.0)),
 		1,
 	)
 }

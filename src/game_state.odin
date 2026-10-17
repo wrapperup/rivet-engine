@@ -23,8 +23,8 @@ ViewState :: enum {
 }
 
 SkeletalMeshInstance :: struct {
-	preskinned_vertex_buffers: [gfx.FRAME_OVERLAP]gfx.Buffer(Vertex),
-	joint_matrices_buffers:    [gfx.FRAME_OVERLAP]gfx.Buffer(Mat4x4),
+	preskinned_vertex_buffers: [FRAME_OVERLAP]gfx.Buffer(Vertex),
+	joint_matrices_buffers:    [FRAME_OVERLAP]gfx.Buffer(Mat4x4),
 	skel:                      ^Skeleton,
 	animator:                  SkeletonAnimator,
 }

@@ -1,31 +1,15 @@
 package gfx
 
+import "core:container/queue"
+import "core:log"
 import "base:runtime"
 import "core:dynlib"
-import "core:fmt"
-import "core:os"
 import "core:reflect"
 import "core:strings"
-import "core:time"
 
 import vma "deps:odin-vma"
 import "vendor:glfw"
 import vk "vendor:vulkan"
-
-DRAW_FORMAT :: vk.Format.R32G32B32A32_SFLOAT
-DEPTH_FORMAT :: vk.Format.D32_SFLOAT
-
-log_normal :: proc(args: ..any) {
-	if r_ctx.enable_logs {
-		fmt.println(..args)
-	}
-}
-
-log_error :: proc(args: ..any) {
-	if r_ctx.enable_logs {
-		fmt.eprintln(..args)
-	}
-}
 
 vk_check :: proc(result: vk.Result, loc := #caller_location) {
 	p := context.assertion_failure_proc
@@ -44,245 +28,48 @@ Capabilities :: struct {
 	ray_query: bool,
 }
 
+Queue_Kind :: enum {
+    Main,
+    Compute,
+    Transfer,
+}
+
+Queue :: struct {
+    queue:                vk.Queue,
+    family_index:         u32,
+    vk_index:             u32,
+
+    semaphore:            Semaphore,
+	command_pool:         vk.CommandPool,
+	free_command_buffers: [dynamic]struct {
+        cmd: vk.CommandBuffer,
+        value: u64,
+    },
+    last_value:           u64,
+}
+
 Renderer :: struct {
-	debug_messenger:             vk.DebugUtilsMessengerEXT,
-	enable_logs:                 bool,
-	instance:                    vk.Instance,
-	physical_device:             vk.PhysicalDevice,
-	device:                      vk.Device,
-	window:                      glfw.WindowHandle,
+	debug_messenger: vk.DebugUtilsMessengerEXT,
+	enable_logs:     bool,
+    debug_logger:    log.Logger,
 
-	// Queues
-	graphics_queue:              vk.Queue,
-	graphics_queue_family:       u32,
-	surface:                     vk.SurfaceKHR,
+	instance:        vk.Instance,
+	physical_device: vk.PhysicalDevice,
+	device:          vk.Device,
+	allocator:       vma.Allocator,
 
-	// Swapchain
-	swapchain:                   Swapchain,
-	swapchain_suboptimal:        bool,
+    queues:          [Queue_Kind]Queue,
 
-	// Command Pool/Buffer
-	frames:                      [FRAME_OVERLAP]FrameData,
-	frame_number:                int,
-	global_arena:                ResourceArena,
-	allocator:                   vma.Allocator,
+	bindless_system:  BindlessSystem,
+	current_pipeline: Pipeline,
 
-	// Draw resources
-	draw_image:                  ImageId,
-	resolve_image:               ImageId,
-	depth_image:                 ImageId,
-	draw_extent:                 vk.Extent2D,
-	msaa_samples:                vk.SampleCountFlag,
-
-	// Immediate submit
-	imm_fence:                   vk.Fence,
-	imm_command_buffer:          CommandBuffer,
-	imm_command_pool:            vk.CommandPool,
-
-	// Bindless
-	bindless_system:             BindlessSystem,
-	current_pipeline:            Pipeline,
-
-	// Limits
-	limits:                      vk.PhysicalDeviceLimits, // TODO: Too big?
-	capabilities:                Capabilities,
-}
-
-Swapchain :: struct {
-	swapchain:              vk.SwapchainKHR,
-	swapchain_images:       []ImageId,
-	swapchain_image_index:  u32,
-	swapchain_image_format: vk.Format,
-	swapchain_extent:       vk.Extent2D,
-	arena:                  ResourceArena,
-}
-
-create_swapchain :: proc(old_swapchain: vk.SwapchainKHR = 0) {
-	capabilities: vk.SurfaceCapabilitiesKHR
-	vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(r_ctx.physical_device, r_ctx.surface, &capabilities)
-
-	format_count: u32
-	vk.GetPhysicalDeviceSurfaceFormatsKHR(r_ctx.physical_device, r_ctx.surface, &format_count, nil)
-
-	formats := make([]vk.SurfaceFormatKHR, format_count)
-	defer delete(formats)
-	vk.GetPhysicalDeviceSurfaceFormatsKHR(r_ctx.physical_device, r_ctx.surface, &format_count, raw_data(formats))
-
-	present_mode_count: u32
-	vk.GetPhysicalDeviceSurfacePresentModesKHR(r_ctx.physical_device, r_ctx.surface, &present_mode_count, nil)
-
-	present_modes := make([]vk.PresentModeKHR, present_mode_count)
-	defer delete(present_modes)
-	vk.GetPhysicalDeviceSurfacePresentModesKHR(r_ctx.physical_device, r_ctx.surface, &present_mode_count, raw_data(present_modes))
-
-	surface_format := formats[0]
-
-	for format in formats {
-		if format.format == .B8G8R8A8_UNORM && format.colorSpace == .SRGB_NONLINEAR {
-			surface_format = format
-		}
-	}
-
-	present_mode := choose_swap_present_mode(present_modes)
-	extent := choose_swap_extent(r_ctx.window, &capabilities)
-
-	image_count := capabilities.minImageCount + 1
-
-	if capabilities.maxImageCount > 0 && image_count > capabilities.maxImageCount {
-		image_count = capabilities.maxImageCount
-	}
-
-	create_info := vk.SwapchainCreateInfoKHR {
-		sType                 = .SWAPCHAIN_CREATE_INFO_KHR,
-		surface               = r_ctx.surface,
-		minImageCount         = image_count,
-		imageFormat           = surface_format.format,
-		imageColorSpace       = surface_format.colorSpace,
-		imageExtent           = extent,
-		imageArrayLayers      = 1,
-		imageUsage            = {.COLOR_ATTACHMENT, .TRANSFER_DST, .SAMPLED},
-
-		// TODO: Support multiple queues?
-		imageSharingMode      = .EXCLUSIVE,
-		queueFamilyIndexCount = 0, // Optional
-		pQueueFamilyIndices   = nil, // Optional
-		preTransform          = capabilities.currentTransform,
-		compositeAlpha        = {.OPAQUE},
-		presentMode           = present_mode,
-		clipped               = true,
-		oldSwapchain          = old_swapchain,
-	}
-
-	swapchain := &r_ctx.swapchain
-
-	vk_check(vk.CreateSwapchainKHR(r_ctx.device, &create_info, nil, &swapchain.swapchain))
-	defer_destroy(&swapchain.arena, swapchain.swapchain)
-
-	swapchain.swapchain_image_format = surface_format.format
-	swapchain.swapchain_extent = extent
-
-	vk.GetSwapchainImagesKHR(r_ctx.device, swapchain.swapchain, &image_count, nil)
-	vk_swapchain_images := make([]vk.Image, image_count)
-	vk.GetSwapchainImagesKHR(r_ctx.device, swapchain.swapchain, &image_count, raw_data(vk_swapchain_images))
-
-	swapchain.swapchain_images = make([]ImageId, image_count)
-	for i in 0 ..< len(swapchain.swapchain_images) {
-		swapchain.swapchain_images[i] = wrap_image(
-			vk_swapchain_images[i],
-			swapchain.swapchain_image_format,
-			{swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 0},
-			{.COLOR_ATTACHMENT, .TRANSFER_DST, .SAMPLED},
-		)
-		defer_destroy(&swapchain.arena, swapchain.swapchain_images[i])
-	}
-
-	draw_image_extent := vk.Extent3D{extent.width, extent.height, 1}
-	draw_image_usages := vk.ImageUsageFlags{.TRANSFER_SRC, .TRANSFER_DST, .STORAGE, .COLOR_ATTACHMENT}
-
-	r_ctx.draw_image = create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = r_ctx.msaa_samples)
-	defer_destroy(&swapchain.arena, r_ctx.draw_image)
-
-	// Used for MSAA resolution
-	r_ctx.resolve_image = create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = ._1)
-	defer_destroy(&swapchain.arena, r_ctx.resolve_image)
-
-	r_ctx.depth_image = create_image(DEPTH_FORMAT, draw_image_extent, {.DEPTH_STENCIL_ATTACHMENT}, msaa_samples = r_ctx.msaa_samples)
-	defer_destroy(&swapchain.arena, r_ctx.depth_image)
-
-	r_ctx.draw_extent.width = draw_image_extent.width
-	r_ctx.draw_extent.height = draw_image_extent.height
-}
-
-destroy_swapchain_resources :: proc(swapchain: ^Swapchain) {
-	flush_vk_arena(&swapchain.arena)
-	delete_vk_arena(swapchain.arena)
-	delete(swapchain.swapchain_images)
-	swapchain^ = {}
-}
-
-resize_swapchain :: proc() -> bool {
-	width, height := glfw.GetFramebufferSize(r_ctx.window)
-	if width <= 0 || height <= 0 {
-		return false
-	}
-
-	vk.DeviceWaitIdle(r_ctx.device)
-
-	old_swapchain := r_ctx.swapchain
-	r_ctx.swapchain = {}
-	create_swapchain(old_swapchain.swapchain)
-	destroy_swapchain_resources(&old_swapchain)
-	return true
-}
-
-FrameData :: struct {
-	swapchain_semaphore, render_semaphore: vk.Semaphore,
-	render_fence:                          vk.Fence,
-	command_pool:                          vk.CommandPool,
-	main_command_buffer:                   CommandBuffer,
-	arena:                                 ResourceArena,
-}
-
-begin_immediate_submit :: proc() -> CommandBuffer {
-	vk_check(vk.ResetFences(r_ctx.device, 1, &r_ctx.imm_fence))
-	vk_check(vk.ResetCommandBuffer(r_ctx.imm_command_buffer, {}))
-
-	cmd := r_ctx.imm_command_buffer
-
-	cmd_begin_info := init_command_buffer_begin_info({.ONE_TIME_SUBMIT})
-
-	vk_check(vk.BeginCommandBuffer(cmd, &cmd_begin_info))
-
-	return cmd
-}
-
-end_immediate_submit :: proc() {
-	cmd := r_ctx.imm_command_buffer
-
-	vk_check(vk.EndCommandBuffer(cmd))
-
-	cmd_info := init_command_buffer_submit_info(cmd)
-	submit := init_submit_info(&cmd_info, nil, nil)
-
-	// submit command buffer to the queue and execute it.
-	//  _renderFence will now block until the graphic commands finish execution
-	vk_check(vk.QueueSubmit2(r_ctx.graphics_queue, 1, &submit, r_ctx.imm_fence))
-
-	vk_check(vk.WaitForFences(r_ctx.device, 1, &r_ctx.imm_fence, true, 9_999_999_999))
-}
-
-@(deferred_in = end_immediate_submit)
-immediate_submit :: proc() -> CommandBuffer {
-	return begin_immediate_submit()
-}
-
-current_frame_index :: proc() -> int {
-	return r_ctx.frame_number % FRAME_OVERLAP
-}
-
-current_frame :: proc() -> ^FrameData {
-	return &r_ctx.frames[current_frame_index()]
-}
-
-msaa_samples :: proc() -> vk.SampleCountFlag {
-	return r_ctx.msaa_samples
-}
-
-msaa_enabled :: proc() -> bool {
-	return r_ctx.msaa_samples > ._1
-}
-
-renderer :: proc() -> ^Renderer {
-	return r_ctx
-}
-
-set_renderer :: proc(r: ^Renderer) {
-	r_ctx = r
+	limits:       vk.PhysicalDeviceLimits, // TODO: Too big?
+	capabilities: Capabilities,
 }
 
 init_vulkan :: proc(config: InitConfig) -> bool {
 	r_ctx.enable_logs = config.enable_logs
-	r_ctx.window = config.window
+    r_ctx.debug_logger = context.logger
 
 	{
 		// Loads vulkan api functions needed to create an instance
@@ -303,7 +90,7 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 
 		app_info := vk.ApplicationInfo{}
 		app_info.sType = .APPLICATION_INFO
-		app_info.pApplicationName = "Hello Triangle"
+		app_info.pApplicationName = "gfx"
 		app_info.applicationVersion = vk.MAKE_VERSION(0, 0, 1)
 		app_info.pEngineName = "No Engine"
 		app_info.engineVersion = vk.MAKE_VERSION(1, 0, 0)
@@ -355,10 +142,10 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 
 		vk.EnumerateInstanceExtensionProperties(nil, &n_ext, raw_data(extension_props))
 
-		log_normal("Available Extensions:")
+		log.info("Available Extensions:")
 
 		for &ext in &extension_props {
-			log_normal(" -", cstring(&ext.extensionName[0]))
+			log.info(" -", cstring(&ext.extensionName[0]))
 		}
 
 		if config.enable_validation_layers && !check_validation_layers() {
@@ -368,7 +155,7 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 
 	{
 		if config.enable_validation_layers {
-			log_normal("Creating Debug Messenger")
+			log.info("Creating Debug Messenger")
 			create_info := vk.DebugUtilsMessengerCreateInfoEXT {
 				sType           = .DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
 				messageSeverity = {.VERBOSE, .WARNING, .INFO, .ERROR},
@@ -379,10 +166,6 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 
 			vk_check(vk.CreateDebugUtilsMessengerEXT(r_ctx.instance, &create_info, nil, &r_ctx.debug_messenger))
 		}
-	}
-
-	if r_ctx.window != nil {
-		vk_check(glfw.CreateWindowSurface(r_ctx.instance, r_ctx.window, nil, &r_ctx.surface))
 	}
 
 	{
@@ -432,33 +215,70 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 		defer delete(queue_families)
 		vk.GetPhysicalDeviceQueueFamilyProperties(r_ctx.physical_device, &queue_family_count, raw_data(queue_families))
 
-		has_graphics := false
+        // algo below is shamelessly inspired by no_gfx_api, just simpler-ish
+        families: [Queue_Kind]u32
+        found_graphics := true
 
-		for queue_family, i in &queue_families {
-			if .GRAPHICS in queue_family.queueFlags {
-				r_ctx.graphics_queue_family = u32(i)
-				has_graphics = true
-			}
-		}
+        // find dedicated
+        for queue_family, i in &queue_families {
+            has_graphics := .GRAPHICS in queue_family.queueFlags
+            has_compute  := .COMPUTE  in queue_family.queueFlags
+            has_transfer := .TRANSFER in queue_family.queueFlags
 
-		assert(has_graphics, "No graphics queue is supported.")
-	}
+            if families[.Main] == 0 && has_graphics && has_compute && has_transfer {
+                found_graphics = true
+                families[.Main] = u32(i)
+            }
+            if families[.Compute] == 0 && !has_graphics && has_compute && has_transfer {
+                families[.Compute] = u32(i)
+            }
+            if families[.Transfer] == 0 && !has_graphics && !has_compute && has_transfer {
+                families[.Transfer] = u32(i)
+            }
+        }
 
-	{
-		queue_priority: f32 = 1.0
+        assert(found_graphics, "Graphics queue type not available!")
 
-		queue_create_info := vk.DeviceQueueCreateInfo {
-			sType            = .DEVICE_QUEUE_CREATE_INFO,
-			queueFamilyIndex = r_ctx.graphics_queue_family,
-			queueCount       = 1,
-			pQueuePriorities = &queue_priority,
-		}
+        // fallback if a dedicated one doesn't exist
+        for queue_family, i in &queue_families {
+            has_compute  := .COMPUTE  in queue_family.queueFlags
+            has_transfer := .TRANSFER in queue_family.queueFlags
+
+            if families[.Compute] == 0 && has_compute {
+                families[.Compute] = u32(i)
+            }
+            if families[.Transfer] == 0 && has_transfer {
+                families[.Transfer] = u32(i)
+            }
+        }
+
+        queue_create_infos: [dynamic]vk.DeviceQueueCreateInfo
+
+        for &queue_a, i in &r_ctx.queues {
+            for queue_b in &r_ctx.queues {
+                if queue_a.family_index == queue_b.family_index {
+                    queue_a = queue_b
+                    continue
+                }
+            }
+
+            queue_a.family_index = families[i]
+            queue_a.vk_index = 0 // currently we only do 1 queue per family
+
+            append(&queue_create_infos, {
+                sType            = .DEVICE_QUEUE_CREATE_INFO,
+                queueFamilyIndex = queue_a.family_index,
+                queueCount       = 1,
+            })
+        }
 
 		device_create_info := vk.DeviceCreateInfo {
 			sType                   = .DEVICE_CREATE_INFO,
 			pNext                   = &REQUIRED_FEATURES,
-			pQueueCreateInfos       = &queue_create_info,
-			queueCreateInfoCount    = 1,
+
+			pQueueCreateInfos       = raw_data(queue_create_infos),
+			queueCreateInfoCount    = u32(len(queue_create_infos)),
+
 			ppEnabledExtensionNames = raw_data(DEVICE_EXTENSIONS),
 			enabledExtensionCount   = u32(len(DEVICE_EXTENSIONS)),
 		}
@@ -467,7 +287,10 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 
 		assert(r_ctx.device != nil)
 
-		vk.GetDeviceQueue(r_ctx.device, r_ctx.graphics_queue_family, 0, &r_ctx.graphics_queue)
+        for &queue in &r_ctx.queues {
+            vk.GetDeviceQueue(r_ctx.device, queue.family_index, queue.vk_index, &queue.queue)
+            queue.semaphore = create_semaphore(0)
+        }
 	}
 
 	{
@@ -485,59 +308,23 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 		vma.CreateAllocator(&allocator_info, &r_ctx.allocator)
 	}
 
-	r_ctx.msaa_samples = config.msaa_samples
-
 	{
-		command_pool_info := vk.CommandPoolCreateInfo{}
-		command_pool_info.sType = .COMMAND_POOL_CREATE_INFO
-		command_pool_info.pNext = nil
-		command_pool_info.flags = {.RESET_COMMAND_BUFFER}
-		command_pool_info.queueFamilyIndex = r_ctx.graphics_queue_family
+        for i in 0..<len(Queue_Kind) {
+            kind := Queue_Kind(i)
 
-		for i in 0 ..< FRAME_OVERLAP {
-			vk_check(vk.CreateCommandPool(r_ctx.device, &command_pool_info, nil, &r_ctx.frames[i].command_pool))
+            command_pool_info := vk.CommandPoolCreateInfo{
+                sType = .COMMAND_POOL_CREATE_INFO,
+                pNext = nil,
+                flags = {.RESET_COMMAND_BUFFER},
+                queueFamilyIndex = r_ctx.queues[kind].family_index,
+            }
 
-			// allocate the default command buffer that we will use for rendering
-			cmd_alloc_info := vk.CommandBufferAllocateInfo{}
-			cmd_alloc_info.sType = .COMMAND_BUFFER_ALLOCATE_INFO
-			cmd_alloc_info.pNext = nil
-			cmd_alloc_info.commandPool = r_ctx.frames[i].command_pool
-			cmd_alloc_info.commandBufferCount = 1
-			cmd_alloc_info.level = .PRIMARY
+			vk_check(vk.CreateCommandPool(r_ctx.device, &command_pool_info, nil, &r_ctx.queues[kind].command_pool))
+        }
 
-			vk_check(vk.AllocateCommandBuffers(r_ctx.device, &cmd_alloc_info, &r_ctx.frames[i].main_command_buffer))
-		}
-
-		vk_check(vk.CreateCommandPool(r_ctx.device, &command_pool_info, nil, &r_ctx.imm_command_pool))
-
-		// allocate the command buffer for immediate submits
-		cmd_alloc_info := init_command_buffer_allocate_info(r_ctx.imm_command_pool, 1)
-
-		vk_check(vk.AllocateCommandBuffers(r_ctx.device, &cmd_alloc_info, &r_ctx.imm_command_buffer))
-
-		defer_destroy(&r_ctx.global_arena, r_ctx.imm_command_pool)
-	}
-
-	{
-		fence_create_info := init_fence_create_info({.SIGNALED})
-		semaphore_create_info := init_semaphore_create_info({})
-
-		for &frame in &r_ctx.frames {
-			vk_check(vk.CreateFence(r_ctx.device, &fence_create_info, nil, &frame.render_fence))
-
-			vk_check(vk.CreateSemaphore(r_ctx.device, &semaphore_create_info, nil, &frame.swapchain_semaphore))
-			vk_check(vk.CreateSemaphore(r_ctx.device, &semaphore_create_info, nil, &frame.render_semaphore))
-		}
-
-		vk.CreateFence(r_ctx.device, &fence_create_info, nil, &r_ctx.imm_fence)
-		defer_destroy(&r_ctx.global_arena, r_ctx.imm_fence)
 	}
 
 	init_bindless_descriptors()
-
-	if r_ctx.window != nil {
-		create_swapchain()
-	}
 
 	return true
 }
@@ -545,31 +332,8 @@ init_vulkan :: proc(config: InitConfig) -> bool {
 cleanup_vulkan :: proc() {
 	vk.DeviceWaitIdle(r_ctx.device)
 
-	// Cleanup queued resources
-	flush_vk_arena(&r_ctx.global_arena)
-	delete_vk_arena(r_ctx.global_arena)
-
-	for &frame in r_ctx.frames {
-		vk.DestroyCommandPool(r_ctx.device, frame.command_pool, nil)
-
-		vk.DestroyFence(r_ctx.device, frame.render_fence, nil)
-		vk.DestroySemaphore(r_ctx.device, frame.render_semaphore, nil)
-		vk.DestroySemaphore(r_ctx.device, frame.swapchain_semaphore, nil)
-
-		flush_vk_arena(&frame.arena)
-		delete_vk_arena(frame.arena)
-	}
-
-	if r_ctx.swapchain.swapchain != 0 {
-		destroy_swapchain_resources(&r_ctx.swapchain)
-	}
 	// Deferred image/sampler destruction resolves IDs through these tables.
 	shutdown_bindless_descriptors()
-
-	// Headless mode
-	if r_ctx.surface != 0 {
-		vk.DestroySurfaceKHR(r_ctx.instance, r_ctx.surface, nil)
-	}
 
 	vma.DestroyAllocator(r_ctx.allocator)
 	vk.DestroyDevice(r_ctx.device, nil)
@@ -611,121 +375,197 @@ set_viewport_and_scissor :: proc {
 	set_viewport_and_scissor_2d,
 }
 
-LAST_WRITE: time.Time
+_get_command_buffer :: proc(kind: Queue_Kind) -> CommandBuffer {
+    queue := &r_ctx.queues[kind]
+    cmd: vk.CommandBuffer
 
-is_shaders_updated :: proc() -> bool {
-	lib_last_write, _ := os.last_write_time_by_name("./shaders/out/gradient.comp.spv")
+    if len(r_ctx.queues[kind].free_command_buffers) > 0 {
+        free := pop(&r_ctx.queues[kind].free_command_buffers)
+        if get_semaphore_value(queue.semaphore) >= free.value {
+            return free.cmd
+        }
 
-	if LAST_WRITE == lib_last_write {
-		return false
-	}
+        // otherwise, push to the end of the list and try later.
+        append(&r_ctx.queues[kind].free_command_buffers, free)
+    }
+    
+    // allocate one
+    log.warn("Allocating command buffer.")
 
-	LAST_WRITE = lib_last_write
+    alloc_info := vk.CommandBufferAllocateInfo{
+        sType = .COMMAND_BUFFER_ALLOCATE_INFO,
+        pNext = nil,
+        commandPool = r_ctx.queues[kind].command_pool,
+        commandBufferCount = 1,
+        level = .PRIMARY,
+    }
 
-	return true
+    vk_check(vk.AllocateCommandBuffers(r_ctx.device, &alloc_info, &cmd))
+    return cmd
 }
 
 // Called by the user before they start drawing to the screen.
 // This command can fail if the window changes size, if `ok` returns false, then don't
 // draw anything to the screen. Wait for the window to finish polling.
-begin_command_buffer :: proc() -> (cmd: CommandBuffer, ready, swapchain_resized: bool) {
-	vk_check(vk.WaitForFences(r_ctx.device, 1, &current_frame().render_fence, true, 1_000_000_000))
+begin_command_buffer :: proc(kind: Queue_Kind) -> (cmd: CommandBuffer) {
+    cmd = _get_command_buffer(kind)
 
-	// Delete resources for the current frame
-	flush_vk_arena(&current_frame().arena)
+	vk_check(vk.ResetCommandBuffer(cmd, {.RELEASE_RESOURCES}))
 
-	acquire_image_result := vk.AcquireNextImageKHR(
-		r_ctx.device,
-		r_ctx.swapchain.swapchain,
-		1_000_000_000,
-		current_frame().swapchain_semaphore,
-		0,
-		&r_ctx.swapchain.swapchain_image_index,
-	)
+	begin_info := vk.CommandBufferBeginInfo{
+        sType = .COMMAND_BUFFER_BEGIN_INFO,
+        pNext = nil,
+        pInheritanceInfo = nil,
+        flags = {.ONE_TIME_SUBMIT},
+    }
 
-	if acquire_image_result == .ERROR_OUT_OF_DATE_KHR {
-		swapchain_resized = resize_swapchain()
-		return nil, false, swapchain_resized
-	}
-	if acquire_image_result == .SUBOPTIMAL_KHR {
-		r_ctx.swapchain_suboptimal = true
-	} else {
-		vk_check(acquire_image_result)
-	}
+	vk_check(vk.BeginCommandBuffer(cmd, &begin_info))
 
-	vk_check(vk.ResetFences(r_ctx.device, 1, &current_frame().render_fence))
-
-	// now that we are sure that the commands finished executing, we can safely
-	// reset the command buffer to begin recording again.
-	vk_check(vk.ResetCommandBuffer(current_frame().main_command_buffer, {.RELEASE_RESOURCES}))
-
-	// naming it cmd for shorter writing
-	cmd = current_frame().main_command_buffer
-
-	// begin the command buffer recording. We will use this command buffer exactly once, so we want to let vulkan know that
-	cmd_begin_info := init_command_buffer_begin_info({.ONE_TIME_SUBMIT})
-
-	vk_check(vk.BeginCommandBuffer(cmd, &cmd_begin_info))
-
-	return cmd, true, false
+	return cmd
 }
 
-copy_image_to_swapchain :: proc(cmd: CommandBuffer, image_id: ImageId, src_size: vk.Extent2D) {
-	transition_image(cmd, r_ctx.swapchain.swapchain_images[r_ctx.swapchain.swapchain_image_index], .TRANSFER_DST_OPTIMAL)
+copy_image_to_swapchain :: proc(cmd: CommandBuffer, image_id: ImageId, src_size: vk.Extent2D, swapchain: ^Swapchain) {
+    assert(swapchain != nil, "Swapchain is nil.")
+
+	transition_image(cmd, swapchain.swapchain_images[swapchain.swapchain_image_index], .TRANSFER_DST_OPTIMAL)
 
 	copy_image_to_image(
 		cmd,
 		image_id,
-		r_ctx.swapchain.swapchain_images[r_ctx.swapchain.swapchain_image_index],
+		swapchain.swapchain_images[swapchain.swapchain_image_index],
 		src_size,
-		r_ctx.swapchain.swapchain_extent,
+		swapchain.swapchain_extent,
 	)
 }
 
 // Called by the user when they end drawing to the screen.
-submit :: proc(cmd: CommandBuffer) -> (swapchain_resized: bool) {
-	// set swapchain image layout to Present so we can show it on the screen
-	transition_image(cmd, r_ctx.swapchain.swapchain_images[r_ctx.swapchain.swapchain_image_index], .PRESENT_SRC_KHR)
+queue_submit :: proc(
+    kind: Queue_Kind,
+    cmd: CommandBuffer,
+    sema_waits: []Semaphore_Pair = {},
+    sema_signals: []Semaphore_Pair = {},
+    swapchain: ^Swapchain = nil
+) -> (done_semaphore: Semaphore_Pair) {
+    queue := &r_ctx.queues[kind]
+    if swapchain != nil {
+        transition_image(cmd, swapchain.swapchain_images[swapchain.swapchain_image_index], .PRESENT_SRC_KHR)
+    }
 
-	//finalize the command buffer (we can no longer add commands, but it can now be executed)
 	vk_check(vk.EndCommandBuffer(cmd))
 
 	cmd_info := init_command_buffer_submit_info(cmd)
 
-	wait_info := init_semaphore_submit_info({.COLOR_ATTACHMENT_OUTPUT}, current_frame().swapchain_semaphore)
-	signal_info := init_semaphore_submit_info({.ALL_GRAPHICS}, current_frame().render_semaphore)
+    has_swapchain_count := swapchain == nil ? 0 : 1
 
-	submit := init_submit_info(&cmd_info, &signal_info, &wait_info)
+    waits := make([]vk.SemaphoreSubmitInfo, len(sema_waits) + has_swapchain_count, context.temp_allocator)
+    signals := make([]vk.SemaphoreSubmitInfo, len(sema_signals) + has_swapchain_count + 1, context.temp_allocator)
 
-	vk_check(vk.QueueSubmit2(r_ctx.graphics_queue, 1, &submit, current_frame().render_fence))
+    for &wait, i in sema_waits {
+        waits[i] = {
+            sType       = .SEMAPHORE_SUBMIT_INFO,
+            pNext       = nil,
+            semaphore   = vk.Semaphore(wait.sema),
+            stageMask   = {.ALL_COMMANDS},
+            deviceIndex = 0,
+            value       = wait.value,
+        }
+    }
+    
+    for &signal, i in sema_signals {
+        signals[i] = {
+            sType       = .SEMAPHORE_SUBMIT_INFO,
+            pNext       = nil,
+            semaphore   = vk.Semaphore(signal.sema),
+            stageMask   = {.ALL_COMMANDS},
+            deviceIndex = 0,
+            value       = signal.value,
+        }
+    }
 
-	present_info := vk.PresentInfoKHR {
-		sType              = .PRESENT_INFO_KHR,
-		pSwapchains        = &r_ctx.swapchain.swapchain,
-		swapchainCount     = 1,
-		pWaitSemaphores    = &current_frame().render_semaphore,
-		waitSemaphoreCount = 1,
-		pImageIndices      = &r_ctx.swapchain.swapchain_image_index,
+    if swapchain != nil {
+        // wait for swapchain to acquire
+        wait_info := vk.SemaphoreSubmitInfo {
+            sType       = .SEMAPHORE_SUBMIT_INFO,
+            pNext       = nil,
+            semaphore   = swapchain.acquire_semaphores[swapchain.frame_index],
+            stageMask   = {.COLOR_ATTACHMENT_OUTPUT},
+            deviceIndex = 0,
+            value       = 1,
+        }
+
+        // signal present when we have an image acquired
+        signal_info := vk.SemaphoreSubmitInfo {
+            sType       = .SEMAPHORE_SUBMIT_INFO,
+            pNext       = nil,
+            semaphore   = swapchain.present_semaphores[swapchain.frame_index],
+            stageMask   = {.ALL_GRAPHICS},
+            deviceIndex = 0,
+            value       = 1,
+        }
+
+        waits[len(waits) - 1] = wait_info
+        signals[len(signals) - 2] = signal_info
+    }
+
+    // signal when the cmd buffer is safe to reuse
+    // append to free list with timestamp of the last value
+    {
+        queue.last_value += 1
+
+        signals[len(signals) - 1] = {
+            sType       = .SEMAPHORE_SUBMIT_INFO,
+            pNext       = nil,
+            semaphore   = vk.Semaphore(queue.semaphore),
+            stageMask   = {.ALL_COMMANDS},
+            deviceIndex = 0,
+            value       = queue.last_value,
+        }
+
+        append(&r_ctx.queues[kind].free_command_buffers, {
+            cmd = cmd,
+            value = queue.last_value,
+        })
+
+        done_semaphore = {
+            queue.semaphore,
+            queue.last_value,
+        }
+    }
+
+	submit_info := vk.SubmitInfo2 {
+		sType                    = .SUBMIT_INFO_2,
+		pNext                    = nil,
+		waitSemaphoreInfoCount   = u32(len(waits)),
+		pWaitSemaphoreInfos      = raw_data(waits),
+		signalSemaphoreInfoCount = u32(len(signals)),
+		pSignalSemaphoreInfos    = raw_data(signals),
+		commandBufferInfoCount   = 1,
+		pCommandBufferInfos      = &vk.CommandBufferSubmitInfo{
+            sType = .COMMAND_BUFFER_SUBMIT_INFO,
+            commandBuffer = cmd,
+        },
 	}
 
-	queue_present_result := vk.QueuePresentKHR(r_ctx.graphics_queue, &present_info)
+	vk_check(vk.QueueSubmit2(r_ctx.queues[kind].queue, 1, &submit_info, {}))
 
-	if queue_present_result == .ERROR_OUT_OF_DATE_KHR || queue_present_result == .SUBOPTIMAL_KHR || r_ctx.swapchain_suboptimal {
-		swapchain_resized = resize_swapchain()
-		r_ctx.swapchain_suboptimal = false
-	} else {
-		// TODO: Do normal assert check, maybe other cases though?
-		vk_check(queue_present_result)
-	}
+    if swapchain != nil {
+        present_info := vk.PresentInfoKHR {
+            sType              = .PRESENT_INFO_KHR,
+            pSwapchains        = &swapchain.swapchain,
+            swapchainCount     = 1,
+            pWaitSemaphores    = &swapchain.present_semaphores[swapchain.frame_index],
+            waitSemaphoreCount = 1,
+            pImageIndices      = &swapchain.swapchain_image_index,
+        }
 
-	r_ctx.frame_number += 1
+        // TODO: handle this.
+        queue_present_result := vk.QueuePresentKHR(r_ctx.queues[kind].queue, &present_info)
+    }
 
 	return
 }
 
 InitConfig :: struct {
-	window:                   glfw.WindowHandle,
-	msaa_samples:             vk.SampleCountFlag,
 	enable_validation_layers: bool,
 	enable_logs:              bool,
 }
@@ -738,26 +578,6 @@ init :: proc(config := InitConfig{}) -> ^Renderer {
 	}
 
 	return r_ctx
-}
-
-choose_swap_present_mode :: proc(available_present_modes: []vk.PresentModeKHR) -> vk.PresentModeKHR {
-	// FIFO is vsync (no tearing) and is guaranteed available by the Vulkan spec.
-	return .FIFO
-}
-
-choose_swap_extent :: proc(window: glfw.WindowHandle, capabilities: ^vk.SurfaceCapabilitiesKHR) -> vk.Extent2D {
-	if (capabilities.currentExtent.width != max(u32)) {
-		return capabilities.currentExtent
-	} else {
-		width, height := glfw.GetFramebufferSize(window)
-
-		actual_extent := vk.Extent2D{u32(width), u32(height)}
-
-		actual_extent.width = clamp(actual_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width)
-		actual_extent.height = clamp(actual_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
-
-		return actual_extent
-	}
 }
 
 supports_required_features :: proc(required: $T, test: T) -> bool {
@@ -807,7 +627,7 @@ supports_required_features :: proc(required: $T, test: T) -> bool {
 	}
 
 	if has_any_flags {
-		log_normal(strings.to_string(builder))
+		log.info(strings.to_string(builder))
 	}
 
 	return supports_all_flags
@@ -817,7 +637,7 @@ is_device_suitable :: proc(device: vk.PhysicalDevice) -> (is_suitable: bool, is_
 	properties: vk.PhysicalDeviceProperties
 	vk.GetPhysicalDeviceProperties(device, &properties)
 
-	log_normal("GPU:", string(properties.deviceName[:]))
+	log.info("GPU:", string(properties.deviceName[:]))
 
 	vk_ray_query_features := vk.PhysicalDeviceRayQueryFeaturesKHR {
 		sType = .PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
@@ -850,7 +670,7 @@ is_device_suitable :: proc(device: vk.PhysicalDevice) -> (is_suitable: bool, is_
 
 	vk.GetPhysicalDeviceFeatures2(device, &features)
 
-	log_normal("Required Features:")
+	log.info("Required Features:")
 	supports_features :=
 		supports_required_features(REQUIRED_FEATURES, features) &&
 		supports_required_features(REQUIRED_VK_11_FEATURES, vk_11_features) &&
@@ -859,22 +679,7 @@ is_device_suitable :: proc(device: vk.PhysicalDevice) -> (is_suitable: bool, is_
 
 	extensions_supported := check_device_extension_support(device)
 
-	// Headless mode
-	if r_ctx.swapchain.swapchain == 0 {
-		return extensions_supported && supports_features, properties.deviceType == .DISCRETE_GPU
-	}
-
-	swapchain_adequate := false
-	if extensions_supported {
-		format_count: u32
-		vk.GetPhysicalDeviceSurfaceFormatsKHR(r_ctx.physical_device, r_ctx.surface, &format_count, nil)
-		present_mode_count: u32
-		vk.GetPhysicalDeviceSurfacePresentModesKHR(r_ctx.physical_device, r_ctx.surface, &present_mode_count, nil)
-
-		swapchain_adequate = format_count > 0 && present_mode_count > 0
-	}
-
-	return swapchain_adequate && extensions_supported && supports_features, properties.deviceType == .DISCRETE_GPU
+	return extensions_supported && supports_features, properties.deviceType == .DISCRETE_GPU
 }
 
 check_device_extension_support :: proc(device: vk.PhysicalDevice) -> bool {
@@ -895,7 +700,7 @@ check_device_extension_support :: proc(device: vk.PhysicalDevice) -> bool {
 		}
 
 		if !found {
-			log_normal("Extension not available:", expected_extension)
+			log.info("Extension not available:", expected_extension)
 		}
 
 		found or_return
@@ -911,15 +716,16 @@ debug_callback :: proc "system" (
 	user_data: rawptr,
 ) -> b32 {
 	context = runtime.default_context()
-	log_normal(callback_data.pMessage)
+    context.logger = r_ctx.debug_logger
+	log.debug(callback_data.pMessage)
 	for i in 0 ..< callback_data.objectCount {
 		name := callback_data.pObjects[i].pObjectName
 
 		if len(name) > 0 {
-			log_normal(" -", callback_data.pObjects[i].pObjectName)
+			log.info(" -", callback_data.pObjects[i].pObjectName)
 		}
 	}
-	log_normal()
+	log.debug()
 
 	return false
 }

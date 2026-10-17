@@ -45,7 +45,7 @@ UIRenderPass :: struct {
 	sampler:         gfx.SamplerId,
 	commands:        [dynamic]UI_Command,
 	num_commands:    int,
-    command_buffers: [gfx.FRAME_OVERLAP]gfx.Slice(UI_Command),
+    command_buffers: [FRAME_OVERLAP]gfx.Slice(UI_Command),
 	font:            Font,
 }
 
@@ -149,11 +149,11 @@ init_ui_rp :: proc() {
 		{"shaders/ui.slang"},
 		"UI_Pipeline",
 		UI_Push,
-		{topology = .Triangle_Strip, front_face = .CLOCKWISE, color_format = gfx.DRAW_FORMAT, blend_mode = .Alpha},
+		{topology = .Triangle_Strip, front_face = .CLOCKWISE, color_format = DRAW_FORMAT, blend_mode = .Alpha},
 	)
 
 	ui_rp.sampler = gfx.create_sampler(.LINEAR, .REPEAT)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, ui_rp.sampler)
+	gfx.defer_destroy(frame_arena(), ui_rp.sampler)
 
 	// TODO: leak. asset system.
 	ui_rp.font = load_font("fonts/msdf/f_nunito_regular_mtsdf.ktx2", "assets/fonts/msdf/f_nunito_regular_mtsdf.json")
@@ -334,7 +334,9 @@ ui_command :: proc(
 	outline_width: f32 = 0,
 	pixel_snap_x: bool = false,
 ) {
-	draw_extent := Vec2(transmute([2]u32)gfx.r_ctx.draw_extent)
+    state := &game.render_state
+
+	draw_extent := Vec2(transmute([2]u32)state.draw_extent)
 
 	scale := draw_extent / UI_REFERENCE_SIZE
 	min_scale := slice.min(scale[:])
@@ -402,7 +404,7 @@ ui_prepare :: proc() {
 	if len(ui_rp.commands) > 0 {
         scratch := &current_frame_game().scratch
 		slice := gfx.write_scratch_slice(scratch, ui_rp.commands[:])
-        ui_rp.command_buffers[gfx.current_frame_index()] = slice
+        ui_rp.command_buffers[current_frame_index()] = slice
 	}
 
 	ui_rp.num_commands = len(ui_rp.commands)
@@ -412,24 +414,24 @@ ui_prepare :: proc() {
 record_ui_pass :: proc(cmd: gfx.CommandBuffer) {
 	ui_rp := &game.render_state.ui_rp
 
-	gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .COLOR_ATTACHMENT_OPTIMAL)
+	gfx.transition_image(cmd, game.render_state.resolve_image, .COLOR_ATTACHMENT_OPTIMAL)
 
 	{
 		gfx.cmd_begin_label(cmd, "UI")
 		gfx.cmd_begin_rendering(
 			cmd,
-			area = gfx.r_ctx.draw_extent,
-			color_attachment = &{view = gfx.r_ctx.resolve_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
+			area = game.render_state.draw_extent,
+			color_attachment = &{view = game.render_state.resolve_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
 		)
 
-		gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
+		gfx.set_viewport_and_scissor(cmd, game.render_state.draw_extent)
 
 		gfx.cmd_bind_pipeline(cmd, ui_rp.pipeline)
 
-		commands := ui_rp.command_buffers[gfx.current_frame_index()]
+		commands := ui_rp.command_buffers[current_frame_index()]
 		gfx.cmd_push_constants(
 			cmd,
-			UI_Push{commands = commands, viewport_size = auto_cast (transmute([2]u32)gfx.r_ctx.draw_extent), sampler = ui_rp.sampler},
+			UI_Push{commands = commands, viewport_size = auto_cast (transmute([2]u32)game.render_state.draw_extent), sampler = ui_rp.sampler},
 		)
 
 		gfx.cmd_draw(cmd, 4, u32(game.render_state.ui_rp.num_commands))

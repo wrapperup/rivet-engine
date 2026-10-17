@@ -29,6 +29,13 @@ Material_Store :: struct {
 	free_materials:   [dynamic]MaterialId,
 }
 
+init_material_store :: proc() {
+	material_store := &game.render_state.material_store
+
+	material_store.materials_buffer = gfx.create_buffer(GPUMaterial, 20)
+	gfx.defer_destroy(frame_arena(), material_store.materials_buffer)
+}
+
 add_material :: proc(material: GPUMaterial) -> (material_id: MaterialId) {
 	material_store := &game.render_state.material_store
 
@@ -42,7 +49,18 @@ add_material :: proc(material: GPUMaterial) -> (material_id: MaterialId) {
 		append(&material_store.materials_gpu, material)
 	}
 
-	gfx.staging_write_buffer_slice(&material_store.materials_buffer, material_store.materials_gpu[:])
+    staging := gfx.create_buffer(GPUMaterial, 20, .Host_Sequential_Write)
+    defer gfx.destroy_buffer(&staging)
+
+    {
+        cmd := gfx.begin_command_buffer(.Main)
+
+        gfx.write_buffer_slice(&staging, material_store.materials_gpu[:])
+        gfx.cmd_copy_buffer(cmd, staging, material_store.materials_buffer)
+
+        done := gfx.queue_submit(.Main, cmd)
+        gfx.wait_semaphore(done)
+    }
 
 	return material_id
 }

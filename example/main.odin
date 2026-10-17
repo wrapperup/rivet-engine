@@ -32,7 +32,7 @@ main :: proc() {
 	vertices: [3]Vertex = {{{-0.5, -0.5, 0.0}, {1.0, 0.0, 0.0}}, {{-0.5, 0.5, 0.0}, {0.0, 1.0, 0.0}}, {{0.5, 0.5, 0.0}, {0.0, 0.0, 1.0}}}
 	indices: [3]u32 = {0, 1, 2}
 
-	arena := &gfx.r_ctx.global_arena
+	arena := frame_arena()
 
 	vertex_buffer := gfx.create_buffer([3]Vertex, len(vertices), .Storage)
 	gfx.defer_destroy(arena, vertex_buffer)

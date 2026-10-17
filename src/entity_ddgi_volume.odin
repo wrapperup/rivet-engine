@@ -50,7 +50,7 @@ DDGI_Bake_State :: enum {
 
 DDGI_Volume_Resources :: struct {
 	gpu:                 GPUDDGIVolume,
-	config_buffers:      [gfx.FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume), // TODO: separate this.
+	config_buffers:      [FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume), // TODO: separate this.
 	radiance_buffer:     gfx.Buffer(Vec4), // rays_per_probe * num_probes
 	irradiance:          gfx.ImageId,
 	depth:               gfx.ImageId,
@@ -125,7 +125,7 @@ ddgi_volume_resources_init :: proc(
 	gfx.defer_destroy(arena, volume.offset)
 
 	{
-        cmd := gfx.immediate_submit()
+        cmd := gfx.begin_command_buffer(.Main)
 
 		gfx.transition_image(cmd, volume.irradiance, .GENERAL)
 		gfx.transition_image(cmd, volume.depth, .GENERAL)
@@ -149,6 +149,9 @@ ddgi_volume_resources_init :: proc(
 		gfx.cmd_clear_color_image(cmd, volume.irradiance, &zero, {range})
 		gfx.cmd_clear_color_image(cmd, volume.depth, &far, {range})
 		gfx.cmd_clear_color_image(cmd, volume.offset, &offset_init, {range})
+
+        done := gfx.queue_submit(.Main, cmd)
+        gfx.wait_semaphore(done)
 	}
 
 	sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE)

@@ -73,18 +73,18 @@ Depth_State :: struct {
 }
 
 Graphics_Pipeline_Desc :: struct {
-	topology:       Topology,
-	polygon_mode:   vk.PolygonMode,
-	front_face:     vk.FrontFace,
-	cull_mode:      vk.CullModeFlags,
-	depth:          Depth_State,
-	depth_clamp:    bool,
-	blend_mode:     PipelineBlendMode,
-	color_format:   vk.Format,
-	msaa:           bool,
-	depth_only:     bool,
-	vertex_entry:   cstring,
-	fragment_entry: cstring,
+	topology:          Topology,
+	polygon_mode:      vk.PolygonMode,
+	front_face:        vk.FrontFace,
+	cull_mode:         vk.CullModeFlags,
+	depth:             Depth_State,
+	depth_clamp:       bool,
+	blend_mode:        PipelineBlendMode,
+	color_format:      vk.Format,
+	msaa_sample_count: vk.SampleCountFlag,
+	depth_only:        bool,
+	vertex_entry:      cstring,
+	fragment_entry:    cstring,
 }
 
 Compute_Pipeline_Desc :: struct {
@@ -178,7 +178,7 @@ _create_graphics_pipeline :: proc(
 	if desc.depth_clamp {
 		pb_enable_depth_clamp(&pipeline_builder)
 	}
-	pb_set_multisampling(&pipeline_builder, desc.msaa ? msaa_samples() : ._1)
+	pb_set_multisampling(&pipeline_builder, desc.msaa_sample_count)
 
 	switch desc.blend_mode {
 	case .None:

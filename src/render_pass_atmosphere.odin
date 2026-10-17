@@ -89,19 +89,19 @@ init_atmosphere_rp :: proc() {
 	a := &rp.parameters
 
 	rp.transmittance = gfx.create_image(.R16G16B16A16_SFLOAT, {256, 64, 1}, {.SAMPLED, .STORAGE})
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.transmittance)
+	gfx.defer_destroy(frame_arena(), rp.transmittance)
 
 	rp.multiple_scattering = gfx.create_image(.R16G16B16A16_SFLOAT, {32, 32, 1}, {.SAMPLED, .STORAGE})
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.multiple_scattering)
+	gfx.defer_destroy(frame_arena(), rp.multiple_scattering)
 
 	rp.sky_view = gfx.create_image(.R16G16B16A16_SFLOAT, {192, 108, 1}, {.SAMPLED, .STORAGE, .TRANSFER_SRC})
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.sky_view)
+	gfx.defer_destroy(frame_arena(), rp.sky_view)
 
 	rp.aerial_scattering = gfx.create_image(.R16G16B16A16_SFLOAT, {32, 32, 32}, {.SAMPLED, .STORAGE}, image_type = .D3)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.aerial_scattering)
+	gfx.defer_destroy(frame_arena(), rp.aerial_scattering)
 
 	rp.aerial_transmittance = gfx.create_image(.R16G16B16A16_SFLOAT, {32, 32, 32}, {.SAMPLED, .STORAGE}, image_type = .D3)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.aerial_transmittance)
+	gfx.defer_destroy(frame_arena(), rp.aerial_transmittance)
 
 	a.transmittance = rp.transmittance
 	a.multiple_scattering = rp.multiple_scattering
@@ -119,7 +119,7 @@ init_atmosphere_rp :: proc() {
 		array_layers = 6,
 		flags = {.CUBE_COMPATIBLE},
 	)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.environment_id)
+	gfx.defer_destroy(frame_arena(), rp.environment_id)
 
 	for &id, mip in rp.environment_mips {
 		view := gfx.create_image_view(
@@ -130,7 +130,7 @@ init_atmosphere_rp :: proc() {
 			mip_levels = 1,
 			array_layers = 6,
 		)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, view)
+		gfx.defer_destroy(frame_arena(), view)
 		id = view
 	}
 
@@ -156,7 +156,7 @@ init_atmosphere_rp :: proc() {
 		{"shaders/atmosphere.slang"},
 		"Atmosphere_Sky",
 		GPUAtmosphereDrawPush,
-		{color_format = gfx.DRAW_FORMAT, msaa = true},
+		{color_format = DRAW_FORMAT, msaa_sample_count = game.render_state.msaa_samples},
 	)
 }
 
@@ -293,10 +293,10 @@ record_atmosphere_background :: proc(cmd: gfx.CommandBuffer) {
 	gfx.cmd_begin_label(cmd, "Atmosphere Geometry")
 	gfx.cmd_begin_rendering(
 		cmd,
-		area = gfx.r_ctx.draw_extent,
-		color_attachment = &{view = gfx.r_ctx.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
+		area = game.render_state.draw_extent,
+		color_attachment = &{view = game.render_state.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
 	)
-	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
+	gfx.set_viewport_and_scissor(cmd, game.render_state.draw_extent)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.atmosphere_rp.draw_pipeline)
 	gfx.cmd_push_constants(cmd, GPUAtmosphereDrawPush{global = current_frame_game().global_buffer.ptr})

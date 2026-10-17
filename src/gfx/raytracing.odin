@@ -100,6 +100,7 @@ _build_accel :: proc(
 // One BLAS per mesh, built once at upload. Self-submitting: immediate_submit
 // blocks on a fence, so the scratch is safe to free as soon as it returns.
 build_blas :: proc(
+    cmd: CommandBuffer,
 	vertex_addr: vk.DeviceAddress,
 	vertex_count: u32,
 	vertex_stride: vk.DeviceSize,
@@ -107,6 +108,7 @@ build_blas :: proc(
 	index_count: u32,
 ) -> (
 	blas: Raytracing_Accel,
+    scratch: Buffer(u8),
 ) {
 	triangles := vk.AccelerationStructureGeometryTrianglesDataKHR {
 		sType = .ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
@@ -124,12 +126,7 @@ build_blas :: proc(
 		flags = {.OPAQUE},
 	}
 
-	scratch: Buffer(u8)
-	{
-        cmd := immediate_submit()
-		blas, scratch = _build_accel(cmd, .BOTTOM_LEVEL, &geo, index_count / 3)
-	}
-	destroy_buffer(&scratch)
+    blas, scratch = _build_accel(cmd, .BOTTOM_LEVEL, &geo, index_count / 3)
 	return
 }
 

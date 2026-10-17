@@ -27,12 +27,14 @@ init_post_process_rp :: proc() {
 }
 
 record_post_process_pass :: proc(cmd: gfx.CommandBuffer) {
-	gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .GENERAL)
+    state := &game.render_state
+
+	gfx.transition_image(cmd, game.render_state.resolve_image, .GENERAL)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.post_process_rp.tonemapper_pipeline)
 	gfx.cmd_push_constants(
 		cmd,
 		GPUPostProcessingPushConstants {
-			resolved_image = gfx.r_ctx.resolve_image,
+			resolved_image = state.resolve_image,
 			tony_mc_mapface = game.render_state.post_process_rp.tony_mc_mapface_id,
 			sampler = game.render_state.temp_resources.default_sampler_id,
 		},
@@ -40,8 +42,8 @@ record_post_process_pass :: proc(cmd: gfx.CommandBuffer) {
 
 	vk.CmdDispatch(
 		cmd,
-		u32(math.ceil(f32(gfx.r_ctx.draw_extent.width) / 16.0)),
-		u32(math.ceil(f32(gfx.r_ctx.draw_extent.height) / 16.0)),
+		u32(math.ceil(f32(state.draw_extent.width) / 16.0)),
+		u32(math.ceil(f32(state.draw_extent.height) / 16.0)),
 		1,
 	)
 }

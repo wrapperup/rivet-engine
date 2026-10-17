@@ -40,7 +40,7 @@ staging_write_mesh_buffers :: proc(buffers: ^GPUMeshBuffers, mesh: Mesh, loc := 
 	gfx.write_buffer_slice(&staging, mesh.indices, vertex_buffer_size)
 
 	{
-        cmd := gfx.immediate_submit()
+        cmd := gfx.begin_command_buffer(.Main)
 
 		vertex_copy := vk.BufferCopy {
 			dstOffset = 0,
@@ -56,6 +56,9 @@ staging_write_mesh_buffers :: proc(buffers: ^GPUMeshBuffers, mesh: Mesh, loc := 
 
 		vk.CmdCopyBuffer(cmd, staging.buffer, buffers.vertex_buffer.buffer, 1, &vertex_copy)
 		vk.CmdCopyBuffer(cmd, staging.buffer, buffers.index_buffer.buffer, 1, &index_copy)
+
+        done := gfx.queue_submit(.Main, cmd)
+        gfx.wait_semaphore(done)
 	}
 
 	gfx.destroy_buffer(&staging)
@@ -595,13 +598,23 @@ upload_mesh_to_gpu :: proc(mesh: Mesh, loc := #caller_location) -> GPUMeshBuffer
 	buffers.index_count = u32(len(mesh.indices))
 
 	// Build the mesh's BLAS once, now that vertices/indices are on the GPU.
-	buffers.blas = gfx.build_blas(
-		buffers.vertex_buffer.ptr.address,
-		buffers.vertex_count,
-		size_of(Vertex),
-		buffers.index_buffer.ptr.address,
-		buffers.index_count,
-	)
+    {
+        cmd := gfx.begin_command_buffer(.Main)
+        scratch: gfx.Buffer(u8)
+        defer gfx.destroy_buffer(&scratch)
+
+        buffers.blas, scratch = gfx.build_blas(
+            cmd,
+            buffers.vertex_buffer.ptr.address,
+            buffers.vertex_count,
+            size_of(Vertex),
+            buffers.index_buffer.ptr.address,
+            buffers.index_count,
+        )
+
+        done := gfx.queue_submit(.Main, cmd)
+        gfx.wait_semaphore(done)
+    }
 
 	return buffers
 }
@@ -773,6 +786,18 @@ staging_write_skel_mesh_buffers :: proc(buffers: ^GPUSkelMeshBuffers, skel_mesh:
 	assert(len(skel_mesh.attrs) > 0)
 	assert(len(skel_mesh.vertices) == len(skel_mesh.attrs))
 
-	staging_write_mesh_buffers(buffers, skel_mesh)
-	gfx.staging_write_buffer_slice(&buffers.skel_vert_attrs_buffer, skel_mesh.attrs)
+    // TODO: this does two submits... oh well.
+    staging_write_mesh_buffers(buffers, skel_mesh)
+
+    staging := gfx.create_buffer(SkeletonVertexAttribute, len(skel_mesh.attrs), .Host_Sequential_Write)
+    gfx.write_buffer_slice(&staging, skel_mesh.attrs)
+
+    {
+        cmd := gfx.begin_command_buffer(.Main)
+
+        gfx.cmd_copy_buffer(cmd, staging, buffers.skel_vert_attrs_buffer)
+
+        done := gfx.queue_submit(.Main, cmd)
+        gfx.wait_semaphore(done)
+    }
 }

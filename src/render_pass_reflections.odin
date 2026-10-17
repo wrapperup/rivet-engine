@@ -51,22 +51,22 @@ init_reflection_probe_rp :: proc() {
 	)
 	for &probes_buffer in game.render_state.reflection_probes_buffers {
 		probes_buffer = gfx.create_buffer(GPUReflectionProbe, MAX_REFLECTION_PROBES, .Host_Sequential_Write)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, probes_buffer)
+		gfx.defer_destroy(frame_arena(), probes_buffer)
 	}
 	game.render_state.reflection_probe_debug_pipeline = add_graphics_shader(
 		{"shaders/reflection_probe_debug.slang"},
 		"Reflection_Probe_Debug",
 		GPUReflectionProbeDebugPush,
 		{
-			depth = {format = gfx.DEPTH_FORMAT, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
-			color_format = gfx.DRAW_FORMAT,
-			msaa = true,
+			depth = {format = DEPTH_FORMAT, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
+			color_format = DRAW_FORMAT,
+			msaa_sample_count = game.render_state.msaa_samples,
 		},
 	)
 }
 
 reflection_probe_prepare :: proc(probes: []ReflectionProbe) {
-	frame_index := gfx.current_frame_index()
+	frame_index := current_frame_index()
 	packed: [MAX_REFLECTION_PROBES]GPUReflectionProbe
 	count: u32
 
@@ -113,18 +113,22 @@ record_reflection_probe_pass :: proc(cmd: gfx.CommandBuffer, probes: []Reflectio
 }
 
 record_reflection_probe_debug_pass :: proc(cmd: gfx.CommandBuffer, probes: []ReflectionProbe) {
-	if .Reflection_Probes not_in editor.settings.vis_flags {
-		return
-	}
+    state := &game.render_state
+
+    when EDITOR {
+        if .Reflection_Probes not_in editor.settings.vis_flags {
+            return
+        }
+    }
 
 	rp := &game.render_state.ddgi_rp
 	gfx.cmd_begin_rendering(
 		cmd,
-		area = gfx.r_ctx.draw_extent,
-		color_attachment = &{view = gfx.r_ctx.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
-		depth_attachment = &{view = gfx.r_ctx.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
+		area = state.draw_extent,
+		color_attachment = &{view = state.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
+		depth_attachment = &{view = state.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
 	)
-	gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
+	gfx.set_viewport_and_scissor(cmd, state.draw_extent)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_probe_debug_pipeline)
 	gfx.cmd_bind_index_buffer(cmd, rp.probe_ibuf.buffer)
 
@@ -133,7 +137,7 @@ record_reflection_probe_debug_pass :: proc(cmd: gfx.CommandBuffer, probes: []Ref
 			cmd,
 			GPUReflectionProbeDebugPush {
 				global = current_frame_game().global_buffer.ptr,
-				probe = probe.configs[gfx.current_frame_index()].ptr,
+				probe = probe.configs[current_frame_index()].ptr,
 				vertex_buffer = rp.probe_vbuf.ptr,
 				center = probe.translation,
 			},

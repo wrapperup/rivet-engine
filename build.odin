@@ -69,13 +69,15 @@ main :: proc() {
 		append(&command, "-o:none")
 		append(&command, "-debug")
 
-		append(&command, "-define:EDITOR=true")
+		append(&command, "-define:EDITOR=false")
+		append(&command, "-define:VALIDATION=true")
 	case .debug_game:
 		output_directory = "build/debug"
 		append(&command, "-o:none")
 		append(&command, "-debug")
 
 		append(&command, "-define:EDITOR=false")
+		append(&command, "-define:VALIDATION=true")
 		append(&command, "-define:REQUIRE_COOKED_ASSETS=true")
 
 	case .release_game:

@@ -83,7 +83,7 @@ main :: proc() {
 
 		game.window = window
 
-		renderer := gfx.init({window = game.window, msaa_samples = ._4, enable_validation_layers = ENABLE_VALIDATION, enable_logs = true})
+		renderer := gfx.init({enable_validation_layers = ENABLE_VALIDATION, enable_logs = true})
 		if renderer == nil {
 			log.error("Graphics could not be initialized.")
 			return
@@ -177,7 +177,7 @@ main :: proc() {
 
 			// TODO: asset system.
 			game.ball_mesh, _ = load_gpu_mesh_from_file("assets/meshes/static/demo_ball.glb", context.temp_allocator)
-			defer_destroy_gpu_mesh(&gfx.r_ctx.global_arena, game.ball_mesh)
+			defer_destroy_gpu_mesh(frame_arena(), game.ball_mesh)
 
 			for i in 0 ..< 256 {
 				new_entity(
@@ -251,11 +251,13 @@ main :: proc() {
 
 			glfw.PollEvents()
 
-			if glfw.GetWindowAttrib(game.window, glfw.ICONIFIED) == 0 {
-				im_glfw.NewFrame()
-				im_gfx.gfx_imgui_new_frame()
-				im.NewFrame()
-			}
+            when EDITOR {
+                if glfw.GetWindowAttrib(game.window, glfw.ICONIFIED) == 0 {
+                    im_glfw.NewFrame()
+                    im_gfx.gfx_imgui_new_frame()
+                    im.NewFrame()
+                }
+            }
 
 			simulate_input()
 			if action_just_pressed(.ExitGame) {

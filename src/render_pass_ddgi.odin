@@ -58,7 +58,7 @@ DDGIRenderPass :: struct {
 	relocate_pipeline:     ^gfx.Pipeline,
 	debug_pipeline:        ^gfx.Pipeline,
 	probe_pipeline:        ^gfx.Pipeline,
-	volumes_buffers:       [gfx.FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume),
+	volumes_buffers:       [FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume),
 	debug_volume:          i32,
 	probe_vbuf:            gfx.Buffer(Vertex),
 	probe_ibuf:            gfx.Buffer(u32),
@@ -79,15 +79,15 @@ init_ddgi_rp :: proc() {
 		"DDGI_Debug_Probes",
 		GPUDDGIProbePush,
 		{
-			depth = {format = gfx.DEPTH_FORMAT, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
-			color_format = gfx.DRAW_FORMAT,
-			msaa = true,
+			depth = {format = DEPTH_FORMAT, compare_op = .GREATER_OR_EQUAL, write_enabled = true},
+			color_format = DRAW_FORMAT,
+			msaa_sample_count = game.render_state.msaa_samples,
 		},
 	)
 
 	for &volumes_buffer in ddgi_rp.volumes_buffers {
 		volumes_buffer = gfx.create_buffer(GPUDDGIVolume, MAX_DDGI_VOLUMES, .Host_Sequential_Write)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, volumes_buffer)
+		gfx.defer_destroy(frame_arena(), volumes_buffer)
 	}
 	ddgi_init_debug_sphere()
 }
@@ -126,16 +126,30 @@ ddgi_init_debug_sphere :: proc() {
 
 	rp.probe_vbuf = gfx.create_buffer(Vertex, len(verts))
 	rp.probe_ibuf = gfx.create_buffer(u32, len(indices))
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.probe_vbuf)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, rp.probe_ibuf)
-	gfx.staging_write_buffer_slice(&rp.probe_vbuf, verts)
-	gfx.staging_write_buffer_slice(&rp.probe_ibuf, indices)
 	rp.probe_index_count = u32(len(indices))
+
+	staging_vbuf := gfx.create_buffer(Vertex, len(verts), .Host_Sequential_Write)
+	staging_ibuf := gfx.create_buffer(u32, len(indices), .Host_Sequential_Write)
+    defer gfx.destroy_buffer(&staging_vbuf)
+    defer gfx.destroy_buffer(&staging_ibuf)
+
+	gfx.write_buffer_slice(&staging_vbuf, verts)
+	gfx.write_buffer_slice(&staging_ibuf, indices)
+
+    {
+        cmd := gfx.begin_command_buffer(.Main)
+
+        gfx.cmd_copy_buffer(cmd, staging_vbuf, rp.probe_vbuf)
+        gfx.cmd_copy_buffer(cmd, staging_ibuf, rp.probe_ibuf)
+
+        done := gfx.queue_submit(.Main, cmd)
+        gfx.wait_semaphore(done)
+    }
 }
 
 ddgi_prepare :: proc(volumes: []DDGIVolume, advance_frame: bool) {
 	rp := &game.render_state.ddgi_rp
-	frame_index := gfx.current_frame_index()
+	frame_index := current_frame_index()
 	packed: [MAX_DDGI_VOLUMES]GPUDDGIVolume
 	count: u32
 
@@ -163,7 +177,7 @@ ddgi_prepare :: proc(volumes: []DDGIVolume, advance_frame: bool) {
 }
 
 ddgi_current_config :: proc(volume: ^DDGI_Volume_Resources) -> ^gfx.Buffer(GPUDDGIVolume) {
-	return &volume.config_buffers[gfx.current_frame_index()]
+	return &volume.config_buffers[current_frame_index()]
 }
 
 record_ddgi_pass :: proc(cmd: gfx.CommandBuffer, volumes: []DDGIVolume) {
@@ -180,6 +194,8 @@ record_ddgi_pass :: proc(cmd: gfx.CommandBuffer, volumes: []DDGIVolume) {
 
 record_ddgi_debug_probes_pass :: proc(cmd: gfx.CommandBuffer, volumes: []DDGIVolume) {
 	when EDITOR {
+        state := &game.render_state
+
 		if .Irradiance_Probes not_in editor.settings.vis_flags {
 			return
 		}
@@ -188,11 +204,11 @@ record_ddgi_debug_probes_pass :: proc(cmd: gfx.CommandBuffer, volumes: []DDGIVol
 			rp := &game.render_state.ddgi_rp
 			gfx.cmd_begin_rendering(
 				cmd,
-				area = gfx.r_ctx.draw_extent,
-				color_attachment = &{view = gfx.r_ctx.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
-				depth_attachment = &{view = gfx.r_ctx.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
+				area = state.draw_extent,
+				color_attachment = &{view = state.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
+				depth_attachment = &{view = state.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
 			)
-			gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
+			gfx.set_viewport_and_scissor(cmd, state.draw_extent)
 			gfx.cmd_bind_pipeline(cmd, rp.probe_pipeline)
 			gfx.cmd_bind_index_buffer(cmd, rp.probe_ibuf.buffer)
 			gfx.cmd_push_constants(

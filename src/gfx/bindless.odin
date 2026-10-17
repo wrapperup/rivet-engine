@@ -37,7 +37,7 @@ init_bindless_descriptors :: proc() {
 		{.UPDATE_AFTER_BIND_POOL},
 		{.VERTEX, .FRAGMENT, .COMPUTE},
 	)
-	defer_destroy(&r_ctx.global_arena, bindless_system.descriptor_layout)
+	// defer_destroy(&r_ctx.global_arena, bindless_system.descriptor_layout)
 
 	bindless_system.pool = create_pool(
 		1,

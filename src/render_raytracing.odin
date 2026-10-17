@@ -12,7 +12,7 @@ RaytracingResources :: struct {
 init_raytracing :: proc() {
 	for &frame in game.render_state.frame_data {
 		frame.rt.instances_buffer = gfx.create_buffer(vk.AccelerationStructureInstanceKHR, MAX_RENDER_INSTANCES, .Host_Sequential_Write)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.rt.instances_buffer)
+		gfx.defer_destroy(frame_arena(), frame.rt.instances_buffer)
 	}
 }
 
@@ -36,14 +36,14 @@ prepare_raytracing :: proc(rt: ^RaytracingResources, instances: []RenderInstance
 }
 
 record_raytracing :: proc(cmd: gfx.CommandBuffer, rt: ^RaytracingResources) {
-	gfx.defer_destroy_accel(&gfx.current_frame().arena, rt.tlas)
+	gfx.defer_destroy_accel(frame_arena(), rt.tlas)
 	rt.tlas = {}
 
 	if rt.instance_count == 0 do return
 
 	scratch: gfx.Buffer(u8)
 	rt.tlas, scratch = gfx.build_tlas(cmd, rt.instances_buffer, rt.instance_count)
-	gfx.defer_destroy(&gfx.current_frame().arena, scratch)
+	gfx.defer_destroy(frame_arena(), scratch)
 
 	gfx.buffer_barrier(cmd, rt.tlas.buffer, src_access = .AccelerationStructureBuildWrite, dst_access = .AccelerationStructureRead)
 }

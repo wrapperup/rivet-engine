@@ -185,50 +185,6 @@ write_buffer_slice :: proc(buffer: ^Buffer($Z), in_data: []$T, offset: vk.Device
 	mem.copy(data[offset:], raw_data(in_data), size)
 }
 
-// Uploads the data via a staging buffer. This is useful if your buffer is GPU only.
-staging_write_buffer :: proc(buffer: ^Buffer($Z), in_data: ^$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
-	size := size_of(T)
-	assert(buffer.info.size >= vk.DeviceSize(u64(size) + u64(offset)), "The size of the data and offset is larger than the buffer", loc)
-
-	staging := create_buffer(u8, vk.DeviceSize(size_of(T)), .Host_Sequential_Write)
-	write_buffer(&staging, in_data)
-
-	if cmd, ok := immediate_submit(); ok {
-		region := vk.BufferCopy {
-			dstOffset = offset,
-			srcOffset = 0,
-			size      = vk.DeviceSize(size),
-		}
-
-		vk.CmdCopyBuffer(cmd, staging.buffer, buffer.buffer, 1, &region)
-	}
-
-	destroy_buffer(&staging)
-}
-
-// Uploads the data via a staging buffer. This is useful if your buffer is GPU only.
-staging_write_buffer_slice :: proc(buffer: ^Buffer($Z), in_data: []$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
-	size := size_of(T) * len(in_data)
-	assert(buffer.info.size >= vk.DeviceSize(u64(size) + u64(offset)), "The size of the slice and offset is larger than the buffer", loc)
-
-	staging := create_buffer(u8, size, .Host_Sequential_Write)
-	write_buffer_slice(&staging, in_data)
-
-	{
-		cmd := immediate_submit()
-
-		region := vk.BufferCopy {
-			dstOffset = offset,
-			srcOffset = 0,
-			size      = vk.DeviceSize(size),
-		}
-
-		vk.CmdCopyBuffer(cmd, staging.buffer, buffer.buffer, 1, &region)
-	}
-
-	destroy_buffer(&staging)
-}
-
 @(private)
 buffer_access_masks :: proc(access: BufferAccess) -> (vk.PipelineStageFlags2, vk.AccessFlags2) {
 	switch access {

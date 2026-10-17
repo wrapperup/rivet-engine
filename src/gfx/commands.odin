@@ -150,3 +150,27 @@ cmd_resolve_image :: proc(cmd: CommandBuffer, src_image_id: ImageId, dst_image_i
 		raw_data(resolves),
 	)
 }
+
+cmd_copy_buffer :: proc(cmd: CommandBuffer, src_buffer: Buffer($T), dst_buffer: Buffer($U), length := 0, offset := 0) {
+    length := length
+
+    if length == 0 {
+        length = int(src_buffer.count)
+    }
+
+    size := size_of(T) * length
+
+    region := vk.BufferCopy {
+        dstOffset = vk.DeviceSize(offset),
+        srcOffset = 0,
+        size      = vk.DeviceSize(size),
+    }
+
+	vk.CmdCopyBuffer(
+		cmd,
+		src_buffer.buffer,
+		dst_buffer.buffer,
+        1,
+        &region,
+	)
+}

@@ -32,7 +32,7 @@ ReflectionProbe :: struct {
 	cube_image_id:        gfx.ImageId,
 	cube_mip_storage_ids: [MAX_REFLECTION_MIPS]gfx.ImageId,
 	gpu_sampler_id:       gfx.SamplerId,
-	configs:              [gfx.FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
+	configs:              [FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
 	captured:             bool,
 	wants_recapture:      bool,
 	gpu_arena:            gfx.ResourceArena,
@@ -62,7 +62,7 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe) {
     gfx.defer_destroy(&probe.gpu_arena, probe.cube_image_id)
 
 	{
-        cmd := gfx.immediate_submit()
+        cmd := gfx.begin_command_buffer(.Main)
 
 		gfx.transition_image(cmd, probe.cube_image_id, .GENERAL)
 
@@ -76,6 +76,9 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe) {
 		}
 		// TODO: gfx command
 		vk.CmdClearColorImage(cmd, gfx.image_meta(probe.cube_image_id).image, .GENERAL, &black, 1, &range)
+
+        done := gfx.queue_submit(.Main, cmd)
+        gfx.wait_semaphore(done)
 	}
 
 	for mip in u32(0) ..< probe.mip_count {
@@ -127,5 +130,5 @@ reflection_probe_to_gpu :: proc(probe: ^ReflectionProbe) -> GPUReflectionProbe {
 
 reflection_probe_write_config :: proc(probe: ^ReflectionProbe) {
 	cfg := reflection_probe_to_gpu(probe)
-	gfx.write_buffer(&probe.configs[gfx.current_frame_index()], &cfg)
+	gfx.write_buffer(&probe.configs[current_frame_index()], &cfg)
 }

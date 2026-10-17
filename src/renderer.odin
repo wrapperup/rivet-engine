@@ -1,5 +1,6 @@
 package game
 
+import "vendor:glfw"
 import "core:math/linalg"
 import "core:mem"
 
@@ -10,6 +11,12 @@ import vk "vendor:vulkan"
 
 import "gfx"
 import im_gfx "gfx/imgui_backend"
+
+DRAW_FORMAT :: vk.Format.R32G32B32A32_SFLOAT
+DEPTH_FORMAT :: vk.Format.D32_SFLOAT
+
+// Number of frames to provide in flight.
+FRAME_OVERLAP :: 2
 
 NUM_CASCADES: u32 : 4
 
@@ -41,7 +48,11 @@ GPUGlobalData :: struct #max_field_align(16) {
 }
 
 RenderState :: struct {
-	frame_data:                      [gfx.FRAME_OVERLAP]GameFrameData,
+	frame_data:   [FRAME_OVERLAP]GameFrameData,
+    frame_count:  int,
+    global_arena: gfx.ResourceArena,
+
+    swapchain:   gfx.Swapchain,
 
 	// Bindless textures, etc
 	global_data:                     GPUGlobalData,
@@ -54,6 +65,14 @@ RenderState :: struct {
 		default_sampler_id: gfx.SamplerId,
 		env_sampler_id:     gfx.SamplerId,
 	},
+
+    // Draw resources
+	draw_image:                      gfx.ImageId,
+	resolve_image:                   gfx.ImageId,
+	depth_image:                     gfx.ImageId,
+	draw_extent:                     vk.Extent2D,
+	msaa_samples:                    vk.SampleCountFlag,
+
 	material_store:                  Material_Store,
 	shader_manager:                  ShaderManager,
 	global_session:                  ^sp.IGlobalSession,
@@ -68,7 +87,7 @@ RenderState :: struct {
 	reflection_capture_pipeline:     ^gfx.Pipeline,
 	reflection_prefilter_pipeline:   ^gfx.Pipeline,
 	reflection_probe_debug_pipeline: ^gfx.Pipeline,
-	reflection_probes_buffers:       [gfx.FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
+	reflection_probes_buffers:       [FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
 	atmosphere_rp:                   AtmosphereRenderPass,
 	draw_sky:                        bool,
 	mesh_debug_view:                 GPUGeometryDebugView,
@@ -81,6 +100,8 @@ RenderState :: struct {
 }
 
 GameFrameData :: struct {
+    render_semaphore_pair:   gfx.Semaphore_Pair,
+    arena:                   gfx.ResourceArena,
 	global_buffer:           gfx.Buffer(GPUGlobalData),
 	scratch:                 gfx.Scratch,
 	instances_buffer:        gfx.Buffer(GPURenderInstance),
@@ -91,11 +112,51 @@ GameFrameData :: struct {
 	rt:                      RaytracingResources,
 }
 
+current_frame_index :: proc() -> int {
+    return game.render_state.frame_count % FRAME_OVERLAP
+}
+
 current_frame_game :: proc() -> ^GameFrameData {
-	return &game.render_state.frame_data[gfx.current_frame_index()]
+	return &game.render_state.frame_data[current_frame_index()]
+}
+
+frame_arena :: proc() -> ^gfx.ResourceArena {
+	return &game.render_state.frame_data[current_frame_index()].arena
 }
 
 init_game_renderer :: proc() {
+    state := &game.render_state
+
+    surface: vk.SurfaceKHR
+    gfx.vk_check(glfw.CreateWindowSurface(gfx.r_ctx.instance, game.window, nil, &surface))
+
+    width, height := glfw.GetFramebufferSize(game.window)
+
+    state.swapchain = gfx.create_swapchain(
+        surface,
+        .FIFO,
+        cast([2]int)([2]i32{width, height}),
+        FRAME_OVERLAP,
+    )
+
+    extent := state.swapchain.swapchain_extent
+
+    draw_image_extent := vk.Extent3D{extent.width, extent.height, 1}
+	draw_image_usages := vk.ImageUsageFlags{.TRANSFER_SRC, .TRANSFER_DST, .STORAGE, .COLOR_ATTACHMENT}
+
+	state.draw_image = gfx.create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = state.msaa_samples)
+	gfx.defer_destroy(&state.global_arena, state.draw_image)
+
+	// Used for MSAA resolution
+	state.resolve_image = gfx.create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = ._1)
+	gfx.defer_destroy(&state.global_arena, state.resolve_image)
+
+	state.depth_image = gfx.create_image(DEPTH_FORMAT, draw_image_extent, {.DEPTH_STENCIL_ATTACHMENT}, msaa_samples = state.msaa_samples)
+	gfx.defer_destroy(&state.global_arena, state.depth_image)
+
+	state.draw_extent.width = draw_image_extent.width
+	state.draw_extent.height = draw_image_extent.height
+
 	init_imgui()
 	init_shadow_maps()
 	init_test_resources()
@@ -105,21 +166,23 @@ init_game_renderer :: proc() {
 }
 
 init_imgui :: proc() {
-	game.render_state.imgui_ctx = im.CreateContext()
-	im.SetCurrentContext(game.render_state.imgui_ctx)
+    when EDITOR {
+        game.render_state.imgui_ctx = im.CreateContext()
+        im.SetCurrentContext(game.render_state.imgui_ctx)
 
-	im_glfw.InitForVulkan(game.window, true)
+        im_glfw.InitForVulkan(game.window, true)
 
-	im_gfx.gfx_imgui_init()
+        im_gfx.gfx_imgui_init()
+    }
 }
 
 init_test_resources :: proc() {
 	// Default Image Sampler
 	default_sampler := gfx.create_sampler(.LINEAR, .REPEAT, max_lod = 10.0, max_anisotropy = gfx.r_ctx.limits.maxSamplerAnisotropy)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, default_sampler)
+	gfx.defer_destroy(frame_arena(), default_sampler)
 
 	env_sampler := gfx.create_sampler(.LINEAR, .CLAMP_TO_EDGE, max_lod = 8.0)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, env_sampler)
+	gfx.defer_destroy(frame_arena(), env_sampler)
 
 	{
 		rs := &game.render_state
@@ -133,13 +196,6 @@ init_test_resources :: proc() {
 		tr.default_sampler_id = default_sampler
 		tr.env_sampler_id = env_sampler
 	}
-}
-
-init_material_store :: proc() {
-	material_store := &game.render_state.material_store
-
-	material_store.materials_buffer = gfx.create_buffer(GPUMaterial, 20)
-	gfx.defer_destroy(&gfx.r_ctx.global_arena, material_store.materials_buffer)
 }
 
 init_render_passes :: proc() {
@@ -160,13 +216,13 @@ init_render_passes :: proc() {
 init_shared_buffers :: proc() {
 	for &frame in game.render_state.frame_data {
 		frame.instances_buffer = gfx.create_buffer(GPURenderInstance, MAX_RENDER_INSTANCES, .Host_Sequential_Write)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.instances_buffer)
+		gfx.defer_destroy(frame_arena(), frame.instances_buffer)
 
 		frame.scratch = gfx.create_scratch(32 * mem.Megabyte, "Frame Scratch Buffer")
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.scratch)
+		gfx.defer_destroy(frame_arena(), frame.scratch)
 
 		frame.global_buffer = gfx.create_buffer(GPUGlobalData, 1, .Host_Sequential_Write)
-		gfx.defer_destroy(&gfx.r_ctx.global_arena, frame.global_buffer)
+		gfx.defer_destroy(frame_arena(), frame.global_buffer)
 	}
 
 	environment := &game.render_state.global_data.environment
@@ -180,7 +236,11 @@ init_shared_buffers :: proc() {
 }
 
 draw :: proc() {
+    state := &game.render_state
+
 	scope_stat_time(.Render)
+
+    gfx.wait_semaphore(current_frame_game().render_semaphore_pair)
 
 	// TEMP: test draw command
 	for &ball in get_entities(Ball) {
@@ -212,12 +272,8 @@ draw :: proc() {
 
 	gfx.reset_scratch(&frame.scratch)
 
-	// Wait for this frame slot before writing any of its CPU-visible buffers.
-	cmd, frame_ready, swapchain_resized := gfx.begin_command_buffer()
-	if !frame_ready {
-		clear_frame_submission_data()
-		return
-	}
+    gfx.swapchain_acquire(&state.swapchain)
+	cmd := gfx.begin_command_buffer(.Main)
 
 	// CPU preparation and uploads happen before command recording.
 	atmosphere_prepare()
@@ -240,16 +296,18 @@ draw :: proc() {
 	record_reflection_probe_debug_pass(cmd, probes)
 
 	// Finalize ImGui draw data for this frame; gfx_imgui_render consumes it below.
-	im.Render()
+    when EDITOR {
+        im.Render()
+    }
 
 	// kinda HACK: use draw image for resolved image when msaa is disabled.
 	// TODO: this means you can't enable/disable MSAA at runtime until this hack is fixed.
-	if gfx.msaa_enabled() {
+	if state.msaa_samples > ._1 {
 		// resolve MSAA
-		gfx.transition_image(cmd, gfx.r_ctx.draw_image, .TRANSFER_SRC_OPTIMAL)
-		gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .TRANSFER_DST_OPTIMAL)
+		gfx.transition_image(cmd, state.draw_image, .TRANSFER_SRC_OPTIMAL)
+		gfx.transition_image(cmd, state.resolve_image, .TRANSFER_DST_OPTIMAL)
 
-		ex := gfx.r_ctx.draw_extent
+		ex := state.draw_extent
 
 		resolve_region := vk.ImageResolve {
 			srcSubresource = {mipLevel = 0, aspectMask = {.COLOR}, baseArrayLayer = 0, layerCount = 1},
@@ -259,44 +317,48 @@ draw :: proc() {
 			extent = {ex.width, ex.height, 1},
 		}
 
-		gfx.cmd_resolve_image(cmd, gfx.r_ctx.draw_image, gfx.r_ctx.resolve_image, {resolve_region})
+		gfx.cmd_resolve_image(cmd, state.draw_image, state.resolve_image, {resolve_region})
 	} else {
 		// HACK: here's that hack i mentioned. TODO: this needs to be fixed in the api.
-		gfx.r_ctx.resolve_image = gfx.r_ctx.draw_image
+		state.resolve_image = state.draw_image
 	}
 
 	final_image: gfx.ImageId
 	switch game.view_state {
 	case .SceneDepth:
-		gfx.transition_image(cmd, gfx.r_ctx.depth_image, .TRANSFER_SRC_OPTIMAL)
-		final_image = gfx.r_ctx.depth_image
+		gfx.transition_image(cmd, state.depth_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = state.depth_image
 	case .ShadowDepth:
 		gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .TRANSFER_SRC_OPTIMAL)
 		final_image = game.render_state.shadow_rp.shadow_depth_image
 	case .Raytracing:
 		record_debug_rt_pass(cmd)
-		gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
-		final_image = gfx.r_ctx.resolve_image
+		gfx.transition_image(cmd, state.resolve_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = state.resolve_image
 	case .SceneColor:
 		record_post_process_pass(cmd)
 		record_ui_pass(cmd)
 
 		// Prepare swapchain image
-		gfx.transition_image(cmd, gfx.r_ctx.resolve_image, .TRANSFER_SRC_OPTIMAL)
-		final_image = gfx.r_ctx.resolve_image
+		gfx.transition_image(cmd, game.render_state.resolve_image, .TRANSFER_SRC_OPTIMAL)
+		final_image = game.render_state.resolve_image
 	}
 
-	gfx.copy_image_to_swapchain(cmd, final_image, gfx.r_ctx.draw_extent)
+	gfx.copy_image_to_swapchain(cmd, final_image, state.draw_extent, &state.swapchain)
 
-	sc := &gfx.r_ctx.swapchain
+	sc := &state.swapchain
 	sc_image := sc.swapchain_images[sc.swapchain_image_index]
 
-	gfx.transition_image(cmd, sc_image, .COLOR_ATTACHMENT_OPTIMAL)
-	im_gfx.gfx_imgui_render(cmd, sc_image, sc.swapchain_extent)
+    when EDITOR {
+        gfx.transition_image(cmd, sc_image, .COLOR_ATTACHMENT_OPTIMAL)
+        im_gfx.gfx_imgui_render(cmd, sc_image, sc.swapchain_extent)
+    }
 
 	gfx.transition_image(cmd, sc_image, .TRANSFER_DST_OPTIMAL)
 
-	swapchain_resized = gfx.submit(cmd)
+	current_frame_game().render_semaphore_pair = gfx.queue_submit(.Main, cmd, swapchain = &state.swapchain)
+
+    game.render_state.frame_count += 1
 
 	clear_frame_submission_data()
 }
@@ -341,7 +403,7 @@ draw_skeletal_mesh :: proc(
 		RenderInstance {
 			data = {
 				model_to_world = linalg.matrix4_from_trs_f32(translation, rotation, scale),
-				vertex_buffer = instance.preskinned_vertex_buffers[gfx.current_frame_index()].ptr,
+				vertex_buffer = instance.preskinned_vertex_buffers[current_frame_index()].ptr,
 				index_buffer = instance.skel.buffers.index_buffer.ptr,
 				material_index = material,
 			},
@@ -386,15 +448,18 @@ renderer_shutdown :: proc() {
 	// Wait for the GPU to finish before tearing down resources still in use (e.g. the
 	// imgui buffers referenced by the last in-flight command buffer).
 	gfx.vk_check(vk.DeviceWaitIdle(gfx.r_ctx.device))
-	im_gfx.gfx_imgui_destroy()
-	im_glfw.Shutdown()
-	im.DestroyContext(game.render_state.imgui_ctx)
-	game.render_state.imgui_ctx = nil
+
+    when EDITOR {
+        im_gfx.gfx_imgui_destroy()
+        im_glfw.Shutdown()
+        im.DestroyContext(game.render_state.imgui_ctx)
+        game.render_state.imgui_ctx = nil
+    }
 
 	for &frame in game.render_state.frame_data {
 		delete(frame.instances)
 		// Replaced TLASes are retired per frame; the last one still needs retiring on shutdown.
-		gfx.defer_destroy_accel(&gfx.r_ctx.global_arena, frame.rt.tlas)
+		gfx.defer_destroy_accel(frame_arena(), frame.rt.tlas)
 		delete(frame.skel_instances)
 	}
 }

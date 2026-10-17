@@ -75,6 +75,3 @@ DEVICE_EXTENSIONS := []cstring {
 VALIDATION_LAYERS := []cstring{"VK_LAYER_KHRONOS_validation"}
 
 VALIDATION_FEATURES := []vk.ValidationFeatureEnableEXT{}
-
-// Number of frames to provide in flight.
-FRAME_OVERLAP :: 2
