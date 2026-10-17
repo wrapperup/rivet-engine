@@ -18,9 +18,9 @@ GPUMaterial_Flags :: bit_set[GPUMaterial_Flag;u32]
 GPUMaterial :: struct #max_field_align(16) {
 	flags:                    GPUMaterial_Flags,
 	world_space_uv_scale:     f32,
-	base_color_id:            gfx.ImageId `Image2D`,
-	normal_map_id:            gfx.ImageId `Image2D`,
-	ao_roughness_metallic_id: gfx.ImageId `Image2D`,
+	base_color_id:            gfx.Image_Id `Image2D`,
+	normal_map_id:            gfx.Image_Id `Image2D`,
+	ao_roughness_metallic_id: gfx.Image_Id `Image2D`,
 }
 
 Material_Store :: struct {

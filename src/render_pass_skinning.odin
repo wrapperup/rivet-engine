@@ -42,7 +42,7 @@ skinning_prepare :: proc(instances: []^SkeletalMeshInstance) {
 	}
 }
 
-record_skinning_pass :: proc(cmd: gfx.CommandBuffer, instances: []^SkeletalMeshInstance) {
+record_skinning_pass :: proc(cmd: gfx.Command_Buffer, instances: []^SkeletalMeshInstance) {
 	if len(instances) == 0 do return
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.skinning_rp.skinning_pipeline)
@@ -50,7 +50,7 @@ record_skinning_pass :: proc(cmd: gfx.CommandBuffer, instances: []^SkeletalMeshI
 
 	for instance in instances {
 		output := instance.preskinned_vertex_buffers[frame_index]
-		gfx.buffer_barrier(cmd, output, src_access = .VertexShaderRead, dst_access = .ComputeShaderWrite)
+		gfx.buffer_barrier(cmd, output, src_access = .Vertex_Shader_Read, dst_access = .Compute_Shader_Write)
 
 		gfx.cmd_push_constants(
 			cmd,
@@ -64,6 +64,6 @@ record_skinning_pass :: proc(cmd: gfx.CommandBuffer, instances: []^SkeletalMeshI
 
 		gfx.cmd_dispatch(cmd, u32(math.ceil(f32(instance.skel.buffers.vertex_count) / 64.0)))
 
-		gfx.buffer_barrier(cmd, output, src_access = .ComputeShaderWrite, dst_access = .VertexShaderRead)
+		gfx.buffer_barrier(cmd, output, src_access = .Compute_Shader_Write, dst_access = .Vertex_Shader_Read)
 	}
 }

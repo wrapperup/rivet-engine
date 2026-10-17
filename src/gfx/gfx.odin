@@ -25,14 +25,14 @@ DEFAULT_VERTEX_ENTRY: cstring : "vertex_main"
 DEFAULT_FRAGMENT_ENTRY: cstring : "fragment_main"
 DEFAULT_COMPUTE_ENTRY: cstring : "compute_main"
 
-ImageId :: distinct u32
-SamplerId :: distinct u32
+Image_Id :: distinct u32
+Sampler_Id :: distinct u32
 
-CommandBuffer :: vk.CommandBuffer
-ClearValue :: vk.ClearValue
-ShaderModule :: vk.ShaderModule
+Command_Buffer :: vk.CommandBuffer
+Clear_Value :: vk.ClearValue
+Shader_Module :: vk.ShaderModule
 
-GfxContext :: struct {
+Gfx_Context :: struct {
 	debug_messenger: vk.DebugUtilsMessengerEXT,
 	enable_logs:     bool,
     debug_logger:    log.Logger,
@@ -44,7 +44,7 @@ GfxContext :: struct {
 
     queues:          [Queue_Kind]Queue,
 
-	bindless_system:  BindlessSystem,
+	bindless_system:  Bindless_System,
 	current_pipeline: Pipeline,
 
 	limits:       vk.PhysicalDeviceLimits, // TODO: Too big?
@@ -62,20 +62,21 @@ Queue_Kind :: enum {
 }
 
 Queue :: struct {
-    queue:                vk.Queue,
-    family_index:         u32,
-    vk_index:             u32,
+    queue:        vk.Queue,
+    family_index: u32,
+    vk_index:     u32,
 
-    semaphore:            Semaphore,
 	command_pool:         vk.CommandPool,
 	free_command_buffers: [dynamic]struct {
         cmd: vk.CommandBuffer,
         value: u64,
     },
+
+    semaphore:            Semaphore,
     last_value:           u64,
 }
 
-InitConfig :: struct {
+Init_Config :: struct {
 	enable_validation_layers: bool,
 	enable_logs:              bool,
 }
@@ -94,37 +95,37 @@ Image :: struct {
 	owns_image:     bool,
 }
 
-ImageAccess :: enum {
+Image_Access :: enum {
 	None,
-	AllWrites,
-	AllReadsWrites,
-	ComputeShaderRead,
-	ComputeShaderWrite,
-	ComputeShaderReadWrite,
-	AllShaderRead,
-	ComputeFragmentShaderRead,
-	FragmentShaderRead,
-	ColorAttachmentReadWrite,
-	DepthAttachmentReadWrite,
-	TransferRead,
-	TransferWrite,
+	All_Writes,
+	All_Reads_Writes,
+	Compute_Shader_Read,
+	Compute_Shader_Write,
+	Compute_Shader_Read_Write,
+	All_Shader_Read,
+	Compute_Fragment_Shader_Read,
+	Fragment_Shader_Read,
+	Color_Attachment_Read_Write,
+	Depth_Attachment_Read_Write,
+	Transfer_Read,
+	Transfer_Write,
 }
 
 // A count of zero covers all remaining mip levels or array layers.
-ImageSubresourceRange :: struct {
+Image_Subresource_Range :: struct {
 	base_mip_level:   u32,
 	mip_count:        u32,
 	base_array_layer: u32,
 	layer_count:      u32,
 }
 
-DescriptorBinding :: struct {
+Descriptor_Binding :: struct {
 	binding: u32,
 	type:    vk.DescriptorType,
 	count:   u32,
 }
 
-DescriptorWrite :: struct {
+Descriptor_Write :: struct {
 	binding:      u32,
 	type:         vk.DescriptorType,
 	image_view:   vk.ImageView,
@@ -134,35 +135,35 @@ DescriptorWrite :: struct {
 	array_index:  u32,
 }
 
-ResourceArena :: struct {
-	resource_arena: [dynamic]ResourceHandle,
+Deletion_Queue :: struct {
+	queue: [dynamic]Resource_Handle,
 }
 
-ResourceHandle :: struct {
-	ty:              ResourceType,
+Resource_Handle :: struct {
+	ty:              Resource_Type,
 	handle:          u64,
 	allocation:      vma.Allocation,
 	debug_info:      string,
 	caller_location: runtime.Source_Code_Location,
 }
 
-ResourceType :: enum {
-	BindlessImage,
-	BindlessSampler,
-	VmaBuffer,
-	CommandPool,
-	DescriptorPool,
-	DescriptorSetLayout,
+Resource_Type :: enum {
+	Bindless_Image,
+	Bindless_Sampler,
+	Vma_Buffer,
+	Command_Pool,
+	Descriptor_Pool,
+	Descriptor_Set_Layout,
 	Fence,
-	ImageView,
+	Image_View,
 	Pipeline,
-	PipelineLayout,
-	AccelerationStructure,
+	Pipeline_Layout,
+	Acceleration_Structure,
 	Swapchain,
 }
 
-RenderingAttachmentInfo :: struct {
-	view:        ImageId,
+Rendering_Attachment_Info :: struct {
+	view:        Image_Id,
 	clear_value: ^vk.ClearValue,
 	layout:      vk.ImageLayout,
 }
@@ -175,31 +176,31 @@ Buffer :: struct($T: typeid) {
 	count:      u64,
 }
 
-BufferAccess :: enum {
+Buffer_Access :: enum {
 	None,
-	AllReads,
-	AllWrites,
-	AllReadsWrites,
-	ComputeShaderRead,
-	ComputeShaderWrite,
-	VertexShaderRead,
-	FragmentShaderRead,
-	TransferRead,
-	TransferWrite,
-	AccelerationStructureBuildRead,
-	AccelerationStructureBuildWrite,
-	AccelerationStructureRead,
+	All_Reads,
+	All_Writes,
+	All_Reads_Writes,
+	Compute_Shader_Read,
+	Compute_Shader_Write,
+	Vertex_Shader_Read,
+	Fragment_Shader_Read,
+	Transfer_Read,
+	Transfer_Write,
+	Acceleration_Structure_Build_Read,
+	Acceleration_Structure_Build_Write,
+	Acceleration_Structure_Read,
 }
 
 // This is hopefully very common kinds of buffers
 // you may typically want to create. Uniform and Storage
 // buffers will always create a valid Ptr(T).
-BufferMemoryFlag :: enum {
+Buffer_Memory_Flag :: enum {
 	nil,
 	Host_Sequential_Write,
 	Host_Random,
 }
-BufferMemoryFlags :: bit_set[BufferMemoryFlag]
+Buffer_Memory_Flags :: bit_set[Buffer_Memory_Flag]
 
 // Only purpose of this is to be captured during bindgen.
 Ptr :: struct($T: typeid) {
@@ -224,7 +225,7 @@ Scratch :: struct {
 //	using _: Buffer,
 //}
 
-BindlessSystem :: struct {
+Bindless_System :: struct {
 	descriptor_layout: vk.DescriptorSetLayout,
 	pool:              vk.DescriptorPool,
 	descriptor_set:    vk.DescriptorSet,
@@ -232,8 +233,8 @@ BindlessSystem :: struct {
 	// Storage
 	images:            [dynamic]Image,
 	samplers:          [dynamic]vk.Sampler,
-	free_images:       [dynamic]ImageId,
-	free_samplers:     [dynamic]SamplerId,
+	free_images:       [dynamic]Image_Id,
+	free_samplers:     [dynamic]Sampler_Id,
 }
 
 Pipeline :: struct {
@@ -243,7 +244,7 @@ Pipeline :: struct {
 	bind_point:  vk.PipelineBindPoint,
 }
 
-PipelineBlendMode :: enum {
+Pipeline_Blend_Mode :: enum {
 	None,
 	Additive,
 	Alpha,
@@ -268,7 +269,7 @@ Graphics_Pipeline_Desc :: struct {
 	cull_mode:         vk.CullModeFlags,
 	depth:             Depth_State,
 	depth_clamp:       bool,
-	blend_mode:        PipelineBlendMode,
+	blend_mode:        Pipeline_Blend_Mode,
 	color_format:      vk.Format,
 	msaa_sample_count: vk.SampleCountFlag,
 	depth_only:        bool,
@@ -288,7 +289,7 @@ Pipeline_Desc :: union {
 Swapchain :: struct {
 	swapchain:              vk.SwapchainKHR,
     surface:                vk.SurfaceKHR,
-	swapchain_images:       []ImageId,
+	swapchain_images:       []Image_Id,
 	swapchain_image_index:  u32,
 	swapchain_image_format: vk.Format,
 	swapchain_extent:       vk.Extent2D,
@@ -297,7 +298,7 @@ Swapchain :: struct {
     present_mode:           vk.PresentModeKHR,
     max_frames_in_flight:   int,
     frame_index:            int,
-	arena:                  ResourceArena,
+	arena:                  Deletion_Queue,
 }
 
 
@@ -383,7 +384,7 @@ DEVICE_EXTENSIONS := []cstring {
 VALIDATION_LAYERS := []cstring{"VK_LAYER_KHRONOS_validation"}
 VALIDATION_FEATURES := []vk.ValidationFeatureEnableEXT{}
 
-r_ctx: ^GfxContext
+r_ctx: ^Gfx_Context
 
 
 /////////////////////////////////////////////////////////////////////
@@ -401,7 +402,7 @@ vk_check :: proc(result: vk.Result, loc := #caller_location) {
 	}
 }
 
-init_vulkan :: proc(config: InitConfig) -> bool {
+init_vulkan :: proc(config: Init_Config) -> bool {
 	r_ctx.enable_logs = config.enable_logs
     r_ctx.debug_logger = context.logger
 
@@ -679,11 +680,11 @@ cleanup_vulkan :: proc() {
 	vk.DestroyInstance(r_ctx.instance, nil)
 }
 
-set_viewport_and_scissor_2d :: proc(cmd: CommandBuffer, extent: vk.Extent2D) {
+set_viewport_and_scissor_2d :: proc(cmd: Command_Buffer, extent: vk.Extent2D) {
 	set_viewport_and_scissor_3d(cmd, {extent.width, extent.height, 1})
 }
 
-set_viewport_and_scissor_3d :: proc(cmd: CommandBuffer, extent: vk.Extent3D) {
+set_viewport_and_scissor_3d :: proc(cmd: Command_Buffer, extent: vk.Extent3D) {
 	//set dynamic viewport and scissor
 	viewport := vk.Viewport {
 		x        = 0,
@@ -709,7 +710,7 @@ set_viewport_and_scissor :: proc {
 	set_viewport_and_scissor_2d,
 }
 
-_get_command_buffer :: proc(kind: Queue_Kind) -> CommandBuffer {
+_get_command_buffer :: proc(kind: Queue_Kind) -> Command_Buffer {
     queue := &r_ctx.queues[kind]
 
     if len(queue.free_command_buffers) > 0 {
@@ -731,7 +732,7 @@ _get_command_buffer :: proc(kind: Queue_Kind) -> CommandBuffer {
         level = .PRIMARY,
     }
 
-    cmd: CommandBuffer
+    cmd: Command_Buffer
     vk_check(vk.AllocateCommandBuffers(r_ctx.device, &alloc_info, &cmd))
     return cmd
 }
@@ -739,7 +740,7 @@ _get_command_buffer :: proc(kind: Queue_Kind) -> CommandBuffer {
 // Called by the user before they start drawing to the screen.
 // This command can fail if the window changes size, if `ok` returns false, then don't
 // draw anything to the screen. Wait for the window to finish polling.
-begin_command_buffer :: proc(kind: Queue_Kind) -> (cmd: CommandBuffer) {
+begin_command_buffer :: proc(kind: Queue_Kind) -> (cmd: Command_Buffer) {
     cmd = _get_command_buffer(kind)
 
 	vk_check(vk.ResetCommandBuffer(cmd, {.RELEASE_RESOURCES}))
@@ -759,7 +760,7 @@ begin_command_buffer :: proc(kind: Queue_Kind) -> (cmd: CommandBuffer) {
 // Called by the user when they end drawing to the screen.
 queue_submit :: proc(
     kind: Queue_Kind,
-    cmd: CommandBuffer,
+    cmd: Command_Buffer,
     sema_waits: []Semaphore_Pair = {},
     sema_signals: []Semaphore_Pair = {},
     swapchain: ^Swapchain = nil
@@ -874,8 +875,8 @@ queue_submit :: proc(
 	return
 }
 
-init :: proc(config := InitConfig{}) -> ^GfxContext {
-	r_ctx = new(GfxContext)
+init :: proc(config := Init_Config{}) -> ^Gfx_Context {
+	r_ctx = new(Gfx_Context)
 
 	if !init_vulkan(config) {
 		assert(false)
@@ -1117,7 +1118,7 @@ create_image :: proc(
 	usage: vma.MemoryUsage = .GPU_ONLY,
 	debug_name: cstring = nil,
 	loc := #caller_location,
-) -> ImageId {
+) -> Image_Id {
 	img_alloc_info := vma.AllocationCreateInfo {
 		usage         = usage,
 		requiredFlags = {.DEVICE_LOCAL},
@@ -1198,7 +1199,7 @@ wrap_image :: proc(
 	usage: vma.MemoryUsage = .GPU_ONLY,
 	debug_name: cstring = nil,
 	loc := #caller_location,
-) -> ImageId {
+) -> Image_Id {
 	view_type: vk.ImageViewType = .D1
 	if .CUBE_COMPATIBLE in flags {
 		view_type = .CUBE
@@ -1244,14 +1245,14 @@ wrap_image :: proc(
 }
 
 create_image_view :: proc(
-	id: ImageId,
+	id: Image_Id,
 	format: vk.Format,
 	view_type: vk.ImageViewType = .D2,
 	#any_int base_mip_level: u32 = 0,
 	#any_int mip_levels: u32 = 1,
 	#any_int base_array_layer: u32 = 0,
 	#any_int array_layers: u32 = 1,
-) -> ImageId {
+) -> Image_Id {
 	image := image_meta(id)
 
 	info := vk.ImageViewCreateInfo {
@@ -1361,7 +1362,7 @@ create_sampler :: proc(
 	max_anisotropy: f32 = 1.0,
     debug_name: cstring = nil,
     loc := #caller_location
-) -> SamplerId {
+) -> Sampler_Id {
 	sampler_create_info := vk.SamplerCreateInfo {
 		sType            = .SAMPLER_CREATE_INFO,
 		magFilter        = filter,
@@ -1394,39 +1395,39 @@ create_sampler :: proc(
 	return add_sampler(sampler)
 }
 
-destroy_sampler :: proc(id: SamplerId) {
+destroy_sampler :: proc(id: Sampler_Id) {
 	sampler := sampler_meta(id)
 	vk.DestroySampler(r_ctx.device, sampler, nil)
 	_remove_sampler(id)
 }
 
-image_access_masks :: proc(access: ImageAccess) -> (vk.PipelineStageFlags2, vk.AccessFlags2) {
+image_access_masks :: proc(access: Image_Access) -> (vk.PipelineStageFlags2, vk.AccessFlags2) {
 	switch access {
 	case .None:
 		return {}, {}
-	case .AllWrites:
+	case .All_Writes:
 		return {.ALL_COMMANDS}, {.MEMORY_WRITE}
-	case .AllReadsWrites:
+	case .All_Reads_Writes:
 		return {.ALL_COMMANDS}, {.MEMORY_READ, .MEMORY_WRITE}
-	case .ComputeShaderRead:
+	case .Compute_Shader_Read:
 		return {.COMPUTE_SHADER}, {.SHADER_READ}
-	case .ComputeShaderWrite:
+	case .Compute_Shader_Write:
 		return {.COMPUTE_SHADER}, {.SHADER_WRITE}
-	case .ComputeShaderReadWrite:
+	case .Compute_Shader_Read_Write:
 		return {.COMPUTE_SHADER}, {.SHADER_READ, .SHADER_WRITE}
-	case .AllShaderRead:
+	case .All_Shader_Read:
 		return {.ALL_COMMANDS}, {.SHADER_READ}
-	case .ComputeFragmentShaderRead:
+	case .Compute_Fragment_Shader_Read:
 		return {.COMPUTE_SHADER, .FRAGMENT_SHADER}, {.SHADER_READ}
-	case .FragmentShaderRead:
+	case .Fragment_Shader_Read:
 		return {.FRAGMENT_SHADER}, {.SHADER_READ}
-	case .ColorAttachmentReadWrite:
+	case .Color_Attachment_Read_Write:
 		return {.COLOR_ATTACHMENT_OUTPUT}, {.COLOR_ATTACHMENT_READ, .COLOR_ATTACHMENT_WRITE}
-	case .DepthAttachmentReadWrite:
+	case .Depth_Attachment_Read_Write:
 		return {.EARLY_FRAGMENT_TESTS, .LATE_FRAGMENT_TESTS}, {.DEPTH_STENCIL_ATTACHMENT_READ, .DEPTH_STENCIL_ATTACHMENT_WRITE}
-	case .TransferRead:
+	case .Transfer_Read:
 		return {.ALL_TRANSFER}, {.TRANSFER_READ}
-	case .TransferWrite:
+	case .Transfer_Write:
 		return {.ALL_TRANSFER}, {.TRANSFER_WRITE}
 	}
 
@@ -1434,12 +1435,12 @@ image_access_masks :: proc(access: ImageAccess) -> (vk.PipelineStageFlags2, vk.A
 }
 
 image_barrier :: proc(
-	cmd: CommandBuffer,
-	image_id: ImageId,
-	src_access: ImageAccess,
-	dst_access: ImageAccess,
+	cmd: Command_Buffer,
+	image_id: Image_Id,
+	src_access: Image_Access,
+	dst_access: Image_Access,
 	new_layout: vk.ImageLayout = .UNDEFINED,
-	range: ImageSubresourceRange = {},
+	range: Image_Subresource_Range = {},
 ) -> bool {
 	src_stage_mask, src_access_mask := image_access_masks(src_access)
 	dst_stage_mask, dst_access_mask := image_access_masks(dst_access)
@@ -1508,11 +1509,11 @@ image_barrier :: proc(
 	return true
 }
 
-transition_image :: proc(cmd: CommandBuffer, image: ImageId, new_layout: vk.ImageLayout) -> bool {
-	return image_barrier(cmd, image, src_access = .AllWrites, dst_access = .AllReadsWrites, new_layout = new_layout)
+transition_image :: proc(cmd: Command_Buffer, image: Image_Id, new_layout: vk.ImageLayout) -> bool {
+	return image_barrier(cmd, image, src_access = .All_Writes, dst_access = .All_Reads_Writes, new_layout = new_layout)
 }
 
-copy_image_to_image :: proc(cmd: CommandBuffer, src_id: ImageId, dst_id: ImageId, src_size: vk.Extent2D, dst_size: vk.Extent2D) {
+copy_image_to_image :: proc(cmd: Command_Buffer, src_id: Image_Id, dst_id: Image_Id, src_size: vk.Extent2D, dst_size: vk.Extent2D) {
 	source := image_meta(src_id)
 	destination := image_meta(dst_id)
 
@@ -1554,7 +1555,7 @@ copy_image_to_image :: proc(cmd: CommandBuffer, src_id: ImageId, dst_id: ImageId
 	vk.CmdBlitImage2(cmd, &blit_info)
 }
 
-destroy_image :: proc(id: ImageId) {
+destroy_image :: proc(id: Image_Id) {
 	image := image_meta(id)
 
 	vk.DestroyImageView(r_ctx.device, image.image_view, nil)
@@ -1627,7 +1628,7 @@ staging_write_image_slice :: proc(gpu_image: ^Image, in_data: []$T, offset: vk.D
 }
 
 create_descriptor_set_layout :: proc(
-	bindings: []DescriptorBinding,
+	bindings: []Descriptor_Binding,
 	descriptor_set_layout_flags: vk.DescriptorSetLayoutCreateFlags = {},
 	stage_flags: vk.ShaderStageFlags = {.VERTEX, .FRAGMENT},
 	debug_name: cstring = nil,
@@ -1737,7 +1738,7 @@ is_sampler_descriptor_type :: proc(ty: vk.DescriptorType) -> bool {
 }
 
 // TODO: This should not allocate.
-write_descriptor_set :: proc(descriptor_set: vk.DescriptorSet, writes: []DescriptorWrite, loc := #caller_location) {
+write_descriptor_set :: proc(descriptor_set: vk.DescriptorSet, writes: []Descriptor_Write, loc := #caller_location) {
 	// Collect writes in the convenient format into vk's.
 	descriptor_writes: [dynamic]vk.WriteDescriptorSet
 	image_infos: [dynamic]vk.DescriptorImageInfo
@@ -1819,7 +1820,7 @@ write_descriptor_set :: proc(descriptor_set: vk.DescriptorSet, writes: []Descrip
 //
 // The deletion arena is now basically a (crappy) state machine.
 
-vk_destroy_resource_by_handle :: proc(resource: ResourceHandle) {
+vk_destroy_resource_by_handle :: proc(resource: Resource_Handle) {
 	when false {
 		log_normal("DEBUG: Destroy", resource.ty, "@", resource.caller_location, "-", resource.debug_info)
 	}
@@ -1829,47 +1830,47 @@ vk_destroy_resource_by_handle :: proc(resource: ResourceHandle) {
 	}
 
 	switch resource.ty {
-	case .BindlessImage:
-		destroy_image(ImageId(resource.handle))
-	case .BindlessSampler:
-		destroy_sampler(SamplerId(resource.handle))
-	case .VmaBuffer:
+	case .Bindless_Image:
+		destroy_image(Image_Id(resource.handle))
+	case .Bindless_Sampler:
+		destroy_sampler(Sampler_Id(resource.handle))
+	case .Vma_Buffer:
 		vma.DestroyBuffer(r_ctx.allocator, cast(vk.Buffer)resource.handle, resource.allocation)
-	case .CommandPool:
+	case .Command_Pool:
 		vk.DestroyCommandPool(r_ctx.device, cast(vk.CommandPool)resource.handle, nil)
-	case .DescriptorPool:
+	case .Descriptor_Pool:
 		vk.DestroyDescriptorPool(r_ctx.device, cast(vk.DescriptorPool)resource.handle, nil)
-	case .DescriptorSetLayout:
+	case .Descriptor_Set_Layout:
 		vk.DestroyDescriptorSetLayout(r_ctx.device, cast(vk.DescriptorSetLayout)resource.handle, nil)
 	case .Fence:
 		vk.DestroyFence(r_ctx.device, cast(vk.Fence)resource.handle, nil)
-	case .ImageView:
+	case .Image_View:
 		vk.DestroyImageView(r_ctx.device, cast(vk.ImageView)resource.handle, nil)
 	case .Pipeline:
 		vk.DestroyPipeline(r_ctx.device, cast(vk.Pipeline)resource.handle, nil)
-	case .PipelineLayout:
+	case .Pipeline_Layout:
 		vk.DestroyPipelineLayout(r_ctx.device, cast(vk.PipelineLayout)resource.handle, nil)
-	case .AccelerationStructure:
+	case .Acceleration_Structure:
 		vk.DestroyAccelerationStructureKHR(r_ctx.device, cast(vk.AccelerationStructureKHR)resource.handle, nil)
 	case .Swapchain:
 		vk.DestroySwapchainKHR(r_ctx.device, cast(vk.SwapchainKHR)resource.handle, nil)
 	}
 }
 
-resource_type_of_handle :: proc($T: typeid) -> ResourceType {
+resource_type_of_handle :: proc($T: typeid) -> Resource_Type {
 	//odinfmt: disable
 	return \
-		.VmaBuffer when T == vk.Buffer else
-		.BindlessImage when T == ImageId else
-		.BindlessSampler when T == SamplerId else
-		.ImageView when T == vk.ImageView else
-		.CommandPool when T == vk.CommandPool else
-		.DescriptorPool when T == vk.DescriptorPool else
-		.DescriptorSetLayout when T == vk.DescriptorSetLayout else
+		.Vma_Buffer when T == vk.Buffer else
+		.Bindless_Image when T == Image_Id else
+		.Bindless_Sampler when T == Sampler_Id else
+		.Image_View when T == vk.ImageView else
+		.Command_Pool when T == vk.CommandPool else
+		.Descriptor_Pool when T == vk.DescriptorPool else
+		.Descriptor_Set_Layout when T == vk.DescriptorSetLayout else
 		.Fence when T == vk.Fence else
 		.Pipeline when T == vk.Pipeline else
-		.PipelineLayout when T == vk.PipelineLayout else
-		.AccelerationStructure when T == vk.AccelerationStructureKHR else
+		.Pipeline_Layout when T == vk.PipelineLayout else
+		.Acceleration_Structure when T == vk.AccelerationStructureKHR else
 		.Swapchain when T == vk.SwapchainKHR else
 		#panic("Handle type is not a valid resource")
 	//odinfmt: enable
@@ -1880,9 +1881,9 @@ type_requires_allocation :: proc($T: typeid) -> bool {
 	//odinfmt: enable
 }
 
-resource_requires_allocation :: proc(type: ResourceType) -> bool {
+resource_requires_allocation :: proc(type: Resource_Type) -> bool {
 	#partial switch type {
-	case .VmaBuffer:
+	case .Vma_Buffer:
 		return true
 	case:
 		return false
@@ -1890,9 +1891,9 @@ resource_requires_allocation :: proc(type: ResourceType) -> bool {
 }
 
 defer_destroy_resource :: proc(
-	arena: ^ResourceArena,
+	arena: ^Deletion_Queue,
 	handle: u64,
-	resource_type: ResourceType,
+	resource_type: Resource_Type,
 	allocation: vma.Allocation = nil,
 	debug: string = "UNKNOWN",
 	loc := #caller_location,
@@ -1901,7 +1902,7 @@ defer_destroy_resource :: proc(
 		assert(allocation != nil, "Resource of this type requires an allocation to be passed in.", loc)
 	}
 
-	resource_handle := ResourceHandle {
+	resource_handle := Resource_Handle {
 		handle          = handle,
 		ty              = resource_type,
 		allocation      = allocation,
@@ -1909,72 +1910,72 @@ defer_destroy_resource :: proc(
 		caller_location = loc,
 	}
 
-	append(&arena.resource_arena, resource_handle)
+	append(&arena.queue, resource_handle)
 }
 
-defer_destroy_buffer :: proc(arena: ^ResourceArena, buffer: Buffer($T), debug: string = "UNKNOWN", loc := #caller_location) {
-	defer_destroy_resource(arena, transmute(u64)buffer.buffer, .VmaBuffer, buffer.allocation)
+defer_destroy_buffer :: proc(arena: ^Deletion_Queue, buffer: Buffer($T), debug: string = "UNKNOWN", loc := #caller_location) {
+	defer_destroy_resource(arena, transmute(u64)buffer.buffer, .Vma_Buffer, buffer.allocation)
 }
 
-defer_destroy_scratch :: proc(arena: ^ResourceArena, scratch: Scratch, debug: string = "UNKNOWN", loc := #caller_location) {
-	defer_destroy_resource(arena, transmute(u64)scratch.buffer.buffer, .VmaBuffer, scratch.buffer.allocation)
+defer_destroy_scratch :: proc(arena: ^Deletion_Queue, scratch: Scratch, debug: string = "UNKNOWN", loc := #caller_location) {
+	defer_destroy_resource(arena, transmute(u64)scratch.buffer.buffer, .Vma_Buffer, scratch.buffer.allocation)
 }
 
-defer_destroy_image :: proc(arena: ^ResourceArena, id: ImageId, debug: string = "UNKNOWN", loc := #caller_location) {
+defer_destroy_image :: proc(arena: ^Deletion_Queue, id: Image_Id, debug: string = "UNKNOWN", loc := #caller_location) {
 	// Keep the slot alive until the owning arena is safe to flush. destroy_image
 	// handles view-only IDs and releases the slot after destroying the resource.
-	defer_destroy_resource(arena, u64(id), .BindlessImage, nil, debug, loc)
+	defer_destroy_resource(arena, u64(id), .Bindless_Image, nil, debug, loc)
 }
 
-defer_destroy_sampler :: proc(arena: ^ResourceArena, id: SamplerId, debug: string = "UNKNOWN", loc := #caller_location) {
-	defer_destroy_resource(arena, u64(id), .BindlessSampler, nil, debug, loc)
+defer_destroy_sampler :: proc(arena: ^Deletion_Queue, id: Sampler_Id, debug: string = "UNKNOWN", loc := #caller_location) {
+	defer_destroy_resource(arena, u64(id), .Bindless_Sampler, nil, debug, loc)
 }
 
-defer_destroy_pipeline :: proc(arena: ^ResourceArena, pipeline: Pipeline, debug: string = "UNKNOWN", loc := #caller_location) {
+defer_destroy_pipeline :: proc(arena: ^Deletion_Queue, pipeline: Pipeline, debug: string = "UNKNOWN", loc := #caller_location) {
 	defer_destroy_resource(arena, transmute(u64)pipeline.pipeline, .Pipeline, nil, debug, loc)
-	defer_destroy_resource(arena, transmute(u64)pipeline.layout, .PipelineLayout, nil, debug, loc)
+	defer_destroy_resource(arena, transmute(u64)pipeline.layout, .Pipeline_Layout, nil, debug, loc)
 }
 
-defer_destroy_vk_command_pool :: proc(arena: ^ResourceArena, handle: vk.CommandPool, debug: string = "UNKNOWN", loc := #caller_location) {
-	defer_destroy_resource(arena, transmute(u64)handle, .CommandPool, nil, debug, loc)
+defer_destroy_vk_command_pool :: proc(arena: ^Deletion_Queue, handle: vk.CommandPool, debug: string = "UNKNOWN", loc := #caller_location) {
+	defer_destroy_resource(arena, transmute(u64)handle, .Command_Pool, nil, debug, loc)
 }
 
 defer_destroy_vk_descriptor_pool :: proc(
-	arena: ^ResourceArena,
+	arena: ^Deletion_Queue,
 	handle: vk.DescriptorPool,
 	debug: string = "UNKNOWN",
 	loc := #caller_location,
 ) {
-	defer_destroy_resource(arena, transmute(u64)handle, .DescriptorPool, nil, debug, loc)
+	defer_destroy_resource(arena, transmute(u64)handle, .Descriptor_Pool, nil, debug, loc)
 }
 
 defer_destroy_vk_descriptor_set_layout :: proc(
-	arena: ^ResourceArena,
+	arena: ^Deletion_Queue,
 	handle: vk.DescriptorSetLayout,
 	debug: string = "UNKNOWN",
 	loc := #caller_location,
 ) {
-	defer_destroy_resource(arena, transmute(u64)handle, .DescriptorSetLayout, nil, debug, loc)
+	defer_destroy_resource(arena, transmute(u64)handle, .Descriptor_Set_Layout, nil, debug, loc)
 }
 
-defer_destroy_vk_fence :: proc(arena: ^ResourceArena, handle: vk.Fence, debug: string = "UNKNOWN", loc := #caller_location) {
+defer_destroy_vk_fence :: proc(arena: ^Deletion_Queue, handle: vk.Fence, debug: string = "UNKNOWN", loc := #caller_location) {
 	defer_destroy_resource(arena, transmute(u64)handle, .Fence, nil, debug, loc)
 }
 
-defer_destroy_vk_pipeline :: proc(arena: ^ResourceArena, handle: vk.Pipeline, debug: string = "UNKNOWN", loc := #caller_location) {
+defer_destroy_vk_pipeline :: proc(arena: ^Deletion_Queue, handle: vk.Pipeline, debug: string = "UNKNOWN", loc := #caller_location) {
 	defer_destroy_resource(arena, transmute(u64)handle, .Pipeline, nil, debug, loc)
 }
 
 defer_destroy_vk_pipeline_layout :: proc(
-	arena: ^ResourceArena,
+	arena: ^Deletion_Queue,
 	handle: vk.PipelineLayout,
 	debug: string = "UNKNOWN",
 	loc := #caller_location,
 ) {
-	defer_destroy_resource(arena, transmute(u64)handle, .PipelineLayout, nil, debug, loc)
+	defer_destroy_resource(arena, transmute(u64)handle, .Pipeline_Layout, nil, debug, loc)
 }
 
-defer_destroy_vk_swapchain :: proc(arena: ^ResourceArena, handle: vk.SwapchainKHR, debug := "", loc := #caller_location) {
+defer_destroy_vk_swapchain :: proc(arena: ^Deletion_Queue, handle: vk.SwapchainKHR, debug := "", loc := #caller_location) {
 	defer_destroy_resource(arena, transmute(u64)handle, .Swapchain, nil, debug, loc)
 }
 
@@ -1995,16 +1996,16 @@ defer_destroy :: proc {
 	defer_destroy_vk_swapchain,
 }
 
-flush_vk_arena :: proc(arena: ^ResourceArena) {
-	#reverse for &resource in arena.resource_arena {
+flush_vk_arena :: proc(arena: ^Deletion_Queue) {
+	#reverse for &resource in arena.queue {
 		vk_destroy_resource_by_handle(resource)
 	}
 
-	clear(&arena.resource_arena)
+	clear(&arena.queue)
 }
 
-delete_vk_arena :: proc(arena: ResourceArena) {
-	delete(arena.resource_arena)
+delete_vk_arena :: proc(arena: Deletion_Queue) {
+	delete(arena.queue)
 }
 
 object_type_of_handle :: proc($T: typeid) -> vk.ObjectType {
@@ -2040,14 +2041,14 @@ debug_set_object_name :: proc(handle: $T/u64, object_name: cstring) {
 	vk.SetDebugUtilsObjectNameEXT(r_ctx.device, &name_info)
 }
 
-cmd_bind_pipeline_value :: #force_inline proc(cmd: CommandBuffer, pipeline: Pipeline) {
+cmd_bind_pipeline_value :: #force_inline proc(cmd: Command_Buffer, pipeline: Pipeline) {
 	vk.CmdBindDescriptorSets(cmd, pipeline.bind_point, pipeline.layout, 0, 1, &r_ctx.bindless_system.descriptor_set, 0, nil)
 	vk.CmdBindPipeline(cmd, pipeline.bind_point, pipeline.pipeline)
 
 	r_ctx.current_pipeline = pipeline
 }
 
-cmd_bind_pipeline_ptr :: #force_inline proc(cmd: CommandBuffer, pipeline: ^Pipeline) {
+cmd_bind_pipeline_ptr :: #force_inline proc(cmd: Command_Buffer, pipeline: ^Pipeline) {
 	cmd_bind_pipeline_value(cmd, pipeline^)
 }
 
@@ -2057,13 +2058,13 @@ cmd_bind_pipeline :: proc {
 }
 
 
-cmd_push_constants :: #force_inline proc(cmd: CommandBuffer, push_constants: $T, offset: u32 = 0) {
+cmd_push_constants :: #force_inline proc(cmd: Command_Buffer, push_constants: $T, offset: u32 = 0) {
 	push_constants := push_constants
 	vk.CmdPushConstants(cmd, r_ctx.current_pipeline.layout, r_ctx.current_pipeline.stage_flags, 0, size_of(T), &push_constants)
 }
 
 cmd_bind_index_buffer :: #force_inline proc(
-	cmd: CommandBuffer,
+	cmd: Command_Buffer,
 	buffer: vk.Buffer,
 	offset: vk.DeviceSize = 0,
 	index_type: vk.IndexType = .UINT32,
@@ -2072,7 +2073,7 @@ cmd_bind_index_buffer :: #force_inline proc(
 }
 
 cmd_draw :: #force_inline proc(
-	cmd: CommandBuffer,
+	cmd: Command_Buffer,
 	vertex_count: u32,
 	instance_count: u32 = 1,
 	first_vertex: u32 = 0,
@@ -2082,7 +2083,7 @@ cmd_draw :: #force_inline proc(
 }
 
 cmd_draw_indexed :: #force_inline proc(
-	cmd: CommandBuffer,
+	cmd: Command_Buffer,
 	index_count: u32,
 	instance_count: u32 = 1,
 	first_index: u32 = 0,
@@ -2093,10 +2094,10 @@ cmd_draw_indexed :: #force_inline proc(
 }
 
 cmd_begin_rendering :: proc(
-	cmd: CommandBuffer,
+	cmd: Command_Buffer,
 	area: vk.Extent2D,
-	color_attachment: ^RenderingAttachmentInfo = nil,
-	depth_attachment: ^RenderingAttachmentInfo = nil,
+	color_attachment: ^Rendering_Attachment_Info = nil,
+	depth_attachment: ^Rendering_Attachment_Info = nil,
 ) {
 	vk_color_attachment: vk.RenderingAttachmentInfo
 	vk_depth_attachment: vk.RenderingAttachmentInfo
@@ -2137,15 +2138,15 @@ cmd_begin_rendering :: proc(
 	vk.CmdBeginRendering(cmd, &render_info)
 }
 
-cmd_end_rendering :: #force_inline proc(cmd: CommandBuffer) {
+cmd_end_rendering :: #force_inline proc(cmd: Command_Buffer) {
 	vk.CmdEndRendering(cmd)
 }
 
-cmd_dispatch :: #force_inline proc(cmd: CommandBuffer, group_count_x: u32 = 1, group_count_y: u32 = 1, group_count_z: u32 = 1) {
+cmd_dispatch :: #force_inline proc(cmd: Command_Buffer, group_count_x: u32 = 1, group_count_y: u32 = 1, group_count_z: u32 = 1) {
 	vk.CmdDispatch(cmd, group_count_x, group_count_y, group_count_z)
 }
 
-cmd_begin_label :: proc(cmd: CommandBuffer, label: cstring, color: [4]f32 = 1) {
+cmd_begin_label :: proc(cmd: Command_Buffer, label: cstring, color: [4]f32 = 1) {
 	if r_ctx.debug_messenger != 0 {
 		vk_label := vk.DebugUtilsLabelEXT {
 			sType      = .DEBUG_UTILS_LABEL_EXT,
@@ -2157,13 +2158,13 @@ cmd_begin_label :: proc(cmd: CommandBuffer, label: cstring, color: [4]f32 = 1) {
 	}
 }
 
-cmd_end_label :: #force_inline proc(cmd: CommandBuffer) {
+cmd_end_label :: #force_inline proc(cmd: Command_Buffer) {
 	if r_ctx.debug_messenger != 0 {
 		vk.CmdEndDebugUtilsLabelEXT(cmd)
 	}
 }
 
-cmd_copy_buffer_to_image :: proc(cmd: CommandBuffer, src_buffer: Buffer($T), dst_image_id: ImageId, buffer_copies: []vk.BufferImageCopy) {
+cmd_copy_buffer_to_image :: proc(cmd: Command_Buffer, src_buffer: Buffer($T), dst_image_id: Image_Id, buffer_copies: []vk.BufferImageCopy) {
 	dst_image := image_meta(dst_image_id)
 	vk.CmdCopyBufferToImage(
 		cmd,
@@ -2176,8 +2177,8 @@ cmd_copy_buffer_to_image :: proc(cmd: CommandBuffer, src_buffer: Buffer($T), dst
 }
 
 cmd_clear_color_image :: proc(
-	cmd: CommandBuffer,
-	image_id: ImageId,
+	cmd: Command_Buffer,
+	image_id: Image_Id,
 	clear_value: ^vk.ClearColorValue,
 	ranges: []vk.ImageSubresourceRange,
 ) {
@@ -2185,7 +2186,7 @@ cmd_clear_color_image :: proc(
 	vk.CmdClearColorImage(cmd, image.image, image.current_layout, clear_value, u32(len(ranges)), raw_data(ranges))
 }
 
-cmd_resolve_image :: proc(cmd: CommandBuffer, src_image_id: ImageId, dst_image_id: ImageId, resolves: []vk.ImageResolve) {
+cmd_resolve_image :: proc(cmd: Command_Buffer, src_image_id: Image_Id, dst_image_id: Image_Id, resolves: []vk.ImageResolve) {
 	src_image := image_meta(src_image_id)
 	dst_image := image_meta(dst_image_id)
 
@@ -2200,7 +2201,7 @@ cmd_resolve_image :: proc(cmd: CommandBuffer, src_image_id: ImageId, dst_image_i
 	)
 }
 
-cmd_copy_buffer :: proc(cmd: CommandBuffer, src_buffer: Buffer($T), dst_buffer: Buffer($U), length := 0, offset := 0) {
+cmd_copy_buffer :: proc(cmd: Command_Buffer, src_buffer: Buffer($T), dst_buffer: Buffer($U), length := 0, offset := 0) {
     length := length
 
     if length == 0 {
@@ -2224,7 +2225,7 @@ cmd_copy_buffer :: proc(cmd: CommandBuffer, src_buffer: Buffer($T), dst_buffer: 
 	)
 }
 
-vk_buffer_flags :: proc(alloc_flags: BufferMemoryFlags) -> (vk.BufferUsageFlags, vma.AllocationCreateFlags) {
+vk_buffer_flags :: proc(alloc_flags: Buffer_Memory_Flags) -> (vk.BufferUsageFlags, vma.AllocationCreateFlags) {
 	usage_flags := vk.BufferUsageFlags {
 		.INDEX_BUFFER,
 		.TRANSFER_SRC,
@@ -2254,7 +2255,7 @@ vk_buffer_flags :: proc(alloc_flags: BufferMemoryFlags) -> (vk.BufferUsageFlags,
 create_buffer :: proc(
 	$T: typeid,
 	#any_int size: vk.DeviceSize = 1,
-	alloc_flags: BufferMemoryFlag = {},
+	alloc_flags: Buffer_Memory_Flag = {},
 	name: cstring = nil,
 	loc := #caller_location,
 ) -> Buffer(T) {
@@ -2354,33 +2355,33 @@ write_buffer_slice :: proc(buffer: ^Buffer($Z), in_data: []$T, offset: vk.Device
 	mem.copy(data[offset:], raw_data(in_data), size)
 }
 
-_buffer_access_masks :: proc(access: BufferAccess) -> (vk.PipelineStageFlags2, vk.AccessFlags2) {
+_buffer_access_masks :: proc(access: Buffer_Access) -> (vk.PipelineStageFlags2, vk.AccessFlags2) {
 	switch access {
 	case .None:
 		return {}, {}
-	case .AllReads:
+	case .All_Reads:
 		return {.ALL_COMMANDS}, {.MEMORY_READ}
-	case .AllWrites:
+	case .All_Writes:
 		return {.ALL_COMMANDS}, {.MEMORY_WRITE}
-	case .AllReadsWrites:
+	case .All_Reads_Writes:
 		return {.ALL_COMMANDS}, {.MEMORY_READ, .MEMORY_WRITE}
-	case .ComputeShaderRead:
+	case .Compute_Shader_Read:
 		return {.COMPUTE_SHADER}, {.SHADER_READ}
-	case .ComputeShaderWrite:
+	case .Compute_Shader_Write:
 		return {.COMPUTE_SHADER}, {.SHADER_WRITE}
-	case .VertexShaderRead:
+	case .Vertex_Shader_Read:
 		return {.VERTEX_SHADER}, {.SHADER_READ}
-	case .FragmentShaderRead:
+	case .Fragment_Shader_Read:
 		return {.FRAGMENT_SHADER}, {.SHADER_READ}
-	case .TransferRead:
+	case .Transfer_Read:
 		return {.ALL_TRANSFER}, {.TRANSFER_READ}
-	case .TransferWrite:
+	case .Transfer_Write:
 		return {.ALL_TRANSFER}, {.TRANSFER_WRITE}
-	case .AccelerationStructureBuildRead:
+	case .Acceleration_Structure_Build_Read:
 		return {.ACCELERATION_STRUCTURE_BUILD_KHR}, {.ACCELERATION_STRUCTURE_READ_KHR}
-	case .AccelerationStructureBuildWrite:
+	case .Acceleration_Structure_Build_Write:
 		return {.ACCELERATION_STRUCTURE_BUILD_KHR}, {.ACCELERATION_STRUCTURE_WRITE_KHR}
-	case .AccelerationStructureRead:
+	case .Acceleration_Structure_Read:
 		return {.ALL_COMMANDS}, {.ACCELERATION_STRUCTURE_READ_KHR}
 	}
 
@@ -2388,10 +2389,10 @@ _buffer_access_masks :: proc(access: BufferAccess) -> (vk.PipelineStageFlags2, v
 }
 
 buffer_barrier :: proc(
-	cmd: CommandBuffer,
+	cmd: Command_Buffer,
 	buffer: Buffer($T),
-	src_access: BufferAccess,
-	dst_access: BufferAccess,
+	src_access: Buffer_Access,
+	dst_access: Buffer_Access,
 	offset: u64 = 0,
 	size: u64 = 0,
 ) {
@@ -2494,27 +2495,27 @@ shutdown_bindless_descriptors :: proc() {
 	r_ctx.bindless_system = {}
 }
 
-image_meta :: proc(id: ImageId) -> ^Image {
+image_meta :: proc(id: Image_Id) -> ^Image {
 	bindless_system := &r_ctx.bindless_system
 	return &bindless_system.images[id]
 }
 
-sampler_meta :: proc(id: SamplerId) -> vk.Sampler {
+sampler_meta :: proc(id: Sampler_Id) -> vk.Sampler {
 	bindless_system := &r_ctx.bindless_system
 	return bindless_system.samplers[id]
 }
 
-add_image_impl :: proc(image: Image) -> ImageId {
+add_image_impl :: proc(image: Image) -> Image_Id {
 	bindless_system := &r_ctx.bindless_system
 
 	// assert(.STORAGE in image.usage || .SAMPLED in image.usage)
 
-	image_id: ImageId
+	image_id: Image_Id
 	if len(bindless_system.free_images) > 0 {
 		image_id = pop(&bindless_system.free_images) // recycle a freed slot
 		bindless_system.images[image_id] = image
 	} else {
-		image_id = ImageId(u32(len(bindless_system.images)))
+		image_id = Image_Id(u32(len(bindless_system.images)))
 		append(&bindless_system.images, image)
 	}
 	assert(u32(image_id) < MAX_BINDLESS_IMAGES, "bindless image slots exhausted")
@@ -2552,22 +2553,22 @@ add_image_impl :: proc(image: Image) -> ImageId {
 	return image_id
 }
 
-add_image_with_view_impl :: proc(image: Image, view: vk.ImageView) -> ImageId {
+add_image_with_view_impl :: proc(image: Image, view: vk.ImageView) -> Image_Id {
 	image := image
 	image.image_view = view
 	image.owns_image = false
 	return add_image_impl(image)
 }
 
-add_sampler :: proc(sampler: vk.Sampler) -> SamplerId {
+add_sampler :: proc(sampler: vk.Sampler) -> Sampler_Id {
 	bindless_system := &r_ctx.bindless_system
 
-	sampler_id: SamplerId
+	sampler_id: Sampler_Id
 	if len(bindless_system.free_samplers) > 0 {
 		sampler_id = pop(&bindless_system.free_samplers) // recycle a freed slot
 		bindless_system.samplers[sampler_id] = sampler
 	} else {
-		sampler_id = SamplerId(u32(len(bindless_system.samplers)))
+		sampler_id = Sampler_Id(u32(len(bindless_system.samplers)))
 		append(&bindless_system.samplers, sampler)
 	}
 	assert(u32(sampler_id) < MAX_BINDLESS_SAMPLERS, "bindless sampler slots exhausted")
@@ -2580,12 +2581,12 @@ add_sampler :: proc(sampler: vk.Sampler) -> SamplerId {
 	return sampler_id
 }
 
-_remove_image :: proc(id: ImageId) {
+_remove_image :: proc(id: Image_Id) {
 	r_ctx.bindless_system.images[id] = {}
 	append(&r_ctx.bindless_system.free_images, id)
 }
 
-_remove_sampler :: proc(id: SamplerId) {
+_remove_sampler :: proc(id: Sampler_Id) {
 	r_ctx.bindless_system.samplers[id] = 0
 	append(&r_ctx.bindless_system.free_samplers, id)
 }
@@ -2968,7 +2969,7 @@ _build_accel :: proc(
 // One BLAS per mesh, built once at upload. Self-submitting: immediate_submit
 // blocks on a fence, so the scratch is safe to free as soon as it returns.
 build_blas :: proc(
-    cmd: CommandBuffer,
+    cmd: Command_Buffer,
 	vertex_addr: vk.DeviceAddress,
 	vertex_count: u32,
 	vertex_stride: vk.DeviceSize,
@@ -3024,10 +3025,10 @@ destroy_accel :: proc(accel: ^Raytracing_Accel) {
 
 // Queue the buffer first, then the AS handle: the arena flushes in reverse, so the
 // AS is destroyed before the backing buffer it sits on (required by the spec).
-defer_destroy_accel :: proc(arena: ^ResourceArena, accel: Raytracing_Accel, loc := #caller_location) {
+defer_destroy_accel :: proc(arena: ^Deletion_Queue, accel: Raytracing_Accel, loc := #caller_location) {
 	if accel.accel == 0 do return // never built
 	defer_destroy_buffer(arena, accel.buffer, loc = loc)
-	defer_destroy_resource(arena, transmute(u64)accel.accel, .AccelerationStructure, loc = loc)
+	defer_destroy_resource(arena, transmute(u64)accel.accel, .Acceleration_Structure, loc = loc)
 }
 
 _create_scratch_buffer :: proc(size: vk.DeviceSize, loc := #caller_location) -> Buffer(u8) {
@@ -3138,7 +3139,7 @@ create_swapchain :: proc(
 	vk_swapchain_images := make([]vk.Image, image_count)
 	vk.GetSwapchainImagesKHR(r_ctx.device, swapchain.swapchain, &image_count, raw_data(vk_swapchain_images))
 
-	swapchain.swapchain_images = make([]ImageId, image_count)
+	swapchain.swapchain_images = make([]Image_Id, image_count)
 	for i in 0 ..< len(swapchain.swapchain_images) {
 		swapchain.swapchain_images[i] = wrap_image(
 			vk_swapchain_images[i],
@@ -3180,7 +3181,7 @@ swapchain_resize :: proc(swapchain: ^Swapchain, new_size: [2]int) {
     swapchain^ = new_swapchain
 }
 
-swapchain_acquire_next_image :: proc(swapchain: ^Swapchain) -> (image: ImageId, out_of_date: bool) {
+swapchain_acquire_next_image :: proc(swapchain: ^Swapchain) -> (image: Image_Id, out_of_date: bool) {
 	acquire_image_result := vk.AcquireNextImageKHR(
 		r_ctx.device,
 		swapchain.swapchain,

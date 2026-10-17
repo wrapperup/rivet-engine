@@ -305,7 +305,7 @@ register_assets :: proc() {
 
 Image_Asset :: struct {
 	using base: Asset,
-	image_id:   gfx.ImageId,
+	image_id:   gfx.Image_Id,
 }
 
 load_image_asset :: proc(bytes: []u8, out: rawptr, allocator: mem.Allocator) -> bool {
@@ -329,7 +329,7 @@ load_image_from_ktx_file :: proc(
 	debug_name: cstring = nil,
 	allocator := context.allocator,
 	loc := #caller_location,
-) -> gfx.ImageId {
+) -> gfx.Image_Id {
 	bytes, read_err := os.read_entire_file(filename, allocator)
 	assert(read_err == nil, "Failed to read file")
 	defer delete(bytes)
@@ -342,7 +342,7 @@ load_image_from_ktx_memory :: proc(
 	image_type: vk.ImageType = .D2,
 	debug_name: cstring = nil,
 	loc := #caller_location,
-) -> gfx.ImageId {
+) -> gfx.Image_Id {
 	ktx_texture: ^ktx.Texture2
 	ktx_result := ktx.Texture2_CreateFromMemory(raw_data(mem), len(mem), {.TEXTURE_CREATE_LOAD_IMAGE_DATA}, &ktx_texture)
 
@@ -351,7 +351,7 @@ load_image_from_ktx_memory :: proc(
 	return load_image_from_ktx_texture(ktx_texture, loc = loc)
 }
 
-load_image_from_ktx_texture :: proc(ktx_texture: ^ktx.Texture2, debug_name: cstring = nil, loc := #caller_location) -> gfx.ImageId {
+load_image_from_ktx_texture :: proc(ktx_texture: ^ktx.Texture2, debug_name: cstring = nil, loc := #caller_location) -> gfx.Image_Id {
 	num_dims := ktx_texture.numDimensions // Dimensions
 	num_faces := ktx_texture.numFaces // Faces (cubemap)
 	num_levels := ktx_texture.numLevels // Mip levels

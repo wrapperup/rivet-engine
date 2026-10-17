@@ -23,9 +23,9 @@ NUM_CASCADES: u32 : 4
 @(shader_shared)
 GPUEnvironment :: struct #max_field_align(16) {
 	point_lights: gfx.Slice(GPUPointLight),
-	env_map:      gfx.ImageId `ImageCube`,
-	dfg:          gfx.ImageId `Image2D`,
-	env_sampler:  gfx.SamplerId `Sampler`,
+	env_map:      gfx.Image_Id `ImageCube`,
+	dfg:          gfx.Image_Id `Image2D`,
+	env_sampler:  gfx.Sampler_Id `Sampler`,
 }
 
 @(shader_shared)
@@ -40,7 +40,7 @@ GPUGlobalData :: struct #max_field_align(16) {
 	sky_color:                Vec3,
 	camera_pos:               Vec3,
 	sun_direction:            Vec3,
-	default_sampler:          gfx.SamplerId `Sampler`,
+	default_sampler:          gfx.Sampler_Id `Sampler`,
 	ddgi_volumes:             gfx.Slice(GPUDDGIVolume),
 	reflection_probes:        gfx.Slice(GPUReflectionProbe),
 	atmosphere:               GPUAtmosphere,
@@ -50,7 +50,7 @@ GPUGlobalData :: struct #max_field_align(16) {
 RenderState :: struct {
 	frame_data:   [FRAME_OVERLAP]GameFrameData,
     frame_count:  int,
-    global_arena: gfx.ResourceArena,
+    global_arena: gfx.Deletion_Queue,
 
     swapchain:              gfx.Swapchain,
     swapchain_needs_resize: bool,
@@ -62,15 +62,15 @@ RenderState :: struct {
 		point_light_slice: gfx.Slice(GPUPointLight),
 	},
 	temp_resources:                  struct {
-		dfg_id:             gfx.ImageId,
-		default_sampler_id: gfx.SamplerId,
-		env_sampler_id:     gfx.SamplerId,
+		dfg_id:             gfx.Image_Id,
+		default_sampler_id: gfx.Sampler_Id,
+		env_sampler_id:     gfx.Sampler_Id,
 	},
 
     // Draw resources
-	draw_image:                      gfx.ImageId,
-	resolve_image:                   gfx.ImageId,
-	depth_image:                     gfx.ImageId,
+	draw_image:                      gfx.Image_Id,
+	resolve_image:                   gfx.Image_Id,
+	depth_image:                     gfx.Image_Id,
 	draw_extent:                     vk.Extent2D,
 	msaa_samples:                    vk.SampleCountFlag,
 
@@ -102,7 +102,7 @@ RenderState :: struct {
 
 GameFrameData :: struct {
     render_semaphore_pair:   gfx.Semaphore_Pair,
-    arena:                   gfx.ResourceArena,
+    arena:                   gfx.Deletion_Queue,
 	global_buffer:           gfx.Buffer(GPUGlobalData),
 	scratch:                 gfx.Scratch,
 	instances_buffer:        gfx.Buffer(GPURenderInstance),
@@ -121,11 +121,11 @@ current_frame_game :: proc() -> ^GameFrameData {
 	return &game.render_state.frame_data[current_frame_index()]
 }
 
-frame_arena :: proc() -> ^gfx.ResourceArena {
+frame_arena :: proc() -> ^gfx.Deletion_Queue {
 	return &game.render_state.frame_data[current_frame_index()].arena
 }
 
-create_draw_images :: proc(arena: ^gfx.ResourceArena, extent: vk.Extent2D) {
+create_draw_images :: proc(arena: ^gfx.Deletion_Queue, extent: vk.Extent2D) {
     state := &game.render_state
 
     draw_image_extent := vk.Extent3D{extent.width, extent.height, 1}
@@ -345,7 +345,7 @@ draw :: proc() {
 		state.resolve_image = state.draw_image
 	}
 
-	final_image: gfx.ImageId
+	final_image: gfx.Image_Id
 	switch game.view_state {
 	case .SceneDepth:
 		gfx.transition_image(cmd, state.depth_image, .TRANSFER_SRC_OPTIMAL)

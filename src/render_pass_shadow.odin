@@ -24,9 +24,9 @@ GPUCascadeConfig :: struct #max_field_align(16) {
 
 ShadowRenderPass :: struct {
 	mesh_shadow_pipeline:            ^gfx.Pipeline,
-	shadow_depth_image:              gfx.ImageId,
-	shadow_sampler:                  gfx.SamplerId,
-	shadow_depth_attach_image_views: [NUM_CASCADES]gfx.ImageId,
+	shadow_depth_image:              gfx.Image_Id,
+	shadow_sampler:                  gfx.Sampler_Id,
+	shadow_depth_attach_image_views: [NUM_CASCADES]gfx.Image_Id,
 	cascade_world_to_shadows:        [NUM_CASCADES]Mat4x4,
 	cascade_configs:                 [NUM_CASCADES]GPUCascadeConfig,
 }
@@ -86,14 +86,14 @@ shadow_prepare :: proc() {
 	gfx.write_buffer_slice(&current_frame_game().cascade_configs_buffer, game.render_state.shadow_rp.cascade_configs[:])
 }
 
-record_shadow_pass :: proc(cmd: gfx.CommandBuffer, instances: []RenderInstance) {
+record_shadow_pass :: proc(cmd: gfx.Command_Buffer, instances: []RenderInstance) {
 	gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
 	for cascade in u32(0) ..< NUM_CASCADES {
 		record_shadow_cascade(cmd, cascade, instances)
 	}
 }
 
-record_shadow_cascade :: proc(cmd: gfx.CommandBuffer, cascade: u32, instances: []RenderInstance) {
+record_shadow_cascade :: proc(cmd: gfx.Command_Buffer, cascade: u32, instances: []RenderInstance) {
 	image_view := game.render_state.shadow_rp.shadow_depth_attach_image_views[cascade]
 	extent := gfx.image_meta(game.render_state.shadow_rp.shadow_depth_image).extent
 

@@ -17,7 +17,7 @@ Scene :: struct {
 	source:          string,
 	last_write_time: i64, // mtime of `source` at load, for auto-reload on change
 	arena:           virtual.Arena,
-	gpu_arena:       gfx.ResourceArena,
+	gpu_arena:       gfx.Deletion_Queue,
 	entities:        [dynamic]EntityId,
 	engine_ids:      map[EntityId]string,
 	initialized:     bool,

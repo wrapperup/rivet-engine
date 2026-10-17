@@ -41,8 +41,8 @@ templated_type_map := []string {
 }
 
 banned_types := []Type_Mapping {
-	{"ImageId", "Tag the struct with an `Image*` type."},
-	{"SamplerId", "Tag the struct with `Sampler` or `SamplerComparison`."},
+	{"Image_Id", "Tag the struct with an `Image*` type."},
+	{"Sampler_Id", "Tag the struct with `Sampler` or `SamplerComparison`."},
 }
 
 asset_type_by_ext := map[string]string {

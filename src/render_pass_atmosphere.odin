@@ -21,12 +21,12 @@ default_atmosphere_settings :: proc() -> AtmosphereSettings {
 
 @(shader_shared)
 GPUAtmosphere :: struct #max_field_align(16) {
-	transmittance:        gfx.ImageId `Image2D`,
-	multiple_scattering:  gfx.ImageId `Image2D`,
-	sky_view:             gfx.ImageId `Image2D`,
-	aerial_scattering:    gfx.ImageId `Image3D`,
-	aerial_transmittance: gfx.ImageId `Image3D`,
-	sampler:              gfx.SamplerId `Sampler`,
+	transmittance:        gfx.Image_Id `Image2D`,
+	multiple_scattering:  gfx.Image_Id `Image2D`,
+	sky_view:             gfx.Image_Id `Image2D`,
+	aerial_scattering:    gfx.Image_Id `Image3D`,
+	aerial_transmittance: gfx.Image_Id `Image3D`,
+	sampler:              gfx.Sampler_Id `Sampler`,
 	rayleigh_density:     f32,
 	mie_density:          f32,
 	ozone_density:        f32,
@@ -39,20 +39,20 @@ GPUAtmosphere :: struct #max_field_align(16) {
 @(shader_shared)
 GPUAtmosphereLutPush :: struct #max_field_align(16) {
 	global: gfx.Ptr(GPUGlobalData),
-	output: gfx.ImageId `RWImage2D`,
+	output: gfx.Image_Id `RWImage2D`,
 }
 
 @(shader_shared)
 GPUAtmosphereCubePush :: struct #max_field_align(16) {
 	global: gfx.Ptr(GPUGlobalData),
-	output: gfx.ImageId `RWImage2DArray`,
+	output: gfx.Image_Id `RWImage2DArray`,
 }
 
 @(shader_shared)
 GPUAtmosphereAerialPush :: struct #max_field_align(16) {
 	global:        gfx.Ptr(GPUGlobalData),
-	scattering:    gfx.ImageId `RWImage3D`,
-	transmittance: gfx.ImageId `RWImage3D`,
+	scattering:    gfx.Image_Id `RWImage3D`,
+	transmittance: gfx.Image_Id `RWImage3D`,
 }
 
 @(shader_shared)
@@ -61,13 +61,13 @@ GPUAtmosphereDrawPush :: struct #max_field_align(16) {
 }
 
 AtmosphereRenderPass :: struct {
-	transmittance:                gfx.ImageId,
-	multiple_scattering:          gfx.ImageId,
-	sky_view:                     gfx.ImageId,
-	aerial_scattering:            gfx.ImageId,
-	aerial_transmittance:         gfx.ImageId,
-	environment_id:               gfx.ImageId,
-	environment_mips:             [9]gfx.ImageId,
+	transmittance:                gfx.Image_Id,
+	multiple_scattering:          gfx.Image_Id,
+	sky_view:                     gfx.Image_Id,
+	aerial_scattering:            gfx.Image_Id,
+	aerial_transmittance:         gfx.Image_Id,
+	environment_id:               gfx.Image_Id,
+	environment_mips:             [9]gfx.Image_Id,
 	parameters:                   GPUAtmosphere,
 	transmittance_pipeline:       ^gfx.Pipeline,
 	multiple_scattering_pipeline: ^gfx.Pipeline,
@@ -201,18 +201,18 @@ atmosphere_prepare :: proc() {
 	game.render_state.global_data.atmosphere = a^
 }
 
-record_atmosphere_lut :: proc(cmd: gfx.CommandBuffer, pipeline: ^gfx.Pipeline, img: gfx.ImageId, id: gfx.ImageId) {
-	gfx.image_barrier(cmd, img, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
+record_atmosphere_lut :: proc(cmd: gfx.Command_Buffer, pipeline: ^gfx.Pipeline, img: gfx.Image_Id, id: gfx.Image_Id) {
+	gfx.image_barrier(cmd, img, .All_Reads_Writes, .Compute_Shader_Write, .GENERAL)
 
 	gfx.cmd_bind_pipeline(cmd, pipeline)
 	gfx.cmd_push_constants(cmd, GPUAtmosphereLutPush{global = current_frame_game().global_buffer.ptr, output = id})
 	meta := gfx.image_meta(img)
 	vk.CmdDispatch(cmd, (meta.extent.width + 7) / 8, (meta.extent.height + 7) / 8, 1)
 
-	gfx.image_barrier(cmd, img, .ComputeShaderWrite, .ComputeFragmentShaderRead)
+	gfx.image_barrier(cmd, img, .Compute_Shader_Write, .Compute_Fragment_Shader_Read)
 }
 
-record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
+record_atmosphere_pass :: proc(cmd: gfx.Command_Buffer) {
 	gfx.cmd_begin_label(cmd, "Atmosphere Compute")
 
 	rp := &game.render_state.atmosphere_rp
@@ -232,7 +232,7 @@ record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
 	}
 
 	if environment_changed {
-		gfx.image_barrier(cmd, rp.environment_id, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
+		gfx.image_barrier(cmd, rp.environment_id, .All_Reads_Writes, .Compute_Shader_Write, .GENERAL)
 
 		gfx.cmd_bind_pipeline(cmd, rp.environment_pipeline)
 		gfx.cmd_push_constants(
@@ -240,7 +240,7 @@ record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
 			GPUAtmosphereCubePush{global = current_frame_game().global_buffer.ptr, output = rp.environment_mips[0]},
 		)
 		vk.CmdDispatch(cmd, 32, 32, 6)
-		gfx.image_barrier(cmd, rp.environment_id, .ComputeShaderWrite, .ComputeFragmentShaderRead)
+		gfx.image_barrier(cmd, rp.environment_id, .Compute_Shader_Write, .Compute_Fragment_Shader_Read)
 
 		gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_prefilter_pipeline)
 		for mip in u32(1) ..< 9 {
@@ -261,8 +261,8 @@ record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
 	}
 
 	// Rebuild view-dependent aerial perspective each frame.
-	gfx.image_barrier(cmd, rp.aerial_scattering, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
-	gfx.image_barrier(cmd, rp.aerial_transmittance, .AllReadsWrites, .ComputeShaderWrite, .GENERAL)
+	gfx.image_barrier(cmd, rp.aerial_scattering, .All_Reads_Writes, .Compute_Shader_Write, .GENERAL)
+	gfx.image_barrier(cmd, rp.aerial_transmittance, .All_Reads_Writes, .Compute_Shader_Write, .GENERAL)
 
 	gfx.cmd_bind_pipeline(cmd, rp.aerial_pipeline)
 	gfx.cmd_push_constants(
@@ -275,8 +275,8 @@ record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
 	)
 	vk.CmdDispatch(cmd, 8, 8, 8)
 
-	gfx.image_barrier(cmd, rp.aerial_scattering, .ComputeShaderWrite, .ComputeFragmentShaderRead)
-	gfx.image_barrier(cmd, rp.aerial_transmittance, .ComputeShaderWrite, .ComputeFragmentShaderRead)
+	gfx.image_barrier(cmd, rp.aerial_scattering, .Compute_Shader_Write, .Compute_Fragment_Shader_Read)
+	gfx.image_barrier(cmd, rp.aerial_transmittance, .Compute_Shader_Write, .Compute_Fragment_Shader_Read)
 
 	rp.initialized = true
 	rp.force_update = false
@@ -289,7 +289,7 @@ record_atmosphere_pass :: proc(cmd: gfx.CommandBuffer) {
 	gfx.cmd_end_label(cmd)
 }
 
-record_atmosphere_background :: proc(cmd: gfx.CommandBuffer) {
+record_atmosphere_background :: proc(cmd: gfx.Command_Buffer) {
 	gfx.cmd_begin_label(cmd, "Atmosphere Geometry")
 	gfx.cmd_begin_rendering(
 		cmd,

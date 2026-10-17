@@ -9,31 +9,31 @@ import vk "vendor:vulkan"
 
 import gfx "../"
 
-PushConstants :: struct #max_field_align(16) {
+Push_Constants :: struct #max_field_align(16) {
 	// vertex_buffer: gfx.Ptr(im.DrawVert),
 	// scale:         [2]f32,
 	// translate:     [2]f32,
-	// texture:       gfx.ImageId,
-	// sampler:       gfx.SamplerId,
+	// texture:       gfx.Image_Id,
+	// sampler:       gfx.Sampler_Id,
 }
 
-GfxImgui :: struct {
+Gfx_Imgui :: struct {
 	// pipeline:      gfx.Pipeline,
 	// vbuffers:      [FRAME_OVERLAP]gfx.Buffer(im.DrawVert),
 	// ibuffers:      [FRAME_OVERLAP]gfx.Buffer(im.DrawIdx),
 	// vbuffer_sizes: [FRAME_OVERLAP]int,
 	// ibuffer_sizes: [FRAME_OVERLAP]int,
-	// font_image:    gfx.ImageId,
-	// font_sampler:  gfx.SamplerId,
-	//    arena:         gfx.ResourceArena,
+	// font_image:    gfx.Image_Id,
+	// font_sampler:  gfx.Sampler_Id,
+	//    arena:         gfx.Deletion_Queue,
 }
 
 INDEX_TYPE :: vk.IndexType.UINT16 when size_of(im.DrawIdx) == 2 else vk.IndexType.UINT32
 IMGUI_SPV := #load("imgui.spv")
 
-gfx_imgui_backend_data :: proc() -> ^GfxImgui {
+gfx_imgui_backend_data :: proc() -> ^Gfx_Imgui {
 	// if im.GetCurrentContext() == nil do return nil
-	// return cast(^GfxImgui)im.GetIO().BackendRendererUserData
+	// return cast(^Gfx_Imgui)im.GetIO().BackendRendererUserData
     return nil
 }
 
@@ -41,7 +41,7 @@ gfx_imgui_init :: proc() {
 	// io := im.GetIO()
 	// assert(io.BackendRendererUserData == nil, "imgui renderer backend already initialized")
 	//
-	// this := new(GfxImgui)
+	// this := new(Gfx_Imgui)
 	// io.BackendRendererUserData = this
 	// io.BackendRendererName = "imgui_impl_gfx"
 	// io.BackendFlags += {.RendererHasVtxOffset}
@@ -56,7 +56,7 @@ gfx_imgui_init :: proc() {
 	// this.pipeline = gfx.create_graphics_pipeline(
 	// 	"Imgui_Pipeline",
 	// 	shader_module,
-	// 	PushConstants,
+	// 	Push_Constants,
 	// 	{blend_mode = .Alpha, color_format = .R32G32B32A32_SFLOAT}, // TODO: this originally used the swapchain format
 	// )
 	// gfx.defer_destroy(&this.arena, this.pipeline)
@@ -64,7 +64,7 @@ gfx_imgui_init :: proc() {
 
 // Build (or rebuild) the font atlas texture as RGBA8 so any ImTextureID can
 // target a regular bindless image without special-casing the font path.
-gfx_imgui_create_fonts_texture :: proc(this: ^GfxImgui) {
+gfx_imgui_create_fonts_texture :: proc(this: ^Gfx_Imgui) {
 	// io := im.GetIO()
 	//
 	// pixels: ^u8
@@ -129,7 +129,7 @@ gfx_imgui_destroy :: proc() {
 	// free(this)
 }
 
-gfx_imgui_render :: proc(cmd: gfx.CommandBuffer, target_view: gfx.ImageId, target_extent: vk.Extent2D) {
+gfx_imgui_render :: proc(cmd: gfx.Command_Buffer, target_view: gfx.Image_Id, target_extent: vk.Extent2D) {
 	// this := gfx_imgui_backend_data()
 	// assert(this != nil, "Imgui renderer backend not initialized! Call gfx_imgui_init first.")
 	//
@@ -181,7 +181,7 @@ gfx_imgui_render :: proc(cmd: gfx.CommandBuffer, target_view: gfx.ImageId, targe
 	// gfx.write_buffer_slice(&this.vbuffers[frame], vertices)
 	// gfx.write_buffer_slice(&this.ibuffers[frame], indices)
 	//
-	// color_attachment := gfx.RenderingAttachmentInfo {
+	// color_attachment := gfx.Rendering_Attachment_Info {
 	// 	view   = target_view,
 	// 	layout = .COLOR_ATTACHMENT_OPTIMAL,
 	// }
@@ -235,11 +235,11 @@ gfx_imgui_render :: proc(cmd: gfx.CommandBuffer, target_view: gfx.ImageId, targe
 	//
 	// 		gfx.cmd_push_constants(
 	// 			cmd,
-	// 			PushConstants {
+	// 			Push_Constants {
 	// 				vertex_buffer = vbuf,
 	// 				scale = scale,
 	// 				translate = translate,
-	// 				texture = gfx.ImageId(uintptr(dc.TextureId)),
+	// 				texture = gfx.Image_Id(uintptr(dc.TextureId)),
 	// 				sampler = this.font_sampler,
 	// 			},
 	// 		)

@@ -7,7 +7,7 @@ import vk "vendor:vulkan"
 import "gfx"
 
 @(private = "file")
-ImageId :: gfx.ImageId
+Image_Id :: gfx.Image_Id
 
 @(shader_shared)
 GPUDebugRTPushConstants :: struct #max_field_align(16) {
@@ -15,14 +15,14 @@ GPUDebugRTPushConstants :: struct #max_field_align(16) {
 	instances: gfx.Ptr(GPURenderInstance),
 	materials: gfx.Ptr(GPUMaterial),
 	tlas:      vk.DeviceAddress `AccelerationStructure`,
-	out_image: ImageId `RWImage2D`,
+	out_image: Image_Id `RWImage2D`,
 }
 
 init_debug_rt_rp :: proc() {
 	game.render_state.debug_rt_pipeline = add_compute_shader({"shaders/debug_rt.slang"}, "Debug_RT_Pipeline", GPUDebugRTPushConstants)
 }
 
-record_debug_rt_pass :: proc(cmd: gfx.CommandBuffer) {
+record_debug_rt_pass :: proc(cmd: gfx.Command_Buffer) {
     state := &game.render_state
 
 	gfx.transition_image(cmd, state.resolve_image, .GENERAL)

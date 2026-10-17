@@ -11,8 +11,8 @@ GPUReflectionProbe :: struct #max_field_align(16) {
 	blend_distance: f32,
 	half_extents:   Vec3,
 	intensity:      f32,
-	cube:           gfx.ImageId `ImageCube`,
-	sampler:        gfx.SamplerId `Sampler`,
+	cube:           gfx.Image_Id `ImageCube`,
+	sampler:        gfx.Sampler_Id `Sampler`,
 	mip_count:      u32,
 	priority:       f32,
 }
@@ -29,13 +29,13 @@ ReflectionProbe :: struct {
 	mip_count:            u32,
 
 	// GPU resources
-	cube_image_id:        gfx.ImageId,
-	cube_mip_storage_ids: [MAX_REFLECTION_MIPS]gfx.ImageId,
-	gpu_sampler_id:       gfx.SamplerId,
+	cube_image_id:        gfx.Image_Id,
+	cube_mip_storage_ids: [MAX_REFLECTION_MIPS]gfx.Image_Id,
+	gpu_sampler_id:       gfx.Sampler_Id,
 	configs:              [FRAME_OVERLAP]gfx.Buffer(GPUReflectionProbe),
 	captured:             bool,
 	wants_recapture:      bool,
-	gpu_arena:            gfx.ResourceArena,
+	gpu_arena:            gfx.Deletion_Queue,
 }
 
 REFLECTION_PROBE_FACE_SIZE :: 128

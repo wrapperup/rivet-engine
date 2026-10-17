@@ -8,7 +8,7 @@ import "gfx"
 @(shader_shared)
 GPUDfgGeneratePassPC :: struct #max_field_align(16) {
 	sample_count: u32,
-	dfg_image:    gfx.ImageId `RWImage2D<float2>`,
+	dfg_image:    gfx.Image_Id `RWImage2D<float2>`,
 	multiscatter: bool,
 }
 
@@ -16,7 +16,7 @@ DfgGeneratePass :: struct {
 	pipeline:                gfx.Pipeline,
 
 	// Resources
-	dfg_image:               gfx.ImageId,
+	dfg_image:               gfx.Image_Id,
 	dfg_image_mapped_buffer: gfx.Buffer(f32),
 	width, height:           u32,
 }
@@ -49,7 +49,7 @@ create_dfg_generate_pipeline :: proc(width, height: u32) -> DfgGeneratePass {
 	return pass
 }
 
-run_dfg_generate_pass :: proc(pass: ^DfgGeneratePass, cmd: gfx.CommandBuffer) {
+run_dfg_generate_pass :: proc(pass: ^DfgGeneratePass, cmd: gfx.Command_Buffer) {
 	gfx.cmd_bind_pipeline(cmd, pass.pipeline)
 
 	gfx.cmd_push_constants(cmd, GPUDfgGeneratePassPC{sample_count = 4096, multiscatter = false, dfg_image = pass.dfg_image})

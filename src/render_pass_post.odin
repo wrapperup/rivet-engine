@@ -8,13 +8,13 @@ import "gfx"
 
 @(shader_shared)
 GPUPostProcessingPushConstants :: struct #max_field_align(16) {
-	resolved_image:  gfx.ImageId `RWImage2D`,
-	tony_mc_mapface: gfx.ImageId `Image3D<Vec3>`,
-	sampler:         gfx.SamplerId `Sampler`,
+	resolved_image:  gfx.Image_Id `RWImage2D`,
+	tony_mc_mapface: gfx.Image_Id `Image3D<Vec3>`,
+	sampler:         gfx.Sampler_Id `Sampler`,
 }
 
 PostProcessingRenderPass :: struct {
-	tony_mc_mapface_id:  gfx.ImageId,
+	tony_mc_mapface_id:  gfx.Image_Id,
 	tonemapper_pipeline: ^gfx.Pipeline,
 }
 
@@ -26,7 +26,7 @@ init_post_process_rp :: proc() {
 	)
 }
 
-record_post_process_pass :: proc(cmd: gfx.CommandBuffer) {
+record_post_process_pass :: proc(cmd: gfx.Command_Buffer) {
     state := &game.render_state
 
 	gfx.transition_image(cmd, game.render_state.resolve_image, .GENERAL)

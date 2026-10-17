@@ -12,7 +12,7 @@ GPUReflectionCapturePush :: struct #max_field_align(16) {
 	instances: gfx.Ptr(GPURenderInstance),
 	materials: gfx.Ptr(GPUMaterial),
 	tlas:      vk.DeviceAddress `AccelerationStructure`,
-	out_cube:  gfx.ImageId `RWImage2DArray`,
+	out_cube:  gfx.Image_Id `RWImage2DArray`,
 	center:    Vec3,
 	face_size: u32,
 	ray_max:   f32,
@@ -28,9 +28,9 @@ GPUReflectionProbeDebugPush :: struct #max_field_align(16) {
 
 @(shader_shared)
 GPUReflectionPrefilterPush :: struct #max_field_align(16) {
-	src_cube:     gfx.ImageId `ImageCube`,
-	sampler:      gfx.SamplerId `Sampler`,
-	out_mip:      gfx.ImageId `RWImage2DArray`,
+	src_cube:     gfx.Image_Id `ImageCube`,
+	sampler:      gfx.Sampler_Id `Sampler`,
+	out_mip:      gfx.Image_Id `RWImage2DArray`,
 	face_size:    u32,
 	roughness:    f32,
 	sample_count: u32,
@@ -91,7 +91,7 @@ reflection_probe_prepare :: proc(probes: []ReflectionProbe) {
 	)
 }
 
-record_reflection_probe_pass :: proc(cmd: gfx.CommandBuffer, probes: []ReflectionProbe, volumes: []DDGIVolume) {
+record_reflection_probe_pass :: proc(cmd: gfx.Command_Buffer, probes: []ReflectionProbe, volumes: []DDGIVolume) {
 	if current_frame_game().rt.tlas.address == 0 do return
 
 	converged := true
@@ -112,7 +112,7 @@ record_reflection_probe_pass :: proc(cmd: gfx.CommandBuffer, probes: []Reflectio
 	}
 }
 
-record_reflection_probe_debug_pass :: proc(cmd: gfx.CommandBuffer, probes: []ReflectionProbe) {
+record_reflection_probe_debug_pass :: proc(cmd: gfx.Command_Buffer, probes: []ReflectionProbe) {
     state := &game.render_state
 
     when EDITOR {
@@ -167,8 +167,8 @@ reflection_probe_debug_draw_box :: proc(probe: ^ReflectionProbe) {
 }
 
 @(private = "file")
-record_reflection_probe_capture :: proc(cmd: gfx.CommandBuffer, probe: ^ReflectionProbe) {
-	gfx.image_barrier(cmd, probe.cube_image_id, src_access = .AllReadsWrites, dst_access = .ComputeShaderWrite)
+record_reflection_probe_capture :: proc(cmd: gfx.Command_Buffer, probe: ^ReflectionProbe) {
+	gfx.image_barrier(cmd, probe.cube_image_id, src_access = .All_Reads_Writes, dst_access = .Compute_Shader_Write)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_capture_pipeline)
 	gfx.cmd_push_constants(
@@ -187,7 +187,7 @@ record_reflection_probe_capture :: proc(cmd: gfx.CommandBuffer, probe: ^Reflecti
 	groups := (probe.face_size + 7) / 8
 	vk.CmdDispatch(cmd, groups, groups, 6)
 
-	gfx.image_barrier(cmd, probe.cube_image_id, src_access = .ComputeShaderWrite, dst_access = .ComputeShaderRead)
+	gfx.image_barrier(cmd, probe.cube_image_id, src_access = .Compute_Shader_Write, dst_access = .Compute_Shader_Read)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_prefilter_pipeline)
 	for mip in u32(1) ..< probe.mip_count {
@@ -208,6 +208,6 @@ record_reflection_probe_capture :: proc(cmd: gfx.CommandBuffer, probe: ^Reflecti
 		vk.CmdDispatch(cmd, g, g, 6)
 	}
 
-	gfx.image_barrier(cmd, probe.cube_image_id, src_access = .ComputeShaderWrite, dst_access = .ComputeFragmentShaderRead)
+	gfx.image_barrier(cmd, probe.cube_image_id, src_access = .Compute_Shader_Write, dst_access = .Compute_Fragment_Shader_Read)
 	probe.captured = true
 }

@@ -6,17 +6,21 @@ package game
 
 // Entity System
 Entity_Kind :: enum {
+    Player,
     Ball,
     ReflectionProbe,
-    SoundSource,
     StaticMesh,
-    PointLight,
-    Player,
-    DDGIVolume,
+    SoundSource,
     Terrain,
+    DDGIVolume,
+    PointLight,
 }
 
 register_entity_subtypes :: proc() {
+    {
+        procs: SubtypeProcs(Player)
+        register_entity_subtype(Player, procs)
+    }
     {
         procs: SubtypeProcs(Ball)
         procs.init = init_ball
@@ -29,28 +33,16 @@ register_entity_subtypes :: proc() {
         register_entity_subtype(ReflectionProbe, procs)
     }
     {
-        procs: SubtypeProcs(SoundSource)
-        procs.init = init_sound_source
-        procs.destroy = destroy_sound_source
-        register_entity_subtype(SoundSource, procs)
-    }
-    {
         procs: SubtypeProcs(StaticMesh)
         procs.init = static_mesh_init
         procs.destroy = static_mesh_destroy
         register_entity_subtype(StaticMesh, procs)
     }
     {
-        procs: SubtypeProcs(PointLight)
-        register_entity_subtype(PointLight, procs)
-    }
-    {
-        procs: SubtypeProcs(Player)
-        register_entity_subtype(Player, procs)
-    }
-    {
-        procs: SubtypeProcs(DDGIVolume)
-        register_entity_subtype(DDGIVolume, procs)
+        procs: SubtypeProcs(SoundSource)
+        procs.init = init_sound_source
+        procs.destroy = destroy_sound_source
+        register_entity_subtype(SoundSource, procs)
     }
     {
         procs: SubtypeProcs(Terrain)
@@ -58,18 +50,26 @@ register_entity_subtypes :: proc() {
         procs.destroy = terrain_destroy
         register_entity_subtype(Terrain, procs)
     }
+    {
+        procs: SubtypeProcs(DDGIVolume)
+        register_entity_subtype(DDGIVolume, procs)
+    }
+    {
+        procs: SubtypeProcs(PointLight)
+        register_entity_subtype(PointLight, procs)
+    }
 }
 
 entity_type_to_kind :: proc($T: typeid) -> Entity_Kind {
     return .Base when T == Entity else
+           .Player when T == Player else
            .Ball when T == Ball else
            .ReflectionProbe when T == ReflectionProbe else
-           .SoundSource when T == SoundSource else
            .StaticMesh when T == StaticMesh else
-           .PointLight when T == PointLight else
-           .Player when T == Player else
-           .DDGIVolume when T == DDGIVolume else
+           .SoundSource when T == SoundSource else
            .Terrain when T == Terrain else
+           .DDGIVolume when T == DDGIVolume else
+           .PointLight when T == PointLight else
            #panic("Unregistered entity type")
 }
 

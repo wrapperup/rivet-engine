@@ -20,10 +20,10 @@ GPUDDGIVolume :: struct #max_field_align(16) {
 	rays_per_probe: u32,
 	probe_spacing:  Vec3, // world units between probes
 	grid_counts:    [3]u32, // e.g. {16, 8, 16}
-	irradiance:     gfx.ImageId `Image2D`, // RGBA16F
-	depth:          gfx.ImageId `Image2D`, // RG16F (mean, mean^2)
-	offset:         gfx.ImageId `Image2D`, // RGBA16F (relocation; zero for now)
-	sampler:        gfx.SamplerId `Sampler`, // LINEAR, CLAMP_TO_EDGE
+	irradiance:     gfx.Image_Id `Image2D`, // RGBA16F
+	depth:          gfx.Image_Id `Image2D`, // RG16F (mean, mean^2)
+	offset:         gfx.Image_Id `Image2D`, // RGBA16F (relocation; zero for now)
+	sampler:        gfx.Sampler_Id `Sampler`, // LINEAR, CLAMP_TO_EDGE
 	hysteresis:     f32, // 0.97 realtime
 	max_distance:   f32, // ~1.5 * length(probe_spacing)
 	normal_bias:    f32,
@@ -52,9 +52,9 @@ DDGI_Volume_Resources :: struct {
 	gpu:                 GPUDDGIVolume,
 	config_buffers:      [FRAME_OVERLAP]gfx.Buffer(GPUDDGIVolume), // TODO: separate this.
 	radiance_buffer:     gfx.Buffer(Vec4), // rays_per_probe * num_probes
-	irradiance:          gfx.ImageId,
-	depth:               gfx.ImageId,
-	offset:              gfx.ImageId,
+	irradiance:          gfx.Image_Id,
+	depth:               gfx.Image_Id,
+	offset:              gfx.Image_Id,
 
 	// baking
 	bake_state:          DDGI_Bake_State,
@@ -102,7 +102,7 @@ ddgi_volume_resources_init :: proc(
 	origin: Vec3,
 	spacing: Vec3,
 	counts: [3]u32,
-	arena: ^gfx.ResourceArena,
+	arena: ^gfx.Deletion_Queue,
 	priority: f32 = 0.0,
 	edge_fade: f32 = 1.0,
 ) {

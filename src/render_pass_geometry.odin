@@ -24,8 +24,8 @@ GPUDrawPushConstants :: struct #max_field_align(16) {
 	materials:          gfx.Ptr(GPUMaterial),
 	instance_index:     u32,
 	num_cascades:       u32,
-	shadow_depth:       gfx.ImageId `Image2DArray<f32>`,
-	shadow_sampler:     gfx.SamplerId `SamplerComparison`,
+	shadow_depth:       gfx.Image_Id `Image2DArray<f32>`,
+	shadow_sampler:     gfx.Sampler_Id `SamplerComparison`,
 }
 
 GeometryRenderPass :: struct {
@@ -60,14 +60,14 @@ init_geometry_rp :: proc() {
 
 }
 
-record_geometry_pass :: proc(cmd: gfx.CommandBuffer, instances: []RenderInstance) {
+record_geometry_pass :: proc(cmd: gfx.Command_Buffer, instances: []RenderInstance) {
     state := &game.render_state
 
 	gfx.transition_image(cmd, state.draw_image, .COLOR_ATTACHMENT_OPTIMAL)
 	gfx.transition_image(cmd, state.depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
 	gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .DEPTH_READ_ONLY_OPTIMAL)
 	record_geometry_depth_pass(cmd, instances)
-	gfx.image_barrier(cmd, state.depth_image, src_access = .DepthAttachmentReadWrite, dst_access = .DepthAttachmentReadWrite)
+	gfx.image_barrier(cmd, state.depth_image, src_access = .Depth_Attachment_Read_Write, dst_access = .Depth_Attachment_Read_Write)
 
 	if game.render_state.draw_sky {
 		record_atmosphere_background(cmd)
@@ -93,7 +93,7 @@ record_geometry_pass :: proc(cmd: gfx.CommandBuffer, instances: []RenderInstance
 	gfx.cmd_end_rendering(cmd)
 }
 
-record_geometry_depth_pass :: proc(cmd: gfx.CommandBuffer, instances: []RenderInstance) {
+record_geometry_depth_pass :: proc(cmd: gfx.Command_Buffer, instances: []RenderInstance) {
     state := &game.render_state
 
 	gfx.cmd_begin_rendering(
@@ -111,7 +111,7 @@ record_geometry_depth_pass :: proc(cmd: gfx.CommandBuffer, instances: []RenderIn
 	gfx.cmd_end_rendering(cmd)
 }
 
-record_geometry_draws :: proc(cmd: gfx.CommandBuffer, instances: []RenderInstance) {
+record_geometry_draws :: proc(cmd: gfx.Command_Buffer, instances: []RenderInstance) {
 	for instance, instance_index in instances {
 		gfx.cmd_bind_index_buffer(cmd, instance.index_buffer)
 		gfx.cmd_push_constants(

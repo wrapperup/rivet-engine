@@ -25,7 +25,7 @@ UI_Command :: struct #max_field_align(16) {
 	size:          Vec2,
 	uv_min:        Vec2,
 	uv_max:        Vec2,
-	image:         gfx.ImageId `Image2D`,
+	image:         gfx.Image_Id `Image2D`,
 	color:         Vec4,
 	radius:        Vec4, // clockwise from top-left corner
 	unit_range:    Vec2,
@@ -37,12 +37,12 @@ UI_Command :: struct #max_field_align(16) {
 UI_Push :: struct #max_field_align(16) {
 	commands:      gfx.Slice(UI_Command),
 	viewport_size: Vec2,
-	sampler:       gfx.SamplerId `Sampler`,
+	sampler:       gfx.Sampler_Id `Sampler`,
 }
 
 UIRenderPass :: struct {
 	pipeline:        ^gfx.Pipeline,
-	sampler:         gfx.SamplerId,
+	sampler:         gfx.Sampler_Id,
 	commands:        [dynamic]UI_Command,
 	num_commands:    int,
     command_buffers: [FRAME_OVERLAP]gfx.Slice(UI_Command),
@@ -166,7 +166,7 @@ ui_rect :: proc(
 	radius: Vec4 = 0,
 	anchor: Vec2 = 0.5,
 	pivot: Vec2 = 0.5,
-	image: gfx.ImageId = 0,
+	image: gfx.Image_Id = 0,
 	uv_min: Vec2 = 0,
 	uv_max: Vec2 = 1,
 ) {
@@ -326,7 +326,7 @@ ui_command :: proc(
 	anchor: Vec2 = 0.5,
 	pivot: Vec2 = 0.5,
 	mode: UI_Mode = .Color,
-	image: gfx.ImageId = 0,
+	image: gfx.Image_Id = 0,
 	uv_min: Vec2 = 0,
 	uv_max: Vec2 = 1,
 	unit_range: Vec2 = 0,
@@ -363,7 +363,7 @@ ui_command_absolute :: proc(
 	color: Vec4 = 1,
 	radius: Vec4 = 0,
 	mode: UI_Mode = .Color,
-	image: gfx.ImageId = 0,
+	image: gfx.Image_Id = 0,
 	uv_min: Vec2 = 0,
 	uv_max: Vec2 = 1,
 	unit_range: Vec2 = 0,
@@ -411,7 +411,7 @@ ui_prepare :: proc() {
 	clear(&ui_rp.commands)
 }
 
-record_ui_pass :: proc(cmd: gfx.CommandBuffer) {
+record_ui_pass :: proc(cmd: gfx.Command_Buffer) {
 	ui_rp := &game.render_state.ui_rp
 
 	gfx.transition_image(cmd, game.render_state.resolve_image, .COLOR_ATTACHMENT_OPTIMAL)

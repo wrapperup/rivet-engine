@@ -35,7 +35,7 @@ prepare_raytracing :: proc(rt: ^RaytracingResources, instances: []RenderInstance
 	}
 }
 
-record_raytracing :: proc(cmd: gfx.CommandBuffer, rt: ^RaytracingResources) {
+record_raytracing :: proc(cmd: gfx.Command_Buffer, rt: ^RaytracingResources) {
 	gfx.defer_destroy_accel(frame_arena(), rt.tlas)
 	rt.tlas = {}
 
@@ -45,7 +45,7 @@ record_raytracing :: proc(cmd: gfx.CommandBuffer, rt: ^RaytracingResources) {
 	rt.tlas, scratch = gfx.build_tlas(cmd, rt.instances_buffer, rt.instance_count)
 	gfx.defer_destroy(frame_arena(), scratch)
 
-	gfx.buffer_barrier(cmd, rt.tlas.buffer, src_access = .AccelerationStructureBuildWrite, dst_access = .AccelerationStructureRead)
+	gfx.buffer_barrier(cmd, rt.tlas.buffer, src_access = .Acceleration_Structure_Build_Write, dst_access = .Acceleration_Structure_Read)
 }
 
 mat4_to_vk_transform :: proc(m: Mat4x4) -> vk.TransformMatrixKHR {
