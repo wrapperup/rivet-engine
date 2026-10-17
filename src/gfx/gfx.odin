@@ -591,6 +591,7 @@ init_vulkan :: proc(config: Init_Config) -> bool {
 
         queue_create_infos: [dynamic]vk.DeviceQueueCreateInfo
 
+        priority := f32(1.0)
         for &queue_a, i in &r_ctx.queues {
             for queue_b in &r_ctx.queues {
                 if queue_a.family_index == queue_b.family_index {
@@ -602,7 +603,6 @@ init_vulkan :: proc(config: Init_Config) -> bool {
             queue_a.family_index = families[i]
             queue_a.vk_index = 0 // currently we only do 1 queue per family
 
-            priority := f32(1.0)
             append(&queue_create_infos, {
                 sType            = .DEVICE_QUEUE_CREATE_INFO,
                 queueFamilyIndex = queue_a.family_index,
