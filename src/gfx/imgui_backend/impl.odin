@@ -125,7 +125,7 @@ gfx_imgui_destroy :: proc() {
 	free(this)
 }
 
-gfx_imgui_render :: proc(cmd: gfx.Command_Buffer, target_view: gfx.Image_Id, target_extent: vk.Extent2D) {
+gfx_imgui_render :: proc(cmd: gfx.Command_Buffer, target_view: gfx.Image_Id, target_extent: gfx.Extent_2D) {
 	this := gfx_imgui_backend_data()
 	assert(this != nil, "Imgui renderer backend not initialized! Call gfx_imgui_init first.")
 
@@ -177,13 +177,6 @@ gfx_imgui_render :: proc(cmd: gfx.Command_Buffer, target_view: gfx.Image_Id, tar
 	}
 	gfx.cmd_begin_rendering(cmd, target_extent, &color_attachment, nil)
 	defer gfx.cmd_end_rendering(cmd)
-
-	viewport := vk.Viewport {
-		width    = f32(target_extent.width),
-		height   = f32(target_extent.height),
-		maxDepth = 1,
-	}
-	vk.CmdSetViewport(cmd, 0, 1, &viewport)
 
 	gfx.cmd_bind_pipeline(cmd, this.pipeline)
 	gfx.cmd_bind_index_buffer(cmd, this.ibuffer.buffer, 0, INDEX_TYPE)

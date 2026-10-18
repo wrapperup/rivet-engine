@@ -70,7 +70,7 @@ RenderState :: struct {
 	draw_image:                      gfx.Image_Id,
 	resolve_image:                   gfx.Image_Id,
 	depth_image:                     gfx.Image_Id,
-	draw_extent:                     vk.Extent2D,
+	draw_extent:                     gfx.Extent_2D,
 	msaa_samples:                    vk.SampleCountFlag,
 
 	material_store:                  Material_Store,
@@ -124,10 +124,10 @@ frame_arena :: proc() -> ^gfx.Deletion_Queue {
 	return &game.render_state.frame_data[current_frame_index()].arena
 }
 
-create_draw_images :: proc(arena: ^gfx.Deletion_Queue, extent: vk.Extent2D) {
+create_draw_images :: proc(arena: ^gfx.Deletion_Queue, extent: gfx.Extent_2D) {
     state := &game.render_state
 
-    draw_image_extent := vk.Extent3D{extent.width, extent.height, 1}
+    draw_image_extent := gfx.Extent_3D{**extent, 1}
 	draw_image_usages := vk.ImageUsageFlags{.TRANSFER_SRC, .TRANSFER_DST, .STORAGE, .COLOR_ATTACHMENT}
 
 	state.draw_image = gfx.create_image(DRAW_FORMAT, draw_image_extent, draw_image_usages, msaa_samples = state.msaa_samples)
@@ -140,8 +140,8 @@ create_draw_images :: proc(arena: ^gfx.Deletion_Queue, extent: vk.Extent2D) {
 	state.depth_image = gfx.create_image(DEPTH_FORMAT, draw_image_extent, {.DEPTH_STENCIL_ATTACHMENT}, msaa_samples = state.msaa_samples)
 	gfx.defer_destroy(&state.global_arena, state.depth_image)
 
-	state.draw_extent.width = draw_image_extent.width
-	state.draw_extent.height = draw_image_extent.height
+	state.draw_extent.x = draw_image_extent.x
+	state.draw_extent.y = draw_image_extent.y
 }
 
 init_game_renderer :: proc() {
@@ -156,7 +156,7 @@ init_game_renderer :: proc() {
     state.swapchain = gfx.create_swapchain(
         surface,
         .FIFO,
-        cast([2]int)([2]i32{width, height}),
+        cast(gfx.Extent_2D)([2]i32{width, height}),
         FRAME_OVERLAP,
     )
     create_draw_images(&state.swapchain.arena, {u32(width), u32(height)})
@@ -285,7 +285,7 @@ draw :: proc() {
             return 
         }
 
-        gfx.swapchain_resize(&state.swapchain, cast([2]int)[2]i32{width, height})
+        gfx.swapchain_resize(&state.swapchain, cast(gfx.Extent_2D)[2]i32{width, height})
         create_draw_images(&state.swapchain.arena, {u32(width), u32(height)})
 
         return
@@ -332,7 +332,7 @@ draw :: proc() {
 			srcOffset = {0, 0, 0},
 			dstSubresource = {mipLevel = 0, aspectMask = {.COLOR}, baseArrayLayer = 0, layerCount = 1},
 			dstOffset = {0, 0, 0},
-			extent = {ex.width, ex.height, 1},
+			extent = {**ex, 1},
 		}
 
 		gfx.cmd_resolve_image(cmd, state.draw_image, state.resolve_image, {resolve_region})
@@ -363,7 +363,7 @@ draw :: proc() {
 	}
 
 	gfx.transition_image(cmd, swapchain_image, .TRANSFER_DST_OPTIMAL)
-	gfx.copy_image_to_image(cmd, final_image, swapchain_image, state.draw_extent, state.draw_extent)
+	gfx.copy_image_to_image(cmd, final_image, swapchain_image, cast(gfx.Offset_2D)state.draw_extent, cast(gfx.Offset_2D)state.draw_extent)
 
     when EDITOR {
         gfx.transition_image(cmd, swapchain_image, .COLOR_ATTACHMENT_OPTIMAL)

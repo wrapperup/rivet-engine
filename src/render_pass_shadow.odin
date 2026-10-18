@@ -32,7 +32,7 @@ ShadowRenderPass :: struct {
 }
 
 init_shadow_maps :: proc() {
-	extent := vk.Extent3D{game.config.shadow_map_size, game.config.shadow_map_size, 1}
+	extent := gfx.Extent_3D{game.config.shadow_map_size, game.config.shadow_map_size, 1}
 
 	shadow_rp := &game.render_state.shadow_rp
 
@@ -97,15 +97,11 @@ record_shadow_cascade :: proc(cmd: gfx.Command_Buffer, cascade: u32, instances: 
 	image_view := game.render_state.shadow_rp.shadow_depth_attach_image_views[cascade]
 	extent := gfx.image_meta(game.render_state.shadow_rp.shadow_depth_image).extent
 
-	width := extent.width
-	height := extent.height
-
 	gfx.cmd_begin_rendering(
 		cmd,
-		area = {width, height},
+		area = extent.xy,
 		depth_attachment = &{view = image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL, clear_value = &{depthStencil = {depth = 1.0}}},
 	)
-	gfx.set_viewport_and_scissor(cmd, extent)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.shadow_rp.mesh_shadow_pipeline)
 

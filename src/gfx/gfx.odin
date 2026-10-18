@@ -85,7 +85,7 @@ Image :: struct {
 	image:          vk.Image,
 	image_view:     vk.ImageView,
 	allocation:     vma.Allocation,
-	extent:         vk.Extent3D,
+	extent:         Extent_3D,
 	format:         vk.Format,
 	mip_levels:     u32,
 	array_layers:   u32,
@@ -294,7 +294,7 @@ Swapchain :: struct {
 	swapchain_images:       []Image_Id,
 	swapchain_image_index:  u32,
 	swapchain_image_format: vk.Format,
-	swapchain_extent:       vk.Extent2D,
+	swapchain_extent:       Extent_2D,
     present_semaphores:     []vk.Semaphore,
     acquire_semaphores:     []vk.Semaphore,
     present_mode:           vk.PresentModeKHR,
@@ -310,6 +310,30 @@ Semaphore :: distinct vk.Semaphore
 Semaphore_Pair :: struct {
     sema: Semaphore,
     value: u64,
+}
+
+Raytracing_Accel :: struct {
+	accel:   vk.AccelerationStructureKHR,
+	buffer:  Buffer(u8), // .AccelStorage backing
+	address: vk.DeviceAddress,
+	type:    vk.AccelerationStructureTypeKHR,
+}
+
+Raytracing_Props :: struct {
+	scratch_align: u32,
+	max_instances: u64,
+}
+
+
+Extent_2D :: [2]u32
+Extent_3D :: [3]u32
+
+Offset_2D :: [2]i32
+Offset_3D :: [3]i32
+
+Rect_2D :: struct {
+	offset: Offset_2D,
+	extent: Extent_2D,
 }
 
 
@@ -666,36 +690,6 @@ init_vulkan :: proc(config: Init_Config) -> bool {
 	init_bindless_descriptors()
 
 	return true
-}
-
-set_viewport_and_scissor_2d :: proc(cmd: Command_Buffer, extent: vk.Extent2D) {
-	set_viewport_and_scissor_3d(cmd, {extent.width, extent.height, 1})
-}
-
-set_viewport_and_scissor_3d :: proc(cmd: Command_Buffer, extent: vk.Extent3D) {
-	//set dynamic viewport and scissor
-	viewport := vk.Viewport {
-		x        = 0,
-		y        = 0,
-		width    = f32(extent.width),
-		height   = f32(extent.height),
-		minDepth = 0.0,
-		maxDepth = 1.0,
-	}
-
-	vk.CmdSetViewport(cmd, 0, 1, &viewport)
-
-	scissor := vk.Rect2D {
-		offset = {x = 0, y = 0},
-		extent = {extent.width, extent.height},
-	}
-
-	vk.CmdSetScissor(cmd, 0, 1, &scissor)
-}
-
-set_viewport_and_scissor :: proc {
-	set_viewport_and_scissor_3d,
-	set_viewport_and_scissor_2d,
 }
 
 _get_command_buffer :: proc(kind: Queue_Kind) -> Command_Buffer {
@@ -1117,7 +1111,7 @@ cleanup_vulkan :: proc() {
 // This allocates on the GPU, make sure to call `destroy_image` or add to the deletion queue when you are finished with the image.
 create_image :: proc(
 	format: vk.Format,
-	extent: vk.Extent3D,
+	extent: Extent_3D,
 	image_usage_flags: vk.ImageUsageFlags,
 	mip_levels: u32 = 1,
 	array_layers: u32 = 1,
@@ -1140,7 +1134,7 @@ create_image :: proc(
 		sType       = .IMAGE_CREATE_INFO,
 		imageType   = image_type,
 		format      = format,
-		extent      = extent,
+		extent      = {**extent},
 		mipLevels   = mip_levels,
 		arrayLayers = array_layers,
 		samples     = {msaa_samples},
@@ -1161,7 +1155,7 @@ create_image :: proc(
 	}
 
 	image := Image {
-		extent       = extent,
+		extent       = {**extent},
 		format       = format,
 		mip_levels   = mip_levels,
 		array_layers = array_layers,
@@ -1198,7 +1192,7 @@ create_image :: proc(
 wrap_image :: proc(
 	vk_image: vk.Image,
 	format: vk.Format,
-	extent: vk.Extent3D,
+	extent: Extent_3D,
 	image_usage_flags: vk.ImageUsageFlags,
 	mip_levels: u32 = 1,
 	array_layers: u32 = 1,
@@ -1224,7 +1218,7 @@ wrap_image :: proc(
 
 	image := Image {
 		image        = vk_image,
-		extent       = extent,
+		extent       = {**extent},
 		format       = format,
 		mip_levels   = mip_levels,
 		array_layers = array_layers,
@@ -1524,7 +1518,7 @@ transition_image :: proc(cmd: Command_Buffer, image: Image_Id, new_layout: vk.Im
 	return image_barrier(cmd, image, src_access = .All_Writes, dst_access = .All_Reads_Writes, new_layout = new_layout)
 }
 
-copy_image_to_image :: proc(cmd: Command_Buffer, src_id: Image_Id, dst_id: Image_Id, src_size: vk.Extent2D, dst_size: vk.Extent2D) {
+copy_image_to_image :: proc(cmd: Command_Buffer, src_id: Image_Id, dst_id: Image_Id, src_size: Offset_2D, dst_size: Offset_2D) {
 	source := image_meta(src_id)
 	destination := image_meta(dst_id)
 
@@ -1533,12 +1527,12 @@ copy_image_to_image :: proc(cmd: Command_Buffer, src_id: Image_Id, dst_id: Image
 		pNext = nil,
 	}
 
-	blit_region.srcOffsets[1].x = i32(src_size.width)
-	blit_region.srcOffsets[1].y = i32(src_size.height)
+	blit_region.srcOffsets[1].x = src_size.x
+	blit_region.srcOffsets[1].y = src_size.y
 	blit_region.srcOffsets[1].z = 1
 
-	blit_region.dstOffsets[1].x = i32(dst_size.width)
-	blit_region.dstOffsets[1].y = i32(dst_size.height)
+	blit_region.dstOffsets[1].x = dst_size.x
+	blit_region.dstOffsets[1].y = dst_size.y
 	blit_region.dstOffsets[1].z = 1
 
 	blit_region.srcSubresource.aspectMask = {.COLOR}
@@ -2127,7 +2121,7 @@ cmd_draw_indexed :: #force_inline proc(
 
 cmd_begin_rendering :: proc(
 	cmd: Command_Buffer,
-	area: vk.Extent2D,
+	area: Extent_2D,
 	color_attachment: ^Rendering_Attachment_Info = nil,
 	depth_attachment: ^Rendering_Attachment_Info = nil,
 ) {
@@ -2167,11 +2161,14 @@ cmd_begin_rendering :: proc(
 	render_info := vk.RenderingInfo {
 		sType = .RENDERING_INFO,
 		layerCount = 1,
-		renderArea = {extent = area},
+		renderArea = {extent = {**area}},
         pColorAttachments = has_color ? &vk_color_attachment : nil,
 		colorAttachmentCount = has_color ? 1 : 0,
         pDepthAttachment = has_depth ? &vk_depth_attachment : nil,
 	}
+
+	cmd_set_viewport(cmd, {width = f32(area.x), height = f32(area.y), maxDepth = 1.0})
+	cmd_set_scissor(cmd, {extent = area})
 
 	vk.CmdBeginRendering(cmd, &render_info)
 }
@@ -2261,6 +2258,20 @@ cmd_copy_buffer :: proc(cmd: Command_Buffer, src_buffer: Buffer($T), dst_buffer:
         1,
         &region,
 	)
+}
+
+cmd_set_viewport :: proc(cmd: Command_Buffer, viewport: vk.Viewport) {
+    viewport := viewport
+    vk.CmdSetViewport(cmd, 0, 1, &viewport)
+}
+
+cmd_set_scissor :: proc(cmd: Command_Buffer, scissor: Rect_2D) {
+    scissor := vk.Rect2D{
+        {**scissor.offset},
+        {**scissor.extent},
+    }
+
+	vk.CmdSetScissor(cmd, 0, 1, &scissor)
 }
 
 vk_buffer_flags :: proc(alloc_flags: Buffer_Memory_Flags) -> (vk.BufferUsageFlags, vma.AllocationCreateFlags) {
@@ -2919,18 +2930,6 @@ destroy_shader_module :: proc(module: vk.ShaderModule) {
 	vk.DestroyShaderModule(r_ctx.device, module, nil)
 }
 
-Raytracing_Accel :: struct {
-	accel:   vk.AccelerationStructureKHR,
-	buffer:  Buffer(u8), // .AccelStorage backing
-	address: vk.DeviceAddress,
-	type:    vk.AccelerationStructureTypeKHR,
-}
-
-Raytracing_Props :: struct {
-	scratch_align: u32,
-	max_instances: u64,
-}
-
 r_rt_props: Raytracing_Props
 
 query_raytracing_props :: proc() -> Raytracing_Props {
@@ -3112,7 +3111,7 @@ _create_scratch_buffer :: proc(size: vk.DeviceSize, loc := #caller_location) -> 
 create_swapchain :: proc(
     surface: vk.SurfaceKHR,
     present_mode: vk.PresentModeKHR,
-    window_size: [2]int,
+    window_size: Extent_2D,
     max_frames_in_flight: int,
     _old_swapchain: vk.SwapchainKHR = {}
 ) -> Swapchain {
@@ -3160,7 +3159,7 @@ create_swapchain :: proc(
 		minImageCount         = image_count,
 		imageFormat           = surface_format.format,
 		imageColorSpace       = surface_format.colorSpace,
-		imageExtent           = extent,
+		imageExtent           = {**extent},
 		imageArrayLayers      = 1,
 		imageUsage            = {.COLOR_ATTACHMENT, .TRANSFER_DST, .SAMPLED},
 
@@ -3191,7 +3190,7 @@ create_swapchain :: proc(
 		swapchain.swapchain_images[i] = wrap_image(
 			vk_swapchain_images[i],
 			swapchain.swapchain_image_format,
-			{swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 0},
+			{**swapchain.swapchain_extent, 0},
 			{.COLOR_ATTACHMENT, .TRANSFER_DST, .SAMPLED},
 		)
 		defer_destroy(&swapchain.arena, swapchain.swapchain_images[i])
@@ -3213,7 +3212,7 @@ create_swapchain :: proc(
     return swapchain
 }
 
-swapchain_resize :: proc(swapchain: ^Swapchain, new_size: [2]int) {
+swapchain_resize :: proc(swapchain: ^Swapchain, new_size: Extent_2D) {
     vk.DeviceWaitIdle(r_ctx.device)
 
 	capabilities: vk.SurfaceCapabilitiesKHR
@@ -3260,16 +3259,13 @@ swapchain_destroy :: proc(swapchain: ^Swapchain) {
     vk.DestroySwapchainKHR(r_ctx.device, swapchain.swapchain, nil)
 }
 
-_choose_swap_extent :: proc(desired: [2]int, capabilities: ^vk.SurfaceCapabilitiesKHR) -> vk.Extent2D {
+_choose_swap_extent :: proc(desired: Extent_2D, capabilities: ^vk.SurfaceCapabilitiesKHR) -> Extent_2D {
 	if (capabilities.currentExtent.width != max(u32)) {
-		return capabilities.currentExtent
+		return {capabilities.currentExtent.width, capabilities.currentExtent.height}
 	} else {
-		width, height := **desired
-
-		actual_extent := vk.Extent2D{u32(width), u32(height)}
-
-		actual_extent.width = clamp(actual_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width)
-		actual_extent.height = clamp(actual_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
+		actual_extent := desired
+		actual_extent.x = clamp(actual_extent.x, capabilities.minImageExtent.width, capabilities.maxImageExtent.width)
+		actual_extent.y = clamp(actual_extent.y, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
 
 		return actual_extent
 	}

@@ -380,7 +380,7 @@ load_image_from_ktx_texture :: proc(ktx_texture: ^ktx.Texture2, debug_name: cstr
 	data := ktx.Texture_GetData(ktx_texture)
 	format := ktx.Texture_GetVkFormat(ktx_texture)
 
-	extent := vk.Extent3D{ktx_texture.baseWidth, ktx_texture.baseHeight, ktx_texture.baseDepth}
+	extent := gfx.Extent_3D{ktx_texture.baseWidth, ktx_texture.baseHeight, ktx_texture.baseDepth}
 
 	image := gfx.create_image(
 		format,

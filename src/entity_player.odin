@@ -334,7 +334,7 @@ player_get_view_matrix :: proc(player: ^Player) -> Mat4x4 {
 }
 
 player_get_projection_matrix :: proc(player: ^Player, near: f32 = 0.1) -> Mat4x4 {
-	aspect_ratio := f32(game.render_state.draw_extent.width) / f32(game.render_state.draw_extent.height)
+	aspect_ratio := f32(game.render_state.draw_extent.x) / f32(game.render_state.draw_extent.y)
 
 	projection_matrix := gfx.matrix4_infinite_perspective_reversed_z0_f32(
 		linalg.to_radians(player != nil ? player.camera_fov_deg : 0),
@@ -347,7 +347,7 @@ player_get_projection_matrix :: proc(player: ^Player, near: f32 = 0.1) -> Mat4x4
 }
 
 player_get_projection_matrix_clipped :: proc(player: ^Player, near, far: f32) -> Mat4x4 {
-	aspect_ratio := f32(game.render_state.draw_extent.width) / f32(game.render_state.draw_extent.height)
+	aspect_ratio := f32(game.render_state.draw_extent.x) / f32(game.render_state.draw_extent.y)
 
 	projection_matrix := gfx.matrix4_perspective_z0_f32(
 		linalg.to_radians(player != nil ? player.camera_fov_deg : 0),
@@ -371,7 +371,7 @@ world_space_to_clip_space :: proc(view_projection: Mat4x4, vec: Vec3) -> ([2]f32
 	clip_vec := vec_p.xyz / vec_p.w
 
 	// NDC -> screen (no manual rejection of [-1,1] bounds)
-	screen := (clip_vec.xy * 0.5 + 0.5) * [2]f32{f32(game.render_state.draw_extent.width), f32(game.render_state.draw_extent.height)}
+	screen := (clip_vec.xy * 0.5 + 0.5) * [2]f32{f32(game.render_state.draw_extent.x), f32(game.render_state.draw_extent.y)}
 
 	return screen, true
 }

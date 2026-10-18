@@ -213,7 +213,6 @@ record_ddgi_debug_probes_pass :: proc(cmd: gfx.Command_Buffer, volumes: []DDGIVo
 				color_attachment = &{view = state.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
 				depth_attachment = &{view = state.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
 			)
-			gfx.set_viewport_and_scissor(cmd, state.draw_extent)
 			gfx.cmd_bind_pipeline(cmd, rp.probe_pipeline)
 			gfx.cmd_bind_index_buffer(cmd, rp.probe_ibuf.buffer)
 			gfx.cmd_push_constants(

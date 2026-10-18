@@ -79,8 +79,6 @@ main :: proc() {
 				color_attachment = &{view = gfx.r_ctx.draw_image.image_view, layout = .COLOR_ATTACHMENT_OPTIMAL},
 			)
 
-			gfx.set_viewport_and_scissor(cmd, gfx.r_ctx.draw_extent)
-
 			gfx.cmd_bind_pipeline(cmd, triangle_pipeline)
 
 			gfx.cmd_bind_index_buffer(cmd, index_buffer.buffer)

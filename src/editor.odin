@@ -422,7 +422,7 @@ when EDITOR {
 			y_pos_ws := hlsl.float4{0, 1, 0, 1} * 20
 			z_pos_ws := hlsl.float4{0, 0, 1, 1} * 20
 
-			offset_vs := hlsl.float2{f32(game.render_state.draw_extent.width) - 30, f32(game.render_state.draw_extent.height) - 30}
+			offset_vs := hlsl.float2{f32(game.render_state.draw_extent.x) - 30, f32(game.render_state.draw_extent.y) - 30}
 
 			origin := (origin_ws * view_projection_matrix).xy + offset_vs
 			x_pos := (x_pos_ws * view_projection_matrix).xy + offset_vs

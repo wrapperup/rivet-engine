@@ -128,7 +128,6 @@ record_reflection_probe_debug_pass :: proc(cmd: gfx.Command_Buffer, probes: []Re
 		color_attachment = &{view = state.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
 		depth_attachment = &{view = state.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
 	)
-	gfx.set_viewport_and_scissor(cmd, state.draw_extent)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.reflection_probe_debug_pipeline)
 	gfx.cmd_bind_index_buffer(cmd, rp.probe_ibuf.buffer)
 

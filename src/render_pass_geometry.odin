@@ -86,10 +86,10 @@ record_geometry_pass :: proc(cmd: gfx.Command_Buffer, instances: []RenderInstanc
 		},
 		depth_attachment = &{view = state.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
 	)
-	gfx.set_viewport_and_scissor(cmd, state.draw_extent)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.geometry_rp.mesh_pipeline)
 	record_geometry_draws(cmd, instances)
+
 	gfx.cmd_end_rendering(cmd)
 }
 
@@ -105,7 +105,6 @@ record_geometry_depth_pass :: proc(cmd: gfx.Command_Buffer, instances: []RenderI
 			layout = .DEPTH_ATTACHMENT_OPTIMAL,
 		},
 	)
-	gfx.set_viewport_and_scissor(cmd, state.draw_extent)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.geometry_rp.depth_pipeline)
 	record_geometry_draws(cmd, instances)
 	gfx.cmd_end_rendering(cmd)

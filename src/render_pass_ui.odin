@@ -424,8 +424,6 @@ record_ui_pass :: proc(cmd: gfx.Command_Buffer) {
 			color_attachment = &{view = game.render_state.resolve_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
 		)
 
-		gfx.set_viewport_and_scissor(cmd, game.render_state.draw_extent)
-
 		gfx.cmd_bind_pipeline(cmd, ui_rp.pipeline)
 
 		commands := ui_rp.command_buffers[current_frame_index()]

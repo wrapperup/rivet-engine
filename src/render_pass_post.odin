@@ -42,8 +42,8 @@ record_post_process_pass :: proc(cmd: gfx.Command_Buffer) {
 
 	vk.CmdDispatch(
 		cmd,
-		u32(math.ceil(f32(state.draw_extent.width) / 16.0)),
-		u32(math.ceil(f32(state.draw_extent.height) / 16.0)),
+		u32(math.ceil(f32(state.draw_extent.x) / 16.0)),
+		u32(math.ceil(f32(state.draw_extent.y) / 16.0)),
 		1,
 	)
 }

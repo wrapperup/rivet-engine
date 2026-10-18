@@ -207,7 +207,7 @@ record_atmosphere_lut :: proc(cmd: gfx.Command_Buffer, pipeline: ^gfx.Pipeline, 
 	gfx.cmd_bind_pipeline(cmd, pipeline)
 	gfx.cmd_push_constants(cmd, GPUAtmosphereLutPush{global = current_frame_game().global_buffer.ptr, output = id})
 	meta := gfx.image_meta(img)
-	vk.CmdDispatch(cmd, (meta.extent.width + 7) / 8, (meta.extent.height + 7) / 8, 1)
+	vk.CmdDispatch(cmd, (meta.extent.x + 7) / 8, (meta.extent.y + 7) / 8, 1)
 
 	gfx.image_barrier(cmd, img, .Compute_Shader_Write, .Compute_Fragment_Shader_Read)
 }
@@ -296,7 +296,6 @@ record_atmosphere_background :: proc(cmd: gfx.Command_Buffer) {
 		area = game.render_state.draw_extent,
 		color_attachment = &{view = game.render_state.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
 	)
-	gfx.set_viewport_and_scissor(cmd, game.render_state.draw_extent)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.atmosphere_rp.draw_pipeline)
 	gfx.cmd_push_constants(cmd, GPUAtmosphereDrawPush{global = current_frame_game().global_buffer.ptr})
