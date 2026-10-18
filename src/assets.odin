@@ -430,9 +430,8 @@ load_image_from_ktx_texture :: proc(ktx_texture: ^ktx.Texture2, debug_name: cstr
 	{
 		cmd := gfx.begin_command_buffer(.Main)
 
-		gfx.transition_image(cmd, image, .TRANSFER_DST_OPTIMAL)
+		gfx.transition_image(cmd, image, .General)
 		gfx.cmd_copy_buffer_to_image(cmd, staging, image, copy_regions[:])
-		gfx.transition_image(cmd, image, .SHADER_READ_ONLY_OPTIMAL)
 
         done := gfx.queue_submit(.Main, cmd)
         gfx.wait_semaphore(done)

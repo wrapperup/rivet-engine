@@ -127,9 +127,9 @@ ddgi_volume_resources_init :: proc(
 	{
         cmd := gfx.begin_command_buffer(.Main)
 
-		gfx.transition_image(cmd, volume.irradiance, .GENERAL)
-		gfx.transition_image(cmd, volume.depth, .GENERAL)
-		gfx.transition_image(cmd, volume.offset, .GENERAL)
+		gfx.transition_image(cmd, volume.irradiance, .General)
+		gfx.transition_image(cmd, volume.depth, .General)
+		gfx.transition_image(cmd, volume.offset, .General)
 
 		range := vk.ImageSubresourceRange {
 			aspectMask = {.COLOR},

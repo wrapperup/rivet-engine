@@ -280,6 +280,12 @@ draw :: proc() {
 
     swapchain_image := gfx.swapchain_acquire_next_image(&state.swapchain)
     if swapchain_image == {} {
+        // Nothing will be drawn this frame, but the imgui frame started in the
+        // main loop still has to be ended or the next NewFrame asserts.
+        when EDITOR {
+            im.EndFrame()
+        }
+
         width, height := glfw.GetFramebufferSize(game.window)
         if width == 0 || height == 0 {
             return 
@@ -322,8 +328,8 @@ draw :: proc() {
 	// TODO: this means you can't enable/disable MSAA at runtime until this hack is fixed.
 	if state.msaa_samples > ._1 {
 		// resolve MSAA
-		gfx.transition_image(cmd, state.draw_image, .TRANSFER_SRC_OPTIMAL)
-		gfx.transition_image(cmd, state.resolve_image, .TRANSFER_DST_OPTIMAL)
+		gfx.transition_image(cmd, state.draw_image, .General)
+		gfx.transition_image(cmd, state.resolve_image, .General)
 
 		ex := state.draw_extent
 
@@ -344,29 +350,29 @@ draw :: proc() {
 	final_image: gfx.Image_Id
 	switch game.view_state {
 	case .SceneDepth:
-		gfx.transition_image(cmd, state.depth_image, .TRANSFER_SRC_OPTIMAL)
+		gfx.transition_image(cmd, state.depth_image, .General)
 		final_image = state.depth_image
 	case .ShadowDepth:
-		gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .TRANSFER_SRC_OPTIMAL)
+		gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .General)
 		final_image = game.render_state.shadow_rp.shadow_depth_image
 	case .Raytracing:
 		record_debug_rt_pass(cmd)
-		gfx.transition_image(cmd, state.resolve_image, .TRANSFER_SRC_OPTIMAL)
+		gfx.transition_image(cmd, state.resolve_image, .General)
 		final_image = state.resolve_image
 	case .SceneColor:
 		record_post_process_pass(cmd)
 		record_ui_pass(cmd)
 
 		// Prepare swapchain image
-		gfx.transition_image(cmd, game.render_state.resolve_image, .TRANSFER_SRC_OPTIMAL)
+		gfx.transition_image(cmd, game.render_state.resolve_image, .General)
 		final_image = game.render_state.resolve_image
 	}
 
-	gfx.transition_image(cmd, swapchain_image, .TRANSFER_DST_OPTIMAL)
+	gfx.transition_image(cmd, swapchain_image, .General)
 	gfx.copy_image_to_image(cmd, final_image, swapchain_image, cast(gfx.Offset_2D)state.draw_extent, cast(gfx.Offset_2D)state.draw_extent)
 
     when EDITOR {
-        gfx.transition_image(cmd, swapchain_image, .COLOR_ATTACHMENT_OPTIMAL)
+        gfx.transition_image(cmd, swapchain_image, .General)
         im_gfx.gfx_imgui_render(cmd, swapchain_image, state.draw_extent)
     }
 

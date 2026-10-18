@@ -84,7 +84,7 @@ gfx_imgui_create_fonts_texture :: proc(this: ^Gfx_Imgui) {
 		{
 			cmd := gfx.begin_command_buffer(.Main)
 
-			gfx.transition_image(cmd, this.font_image, .TRANSFER_DST_OPTIMAL)
+			gfx.transition_image(cmd, this.font_image, .General)
 
 			gfx.cmd_copy_buffer_to_image(
 				cmd,
@@ -93,7 +93,6 @@ gfx_imgui_create_fonts_texture :: proc(this: ^Gfx_Imgui) {
 				{vk.BufferImageCopy{imageSubresource = {aspectMask = {.COLOR}, layerCount = 1}, imageExtent = {u32(fw), u32(fh), 1}}},
 			)
 
-			gfx.transition_image(cmd, this.font_image, .SHADER_READ_ONLY_OPTIMAL)
             done := gfx.queue_submit(.Main, cmd)
             gfx.wait_semaphore(done)
 		}
@@ -173,7 +172,6 @@ gfx_imgui_render :: proc(cmd: gfx.Command_Buffer, target_view: gfx.Image_Id, tar
 
 	color_attachment := gfx.Rendering_Attachment_Info {
 		view   = target_view,
-		layout = .COLOR_ATTACHMENT_OPTIMAL,
 	}
 	gfx.cmd_begin_rendering(cmd, target_extent, &color_attachment, nil)
 	defer gfx.cmd_end_rendering(cmd)

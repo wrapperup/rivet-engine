@@ -87,7 +87,7 @@ shadow_prepare :: proc() {
 }
 
 record_shadow_pass :: proc(cmd: gfx.Command_Buffer, instances: []RenderInstance) {
-	gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
+	gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .General)
 	for cascade in u32(0) ..< NUM_CASCADES {
 		record_shadow_cascade(cmd, cascade, instances)
 	}
@@ -100,7 +100,7 @@ record_shadow_cascade :: proc(cmd: gfx.Command_Buffer, cascade: u32, instances: 
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = extent.xy,
-		depth_attachment = &{view = image_view, layout = .DEPTH_ATTACHMENT_OPTIMAL, clear_value = &{depthStencil = {depth = 1.0}}},
+		depth_attachment = &{view = image_view, clear_value = &{depthStencil = {depth = 1.0}}},
 	)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.shadow_rp.mesh_shadow_pipeline)

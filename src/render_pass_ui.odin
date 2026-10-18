@@ -414,14 +414,14 @@ ui_prepare :: proc() {
 record_ui_pass :: proc(cmd: gfx.Command_Buffer) {
 	ui_rp := &game.render_state.ui_rp
 
-	gfx.transition_image(cmd, game.render_state.resolve_image, .COLOR_ATTACHMENT_OPTIMAL)
+	gfx.transition_image(cmd, game.render_state.resolve_image, .General)
 
 	{
 		gfx.cmd_begin_label(cmd, "UI")
 		gfx.cmd_begin_rendering(
 			cmd,
 			area = game.render_state.draw_extent,
-			color_attachment = &{view = game.render_state.resolve_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
+			color_attachment = &{view = game.render_state.resolve_image},
 		)
 
 		gfx.cmd_bind_pipeline(cmd, ui_rp.pipeline)

@@ -89,7 +89,7 @@ Image :: struct {
 	format:         vk.Format,
 	mip_levels:     u32,
 	array_layers:   u32,
-	current_layout: vk.ImageLayout,
+	current_layout: Image_Layout,
 	usage:          vk.ImageUsageFlags,
 	view_type:      vk.ImageViewType,
 	owns_image:     bool,
@@ -167,7 +167,6 @@ Resource_Type :: enum {
 Rendering_Attachment_Info :: struct {
 	view:        Image_Id,
 	clear_value: ^vk.ClearValue,
-	layout:      vk.ImageLayout,
 }
 
 Buffer :: struct($T: typeid) {
@@ -290,6 +289,8 @@ Pipeline_Desc :: union {
 
 Swapchain :: struct {
 	swapchain:              vk.SwapchainKHR,
+	_old_swapchain:          vk.SwapchainKHR,
+
     surface:                vk.SurfaceKHR,
 	swapchain_images:       []Image_Id,
 	swapchain_image_index:  u32,
@@ -334,6 +335,12 @@ Offset_3D :: [3]i32
 Rect_2D :: struct {
 	offset: Offset_2D,
 	extent: Extent_2D,
+}
+
+Image_Layout :: enum {
+    Undefined,
+    General,
+    Present_Src,
 }
 
 
@@ -750,7 +757,7 @@ queue_submit :: proc(
 ) -> (done_semaphore: Semaphore_Pair) {
     queue := &r_ctx.queues[kind]
     if swapchain != nil {
-        transition_image(cmd, swapchain.swapchain_images[swapchain.swapchain_image_index], .PRESENT_SRC_KHR)
+        transition_image(cmd, swapchain.swapchain_images[swapchain.swapchain_image_index], .Present_Src)
     }
 
 	vk_check(vk.EndCommandBuffer(cmd))
@@ -1439,12 +1446,22 @@ image_access_masks :: proc(access: Image_Access) -> (vk.PipelineStageFlags2, vk.
 	unreachable()
 }
 
+image_layout_to_vk_layout :: proc(image_layout: Image_Layout) -> vk.ImageLayout {
+    switch image_layout {
+    case .Undefined:   return .UNDEFINED
+    case .General:     return .GENERAL
+    case .Present_Src: return .PRESENT_SRC_KHR
+    }
+
+    return .UNDEFINED
+}
+
 image_barrier :: proc(
 	cmd: Command_Buffer,
 	image_id: Image_Id,
 	src_access: Image_Access,
 	dst_access: Image_Access,
-	new_layout: vk.ImageLayout = .UNDEFINED,
+	new_layout: Image_Layout = .Undefined,
 	range: Image_Subresource_Range = {},
 ) -> bool {
 	src_stage_mask, src_access_mask := image_access_masks(src_access)
@@ -1452,8 +1469,11 @@ image_barrier :: proc(
 
 	image := image_meta(image_id)
 
-	target_layout := image.current_layout
-	if new_layout != .UNDEFINED {
+	vk_new_layout := image_layout_to_vk_layout(new_layout)
+	current_layout := image.current_layout
+    target_layout := current_layout
+
+	if new_layout != .Undefined {
 		target_layout = new_layout
 	}
 
@@ -1467,7 +1487,7 @@ image_barrier :: proc(
 		layer_count = vk.REMAINING_ARRAY_LAYERS
 	}
 
-	if new_layout != .UNDEFINED {
+	if vk_new_layout != .UNDEFINED {
 		assert(
 			range.base_mip_level == 0 &&
 			(range.mip_count == 0 || range.mip_count == image.mip_levels) &&
@@ -1484,8 +1504,8 @@ image_barrier :: proc(
 		srcAccessMask = src_access_mask,
 		dstStageMask = dst_stage_mask,
 		dstAccessMask = dst_access_mask,
-		oldLayout = image.current_layout,
-		newLayout = target_layout,
+		oldLayout = image_layout_to_vk_layout(current_layout),
+		newLayout = image_layout_to_vk_layout(target_layout),
 		srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
 		dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED,
 		image = image.image,
@@ -1507,14 +1527,14 @@ image_barrier :: proc(
 
 	vk.CmdPipelineBarrier2(cmd, &dep_info)
 
-	if new_layout != .UNDEFINED {
+	if vk_new_layout != .UNDEFINED {
 		image.current_layout = target_layout
 	}
 
 	return true
 }
 
-transition_image :: proc(cmd: Command_Buffer, image: Image_Id, new_layout: vk.ImageLayout) -> bool {
+transition_image :: proc(cmd: Command_Buffer, image: Image_Id, new_layout: Image_Layout) -> bool {
 	return image_barrier(cmd, image, src_access = .All_Writes, dst_access = .All_Reads_Writes, new_layout = new_layout)
 }
 
@@ -1549,9 +1569,9 @@ copy_image_to_image :: proc(cmd: Command_Buffer, src_id: Image_Id, dst_id: Image
 		sType          = .BLIT_IMAGE_INFO_2,
 		pNext          = nil,
 		dstImage       = destination.image,
-		dstImageLayout = .TRANSFER_DST_OPTIMAL,
+		dstImageLayout = .GENERAL,
 		srcImage       = source.image,
-		srcImageLayout = .TRANSFER_SRC_OPTIMAL,
+		srcImageLayout = .GENERAL,
 		filter         = .LINEAR,
 		regionCount    = 1,
 		pRegions       = &blit_region,
@@ -1570,66 +1590,6 @@ destroy_image :: proc(id: Image_Id) {
 	}
 
 	_remove_image(id)
-}
-
-// Uploads the data via a staging buffer. This is useful if your buffer is GPU only.
-staging_write_image :: proc(gpu_image: ^Image, in_data: ^$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
-	assert(gpu_image.image_view != 0, "Image is missing a valid image view.")
-
-	size := size_of(T)
-	gpu_size := gpu_image.extent.width * gpu_image.extent.height * gpu_image.extent.depth * size_of(T) // TODO: Validate this.
-	assert(gpu_size >= (u32(size) + u32(offset)), "The size of the data and offset is larger than the buffer", loc)
-
-	staging := create_buffer(u8, vk.DeviceSize(size_of(T)), .Host_Sequential_Write)
-	write_buffer(&staging, in_data)
-
-	if cmd, ok := immediate_submit(); ok {
-		transition_image(cmd, gpu_image.image, .UNDEFINED, .TRANSFER_DST_OPTIMAL)
-
-		copy_region := vk.BufferImageCopy {
-			bufferOffset = 0,
-			bufferRowLength = 0,
-			bufferImageHeight = 0,
-			imageSubresource = {aspectMask = {.COLOR}, mipLevel = 0, baseArrayLayer = 0, layerCount = 1},
-			imageExtent = extent,
-		}
-
-		vk.CmdCopyBufferToImage(cmd, staging.buffer, gpu_image.image, .TRANSFER_DST_OPTIMAL, 1, &copy_region)
-
-		transition_image(cmd, gpu_image.image, .TRANSFER_DST_OPTIMAL, .SHADER_READ_ONLY_OPTIMAL)
-	}
-
-	destroy_buffer(&staging)
-}
-
-// Uploads the data via a staging buffer. This is useful if your buffer is GPU only.
-staging_write_image_slice :: proc(gpu_image: ^Image, in_data: []$T, offset: vk.DeviceSize = 0, loc := #caller_location) {
-	assert(gpu_image.image_view != 0, "Image is missing a valid image view.")
-
-	size := size_of(T) * len(in_data)
-	gpu_size := gpu_image.extent.width * gpu_image.extent.height * gpu_image.extent.depth * size_of(T) // TODO: Validate this.
-	assert(gpu_size >= (u32(size) + u32(offset)), "The size of the data and offset is larger than the buffer", loc)
-
-	staging := create_buffer(u8, size, .Host_Sequential_Write)
-	write_buffer_slice(&staging, in_data)
-
-	if cmd, ok := immediate_submit(); ok {
-		transition_image(cmd, gpu_image.image, .UNDEFINED, .TRANSFER_DST_OPTIMAL)
-
-		copy_region := vk.BufferImageCopy {
-			bufferOffset = 0,
-			bufferRowLength = 0,
-			bufferImageHeight = 0,
-			imageSubresource = {aspectMask = {.COLOR}, mipLevel = 0, baseArrayLayer = 0, layerCount = 1},
-			imageExtent = gpu_image.extent,
-		}
-
-		vk.CmdCopyBufferToImage(cmd, staging.buffer, gpu_image.image, .TRANSFER_DST_OPTIMAL, 1, &copy_region)
-
-		transition_image(cmd, gpu_image.image, .TRANSFER_DST_OPTIMAL, .SHADER_READ_ONLY_OPTIMAL)
-	}
-
-	destroy_buffer(&staging)
 }
 
 create_descriptor_set_layout :: proc(
@@ -2135,7 +2095,7 @@ cmd_begin_rendering :: proc(
         vk_color_attachment = vk.RenderingAttachmentInfo {
             sType              = .RENDERING_ATTACHMENT_INFO,
             imageView          = color_attachment_meta.image_view,
-            imageLayout        = color_attachment.layout,
+            imageLayout        = .GENERAL,
             loadOp             = color_attachment.clear_value != nil ? .CLEAR : .LOAD,
             storeOp            = .STORE,
             clearValue         = color_attachment.clear_value != nil ? color_attachment.clear_value^ : {},
@@ -2149,7 +2109,7 @@ cmd_begin_rendering :: proc(
         vk_depth_attachment = vk.RenderingAttachmentInfo {
             sType              = .RENDERING_ATTACHMENT_INFO,
             imageView          = depth_attachment_meta.image_view,
-            imageLayout        = depth_attachment.layout,
+            imageLayout        = .GENERAL,
             loadOp             = depth_attachment.clear_value != nil ? .CLEAR : .LOAD,
             storeOp            = .STORE,
             clearValue         = depth_attachment.clear_value != nil ? depth_attachment.clear_value^ : {},
@@ -2205,7 +2165,7 @@ cmd_copy_buffer_to_image :: proc(cmd: Command_Buffer, src_buffer: Buffer($T), ds
 		cmd,
 		src_buffer.buffer,
 		dst_image.image,
-		dst_image.current_layout,
+		.GENERAL,
 		u32(len(buffer_copies)),
 		raw_data(buffer_copies),
 	)
@@ -2218,7 +2178,7 @@ cmd_clear_color_image :: proc(
 	ranges: []vk.ImageSubresourceRange,
 ) {
 	image := image_meta(image_id)
-	vk.CmdClearColorImage(cmd, image.image, image.current_layout, clear_value, u32(len(ranges)), raw_data(ranges))
+	vk.CmdClearColorImage(cmd, image.image, .GENERAL, clear_value, u32(len(ranges)), raw_data(ranges))
 }
 
 cmd_resolve_image :: proc(cmd: Command_Buffer, src_image_id: Image_Id, dst_image_id: Image_Id, resolves: []vk.ImageResolve) {
@@ -2228,9 +2188,9 @@ cmd_resolve_image :: proc(cmd: Command_Buffer, src_image_id: Image_Id, dst_image
 	vk.CmdResolveImage(
 		cmd,
 		src_image.image,
-		src_image.current_layout,
+		.GENERAL,
 		dst_image.image,
-		dst_image.current_layout,
+		.GENERAL,
 		u32(len(resolves)),
 		raw_data(resolves),
 	)
@@ -3119,6 +3079,7 @@ create_swapchain :: proc(
     swapchain.surface = surface
     swapchain.present_mode = present_mode
     swapchain.max_frames_in_flight = max_frames_in_flight
+    swapchain._old_swapchain = _old_swapchain
 
 	capabilities: vk.SurfaceCapabilitiesKHR
 	vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(r_ctx.physical_device, swapchain.surface, &capabilities)
@@ -3222,6 +3183,11 @@ swapchain_resize :: proc(swapchain: ^Swapchain, new_size: Extent_2D) {
 
     flush_vk_arena(&swapchain.arena)
 
+    // destroy the _old_ old swapchain.
+    if swapchain._old_swapchain != {} {
+        vk.DestroySwapchainKHR(r_ctx.device, swapchain._old_swapchain, nil)
+    }
+
     new_swapchain := create_swapchain(
        swapchain.surface,
        swapchain.present_mode,
@@ -3257,6 +3223,9 @@ swapchain_acquire_next_image :: proc(swapchain: ^Swapchain) -> (image: Image_Id)
 swapchain_destroy :: proc(swapchain: ^Swapchain) {
     flush_vk_arena(&swapchain.arena)
     vk.DestroySwapchainKHR(r_ctx.device, swapchain.swapchain, nil)
+    if swapchain._old_swapchain != {} {
+        vk.DestroySwapchainKHR(r_ctx.device, swapchain._old_swapchain, nil)
+    }
 }
 
 _choose_swap_extent :: proc(desired: Extent_2D, capabilities: ^vk.SurfaceCapabilitiesKHR) -> Extent_2D {

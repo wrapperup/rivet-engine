@@ -63,9 +63,9 @@ init_geometry_rp :: proc() {
 record_geometry_pass :: proc(cmd: gfx.Command_Buffer, instances: []RenderInstance) {
     state := &game.render_state
 
-	gfx.transition_image(cmd, state.draw_image, .COLOR_ATTACHMENT_OPTIMAL)
-	gfx.transition_image(cmd, state.depth_image, .DEPTH_ATTACHMENT_OPTIMAL)
-	gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .DEPTH_READ_ONLY_OPTIMAL)
+	gfx.transition_image(cmd, state.draw_image, .General)
+	gfx.transition_image(cmd, state.depth_image, .General)
+	gfx.transition_image(cmd, game.render_state.shadow_rp.shadow_depth_image, .General)
 	record_geometry_depth_pass(cmd, instances)
 	gfx.image_barrier(cmd, state.depth_image, src_access = .Depth_Attachment_Read_Write, dst_access = .Depth_Attachment_Read_Write)
 
@@ -81,10 +81,9 @@ record_geometry_pass :: proc(cmd: gfx.Command_Buffer, instances: []RenderInstanc
 		area = state.draw_extent,
 		color_attachment = &{
 			view = state.draw_image,
-			layout = .COLOR_ATTACHMENT_OPTIMAL,
 			clear_value = game.render_state.draw_sky ? nil : &background_clear,
 		},
-		depth_attachment = &{view = state.depth_image, layout = .DEPTH_ATTACHMENT_OPTIMAL},
+		depth_attachment = &{view = state.depth_image},
 	)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.geometry_rp.mesh_pipeline)
@@ -102,7 +101,6 @@ record_geometry_depth_pass :: proc(cmd: gfx.Command_Buffer, instances: []RenderI
 		depth_attachment = &{
 			view = state.depth_image,
 			clear_value = &{depthStencil = {depth = 0.0}},
-			layout = .DEPTH_ATTACHMENT_OPTIMAL,
 		},
 	)
 	gfx.cmd_bind_pipeline(cmd, game.render_state.geometry_rp.depth_pipeline)

@@ -64,7 +64,7 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe) {
 	{
         cmd := gfx.begin_command_buffer(.Main)
 
-		gfx.transition_image(cmd, probe.cube_image_id, .GENERAL)
+		gfx.transition_image(cmd, probe.cube_image_id, .General)
 
 		black := vk.ClearColorValue {
 			float32 = {0, 0, 0, 1},
@@ -74,8 +74,7 @@ reflection_probe_init :: proc(probe: ^ReflectionProbe) {
 			levelCount = probe.mip_count,
 			layerCount = 6,
 		}
-		// TODO: gfx command
-		vk.CmdClearColorImage(cmd, gfx.image_meta(probe.cube_image_id).image, .GENERAL, &black, 1, &range)
+		gfx.cmd_clear_color_image(cmd, probe.cube_image_id, &black, {range})
 
         done := gfx.queue_submit(.Main, cmd)
         gfx.wait_semaphore(done)

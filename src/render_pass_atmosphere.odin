@@ -202,7 +202,7 @@ atmosphere_prepare :: proc() {
 }
 
 record_atmosphere_lut :: proc(cmd: gfx.Command_Buffer, pipeline: ^gfx.Pipeline, img: gfx.Image_Id, id: gfx.Image_Id) {
-	gfx.image_barrier(cmd, img, .All_Reads_Writes, .Compute_Shader_Write, .GENERAL)
+	gfx.image_barrier(cmd, img, .All_Reads_Writes, .Compute_Shader_Write, .General)
 
 	gfx.cmd_bind_pipeline(cmd, pipeline)
 	gfx.cmd_push_constants(cmd, GPUAtmosphereLutPush{global = current_frame_game().global_buffer.ptr, output = id})
@@ -232,7 +232,7 @@ record_atmosphere_pass :: proc(cmd: gfx.Command_Buffer) {
 	}
 
 	if environment_changed {
-		gfx.image_barrier(cmd, rp.environment_id, .All_Reads_Writes, .Compute_Shader_Write, .GENERAL)
+		gfx.image_barrier(cmd, rp.environment_id, .All_Reads_Writes, .Compute_Shader_Write, .General)
 
 		gfx.cmd_bind_pipeline(cmd, rp.environment_pipeline)
 		gfx.cmd_push_constants(
@@ -261,8 +261,8 @@ record_atmosphere_pass :: proc(cmd: gfx.Command_Buffer) {
 	}
 
 	// Rebuild view-dependent aerial perspective each frame.
-	gfx.image_barrier(cmd, rp.aerial_scattering, .All_Reads_Writes, .Compute_Shader_Write, .GENERAL)
-	gfx.image_barrier(cmd, rp.aerial_transmittance, .All_Reads_Writes, .Compute_Shader_Write, .GENERAL)
+	gfx.image_barrier(cmd, rp.aerial_scattering, .All_Reads_Writes, .Compute_Shader_Write, .General)
+	gfx.image_barrier(cmd, rp.aerial_transmittance, .All_Reads_Writes, .Compute_Shader_Write, .General)
 
 	gfx.cmd_bind_pipeline(cmd, rp.aerial_pipeline)
 	gfx.cmd_push_constants(
@@ -294,7 +294,7 @@ record_atmosphere_background :: proc(cmd: gfx.Command_Buffer) {
 	gfx.cmd_begin_rendering(
 		cmd,
 		area = game.render_state.draw_extent,
-		color_attachment = &{view = game.render_state.draw_image, layout = .COLOR_ATTACHMENT_OPTIMAL},
+		color_attachment = &{view = game.render_state.draw_image},
 	)
 
 	gfx.cmd_bind_pipeline(cmd, game.render_state.atmosphere_rp.draw_pipeline)
