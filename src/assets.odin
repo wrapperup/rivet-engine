@@ -117,7 +117,7 @@ load_asset_path :: proc(
 ) -> (
 	asset: ^T,
 ) where intrinsics.type_is_subtype_of(T, Asset) {
-	return load_asset_handle(Handle(T){path})
+	return load_asset_handle(Handle(T){path}, method)
 }
 
 load_asset_handle :: proc(
