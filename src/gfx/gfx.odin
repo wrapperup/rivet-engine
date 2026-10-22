@@ -1,5 +1,6 @@
 package gfx
 
+import "core:container/pool"
 import "core:mem"
 import "core:slice"
 import "core:fmt"
@@ -13,6 +14,8 @@ import "core:strings"
 import vma "deps:odin-vma"
 import "vendor:glfw"
 import vk "vendor:vulkan"
+
+import dynamic_pool "../containers/dynamic_pool"
 
 MAX_BINDLESS_IMAGES :: 1024
 MAX_BINDLESS_SAMPLERS :: 128
@@ -203,7 +206,6 @@ Buffer_Memory_Flag :: enum {
 }
 Buffer_Memory_Flags :: bit_set[Buffer_Memory_Flag]
 
-// Only purpose of this is to be captured during bindgen.
 Ptr :: struct($T: typeid) {
 	address: vk.DeviceAddress,
 }
@@ -231,11 +233,9 @@ Bindless_System :: struct {
 	pool:              vk.DescriptorPool,
 	descriptor_set:    vk.DescriptorSet,
 
-	// Storage
-	images:            [dynamic]Image,
-	samplers:          [dynamic]vk.Sampler,
-	free_images:       [dynamic]Image_Id,
-	free_samplers:     [dynamic]Sampler_Id,
+	// StorageHandle_Pool
+	images:            dynamic_pool.Dynamic_Pool(Image, Image_Id),
+	samplers:          dynamic_pool.Dynamic_Pool(vk.Sampler, Sampler_Id),
 }
 
 Pipeline :: struct {
@@ -2079,6 +2079,20 @@ cmd_draw_indexed :: #force_inline proc(
 	vk.CmdDrawIndexed(cmd, index_count, instance_count, first_index, vertex_offset, first_instance)
 }
 
+cmd_draw_indirect :: #force_inline proc(
+	cmd: Command_Buffer,
+	buffer: Buffer($T),
+    draw_count := 0,
+    offset := 0,
+) {
+    stride := size_of(T)
+    vk.CmdDrawIndirect(cmd, buffer.buffer, offset, draw_count, auto_cast stride)
+}
+
+cmd_dispatch :: #force_inline proc(cmd: Command_Buffer, group_count_x: u32 = 1, group_count_y: u32 = 1, group_count_z: u32 = 1) {
+	vk.CmdDispatch(cmd, group_count_x, group_count_y, group_count_z)
+}
+
 cmd_begin_rendering :: proc(
 	cmd: Command_Buffer,
 	area: Extent_2D,
@@ -2135,10 +2149,6 @@ cmd_begin_rendering :: proc(
 
 cmd_end_rendering :: #force_inline proc(cmd: Command_Buffer) {
 	vk.CmdEndRendering(cmd)
-}
-
-cmd_dispatch :: #force_inline proc(cmd: Command_Buffer, group_count_x: u32 = 1, group_count_y: u32 = 1, group_count_z: u32 = 1) {
-	vk.CmdDispatch(cmd, group_count_x, group_count_y, group_count_z)
 }
 
 cmd_begin_label :: proc(cmd: Command_Buffer, label: cstring, color: [4]f32 = 1) {
@@ -2494,44 +2504,32 @@ init_bindless_descriptors :: proc() {
 	)
 	bindless_system.descriptor_set = allocate_descriptor_set(bindless_system.pool, bindless_system.descriptor_layout)
 
-    // burn one slot
-    append(&bindless_system.images,   {})
-    append(&bindless_system.samplers, {})
+    // burn one
+    dynamic_pool.append(&bindless_system.images,   {})
+    dynamic_pool.append(&bindless_system.samplers, {})
 }
 
 shutdown_bindless_descriptors :: proc() {
-	delete(r_ctx.bindless_system.images)
-	delete(r_ctx.bindless_system.samplers)
-	delete(r_ctx.bindless_system.free_images)
-	delete(r_ctx.bindless_system.free_samplers)
+	dynamic_pool.destroy(r_ctx.bindless_system.images)
+	dynamic_pool.destroy(r_ctx.bindless_system.samplers)
     vk.DestroyDescriptorSetLayout(r_ctx.device, r_ctx.bindless_system.descriptor_layout, nil)
     vk.DestroyDescriptorPool(r_ctx.device, r_ctx.bindless_system.pool, nil)
 	r_ctx.bindless_system = {}
 }
 
 image_meta :: proc(id: Image_Id) -> ^Image {
-	bindless_system := &r_ctx.bindless_system
-	return &bindless_system.images[id]
+	return dynamic_pool.get(r_ctx.bindless_system.images, id)
 }
 
 sampler_meta :: proc(id: Sampler_Id) -> vk.Sampler {
-	bindless_system := &r_ctx.bindless_system
-	return bindless_system.samplers[id]
+	return dynamic_pool.get(r_ctx.bindless_system.samplers, id)^
 }
 
 add_image_impl :: proc(image: Image) -> Image_Id {
 	bindless_system := &r_ctx.bindless_system
 
 	// assert(.STORAGE in image.usage || .SAMPLED in image.usage)
-
-	image_id: Image_Id
-	if len(bindless_system.free_images) > 0 {
-		image_id = pop(&bindless_system.free_images) // recycle a freed slot
-		bindless_system.images[image_id] = image
-	} else {
-		image_id = Image_Id(u32(len(bindless_system.images)))
-		append(&bindless_system.images, image)
-	}
+    image_id := dynamic_pool.append(&bindless_system.images, image)
 	assert(u32(image_id) < MAX_BINDLESS_IMAGES, "bindless image slots exhausted")
 
 	if .STORAGE in image.usage {
@@ -2579,14 +2577,7 @@ add_image_with_view_impl :: proc(image: Image, view: vk.ImageView) -> Image_Id {
 add_sampler :: proc(sampler: vk.Sampler) -> Sampler_Id {
 	bindless_system := &r_ctx.bindless_system
 
-	sampler_id: Sampler_Id
-	if len(bindless_system.free_samplers) > 0 {
-		sampler_id = pop(&bindless_system.free_samplers) // recycle a freed slot
-		bindless_system.samplers[sampler_id] = sampler
-	} else {
-		sampler_id = Sampler_Id(u32(len(bindless_system.samplers)))
-		append(&bindless_system.samplers, sampler)
-	}
+    sampler_id := dynamic_pool.append(&bindless_system.samplers, sampler)
 	assert(u32(sampler_id) < MAX_BINDLESS_SAMPLERS, "bindless sampler slots exhausted")
 
 	write_descriptor_set(
@@ -2599,14 +2590,12 @@ add_sampler :: proc(sampler: vk.Sampler) -> Sampler_Id {
 	return sampler_id
 }
 
-_remove_image :: proc(id: Image_Id) {
-	r_ctx.bindless_system.images[id] = {}
-	append(&r_ctx.bindless_system.free_images, id)
+_remove_image :: proc(handle: Image_Id) {
+    dynamic_pool.remove(&r_ctx.bindless_system.images, handle)
 }
 
-_remove_sampler :: proc(id: Sampler_Id) {
-	r_ctx.bindless_system.samplers[id] = 0
-	append(&r_ctx.bindless_system.free_samplers, id)
+_remove_sampler :: proc(handle: Sampler_Id) {
+    dynamic_pool.remove(&r_ctx.bindless_system.samplers, handle)
 }
 
 _create_pipeline_layout :: proc(
