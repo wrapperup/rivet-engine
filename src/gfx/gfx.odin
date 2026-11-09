@@ -545,9 +545,10 @@ init_vulkan :: proc(config: Init_Config) -> bool {
 		defer delete(devices)
 		vk.EnumeratePhysicalDevices(r_ctx.instance, &device_count, raw_data(devices))
 		for device in devices {
-			is_suitable, is_discrete := is_device_suitable(device)
+			is_suitable, is_discrete, capabilities := is_device_suitable(device)
 			if is_suitable && is_discrete {
 				r_ctx.physical_device = device
+                r_ctx.capabilities = capabilities
 				break
 			}
 		}
@@ -555,9 +556,10 @@ init_vulkan :: proc(config: Init_Config) -> bool {
 		// Do a second pass but don't require a discrete GPU.
 		if r_ctx.physical_device == nil {
 			for device in devices {
-				is_suitable, _is_discrete := is_device_suitable(device)
+				is_suitable, _is_discrete, capabilities := is_device_suitable(device)
 				if is_suitable {
 					r_ctx.physical_device = device
+                    r_ctx.capabilities = capabilities
 					break
 				}
 			}
@@ -928,7 +930,7 @@ supports_required_features :: proc(required: $T, test: T) -> bool {
 	return supports_all_flags
 }
 
-is_device_suitable :: proc(device: vk.PhysicalDevice) -> (is_suitable: bool, is_discrete: bool) {
+is_device_suitable :: proc(device: vk.PhysicalDevice) -> (is_suitable: bool, is_discrete: bool, capabilities: Capabilities) {
 	properties: vk.PhysicalDeviceProperties
 	vk.GetPhysicalDeviceProperties(device, &properties)
 
@@ -974,7 +976,11 @@ is_device_suitable :: proc(device: vk.PhysicalDevice) -> (is_suitable: bool, is_
 
 	extensions_supported := check_device_extension_support(device)
 
-	return extensions_supported && supports_features, properties.deviceType == .DISCRETE_GPU
+    capabilities = {
+        ray_query = cast(bool) vk_ray_query_features.rayQuery
+    }
+
+	return extensions_supported && supports_features, properties.deviceType == .DISCRETE_GPU, capabilities
 }
 
 check_device_extension_support :: proc(device: vk.PhysicalDevice) -> bool {
@@ -1634,7 +1640,7 @@ create_descriptor_set_layout :: proc(
 	return set
 }
 
-create_pool :: proc(
+create_descriptor_pool :: proc(
 	max_sets: u32,
 	pool_sizes: []vk.DescriptorPoolSize,
 	flags: vk.DescriptorPoolCreateFlags = {},
@@ -2492,7 +2498,7 @@ init_bindless_descriptors :: proc() {
 		{.VERTEX, .FRAGMENT, .COMPUTE},
 	)
 
-	bindless_system.pool = create_pool(
+	bindless_system.pool = create_descriptor_pool(
 		1,
 		{
 			{type = .SAMPLER,       descriptorCount = MAX_BINDLESS_SAMPLERS},
