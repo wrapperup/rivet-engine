@@ -249,7 +249,7 @@ draw :: proc() {
 
 	// TEMP: test draw command
 	for &ball in get_entities(Ball) {
-		material_asset := get_asset(Material_Asset, "materials/test.mat")
+		material_asset := get_asset(Material_Asset, "materials/test_ball.mat")
 		if material_asset != nil {
 			draw_mesh(game.ball_mesh, material_asset.material_id, ball.translation, ball.rotation, 1, include_in_raytracing = false)
 		}

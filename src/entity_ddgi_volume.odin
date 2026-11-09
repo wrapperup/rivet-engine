@@ -1,5 +1,8 @@
 package game
 
+import "core:fmt"
+import "core:slice"
+import "core:os"
 import "core:math/linalg"
 
 import "gfx"
@@ -71,23 +74,63 @@ DDGIVolume :: struct {
 	using volume: DDGI_Volume_Resources,
 }
 
-ddgi_do_bake :: proc(resources: ^DDGI_Volume_Resources) -> (should_trace, should_relocate: bool) {
-	switch resources.bake_state {
+ddgi_do_bake :: proc(volume: ^DDGIVolume) -> (should_trace, should_relocate: bool) {
+	switch volume.bake_state {
 	case .Realtime:
-		resources.gpu.hysteresis = resources.realtime_hysteresis
+		volume.gpu.hysteresis = volume.realtime_hysteresis
 		return true, true
 	case .Warmup:
-		resources.gpu.hysteresis = 0.9
-		resources.bake_frame += 1
-		if resources.bake_frame >= resources.warmup_frames {resources.bake_state = .Accumulate; resources.bake_frame = 0}
+		volume.gpu.hysteresis = 0.9
+		volume.bake_frame += 1
+		if volume.bake_frame >= volume.warmup_frames {volume.bake_state = .Accumulate; volume.bake_frame = 0}
 		return true, true
 	case .Accumulate:
-		n := f32(resources.bake_frame)
-		resources.gpu.hysteresis = n / (n + 1)
-		resources.bake_frame += 1
-		if resources.bake_frame >= resources.bake_frames {
-			resources.bake_state = .Baked
-            resources.bake_frame = 0
+		n := f32(volume.bake_frame)
+		volume.gpu.hysteresis = n / (n + 1)
+		volume.bake_frame += 1
+		if volume.bake_frame >= volume.bake_frames {
+			volume.bake_state = .Baked
+            volume.bake_frame = 0
+
+            // hack: save readback of image into an asset
+            gfx.wait_idle()
+
+            engine_id := game.state.current_scene.engine_ids[volume.id]
+
+            irradiance_extent := gfx.image_meta(volume.irradiance).extent
+            depth_extent := gfx.image_meta(volume.depth).extent
+            offset_extent := gfx.image_meta(volume.offset).extent
+
+            irradiance_buffer_len := irradiance_extent.x * irradiance_extent.y * 4 // RGBA16f
+            depth_buffer_len      := depth_extent.x * depth_extent.y * 2           // RG16f
+            offset_buffer_len     := offset_extent.x * offset_extent.y * 4         // RGBA16f
+
+            irradiance_buffer := gfx.create_buffer(f16, irradiance_buffer_len, .Host_Random)
+            depth_buffer := gfx.create_buffer(f16, depth_buffer_len, .Host_Random)
+            offset_buffer := gfx.create_buffer(f16, offset_buffer_len, .Host_Random)
+
+            {
+                cmd := gfx.begin_command_buffer(.Main)
+
+                gfx.cmd_copy_image_to_buffer(cmd, volume.irradiance, irradiance_buffer)
+                gfx.cmd_copy_image_to_buffer(cmd, volume.depth, depth_buffer)
+                gfx.cmd_copy_image_to_buffer(cmd, volume.offset, offset_buffer)
+
+                sema_wait := gfx.queue_submit(.Main, cmd)
+                gfx.wait_semaphore(sema_wait)
+            }
+
+            assert(irradiance_buffer.info.pMappedData != nil)
+            assert(depth_buffer.info.pMappedData != nil)
+            assert(offset_buffer.info.pMappedData != nil)
+
+            irradiance_slice := slice.bytes_from_ptr(irradiance_buffer.info.pMappedData, auto_cast (irradiance_buffer_len * 2))
+            depth_slice := slice.bytes_from_ptr(depth_buffer.info.pMappedData, auto_cast (depth_buffer_len * 2))
+            offset_slice := slice.bytes_from_ptr(offset_buffer.info.pMappedData, auto_cast (offset_buffer_len * 2))
+
+            a := os.write_entire_file(fmt.tprint("assets/temp/", engine_id, "_irradiance", sep = ""), irradiance_slice)
+            b := os.write_entire_file(fmt.tprint("assets/temp/", engine_id, "_depth", sep = ""), depth_slice)
+            c := os.write_entire_file(fmt.tprint("assets/temp/", engine_id, "_offset", sep = ""), offset_slice)
 		}
 		return true, false
 	case .Baked:
@@ -105,6 +148,7 @@ ddgi_volume_resources_init :: proc(
 	arena: ^gfx.Deletion_Queue,
 	priority: f32 = 0.0,
 	edge_fade: f32 = 1.0,
+    engine_id := "",
 ) {
 	volume.bake_state = .Accumulate
 	volume.realtime_hysteresis = 0.99
@@ -115,14 +159,26 @@ ddgi_volume_resources_init :: proc(
 	tiles_x := counts.x * counts.z
 	tiles_y := counts.y
 
-	atlas_usage: vk.ImageUsageFlags : {.STORAGE, .SAMPLED, .TRANSFER_DST}
+	atlas_usage: vk.ImageUsageFlags : {.STORAGE, .SAMPLED, .TRANSFER_DST, .TRANSFER_SRC}
 	volume.irradiance = gfx.create_image(.R16G16B16A16_SFLOAT, {tiles_x * DDGI_IRR_TILE, tiles_y * DDGI_IRR_TILE, 1}, atlas_usage)
 	volume.depth = gfx.create_image(.R16G16_SFLOAT, {tiles_x * DDGI_DEPTH_TILE, tiles_y * DDGI_DEPTH_TILE, 1}, atlas_usage)
 	volume.offset = gfx.create_image(.R16G16B16A16_SFLOAT, {tiles_x, tiles_y, 1}, atlas_usage)
 
+    irradiance_extent := gfx.image_meta(volume.irradiance).extent
+    depth_extent := gfx.image_meta(volume.depth).extent
+    offset_extent := gfx.image_meta(volume.offset).extent
+
+    irradiance_data, irr_err := os.read_entire_file(fmt.tprint("assets/temp/", engine_id, "_irradiance", sep = ""), context.temp_allocator)
+    depth_data, depth_err := os.read_entire_file(fmt.tprint("assets/temp/", engine_id, "_depth", sep = ""), context.temp_allocator)
+    offset_data, offset_err := os.read_entire_file(fmt.tprint("assets/temp/", engine_id, "_offset", sep = ""), context.temp_allocator)
+
 	gfx.defer_destroy(arena, volume.irradiance)
 	gfx.defer_destroy(arena, volume.depth)
 	gfx.defer_destroy(arena, volume.offset)
+
+    if irr_err == nil && depth_err == nil && offset_err == nil {
+        volume.bake_state = .Baked
+    }
 
 	{
         cmd := gfx.begin_command_buffer(.Main)
@@ -131,24 +187,47 @@ ddgi_volume_resources_init :: proc(
 		gfx.transition_image(cmd, volume.depth, .General)
 		gfx.transition_image(cmd, volume.offset, .General)
 
-		range := vk.ImageSubresourceRange {
-			aspectMask = {.COLOR},
-			levelCount = 1,
-			layerCount = 1,
-		}
-		zero := vk.ClearColorValue {
-			float32 = {0, 0, 0, 0},
-		}
-		md := 1.5 * linalg.length(spacing)
-		far := vk.ClearColorValue {
-			float32 = {md, md * md, 0, 0},
-		}
-		offset_init := vk.ClearColorValue {
-			float32 = {0, 0, 0, 1},
-		}
-		gfx.cmd_clear_color_image(cmd, volume.irradiance, &zero, {range})
-		gfx.cmd_clear_color_image(cmd, volume.depth, &far, {range})
-		gfx.cmd_clear_color_image(cmd, volume.offset, &offset_init, {range})
+        if irr_err == nil && depth_err == nil && offset_err == nil {
+            irradiance_buffer_len := irradiance_extent.x * irradiance_extent.y * 4 // RGBA16f
+            depth_buffer_len      := depth_extent.x * depth_extent.y * 2           // RG16f
+            offset_buffer_len     := offset_extent.x * offset_extent.y * 4         // RGBA16f
+
+            irradiance_buffer := gfx.create_buffer(f16, irradiance_buffer_len, .Host_Sequential_Write)
+            gfx.defer_destroy(frame_arena(), irradiance_buffer)
+
+            depth_buffer := gfx.create_buffer(f16, depth_buffer_len, .Host_Sequential_Write)
+            gfx.defer_destroy(frame_arena(), depth_buffer)
+
+            offset_buffer := gfx.create_buffer(f16, offset_buffer_len, .Host_Sequential_Write)
+            gfx.defer_destroy(frame_arena(), offset_buffer)
+
+            gfx.write_buffer_slice(&irradiance_buffer, irradiance_data)
+            gfx.write_buffer_slice(&depth_buffer, depth_data)
+            gfx.write_buffer_slice(&offset_buffer, offset_data)
+
+            gfx.cmd_copy_buffer_to_image(cmd, irradiance_buffer, volume.irradiance)
+            gfx.cmd_copy_buffer_to_image(cmd, depth_buffer, volume.depth)
+            gfx.cmd_copy_buffer_to_image(cmd, offset_buffer, volume.offset)
+        } else {
+            range := vk.ImageSubresourceRange {
+                aspectMask = {.COLOR},
+                levelCount = 1,
+                layerCount = 1,
+            }
+            zero := vk.ClearColorValue {
+                float32 = {0, 0, 0, 0},
+            }
+            md := 1.5 * linalg.length(spacing)
+            far := vk.ClearColorValue {
+                float32 = {md, md * md, 0, 0},
+            }
+            offset_init := vk.ClearColorValue {
+                float32 = {0, 0, 0, 1},
+            }
+            gfx.cmd_clear_color_image(cmd, volume.irradiance, &zero, {range})
+            gfx.cmd_clear_color_image(cmd, volume.depth, &far, {range})
+            gfx.cmd_clear_color_image(cmd, volume.offset, &offset_init, {range})
+        }
 
         done := gfx.queue_submit(.Main, cmd)
         gfx.wait_semaphore(done)

@@ -2210,13 +2210,55 @@ cmd_end_label :: #force_inline proc(cmd: Command_Buffer) {
 	}
 }
 
-cmd_copy_buffer_to_image :: proc(cmd: Command_Buffer, src_buffer: Buffer($T), dst_image_id: Image_Id, buffer_copies: []vk.BufferImageCopy) {
+cmd_copy_buffer_to_image :: proc(cmd: Command_Buffer, src_buffer: Buffer($T), dst_image_id: Image_Id, buffer_copies: []vk.BufferImageCopy = {}) {
 	dst_image := image_meta(dst_image_id)
+    buffer_copies := buffer_copies
+
+    if len(buffer_copies) == 0 {
+        buffer_copies = {
+			vk.BufferImageCopy {
+				imageOffset = {0, 0, 0},
+                imageExtent = { **dst_image.extent },
+				bufferOffset = 0,
+				bufferRowLength = dst_image.extent.x,
+				bufferImageHeight = dst_image.extent.y,
+				imageSubresource = {mipLevel = 0, baseArrayLayer = 0, layerCount = 1, aspectMask = {.COLOR}},
+            }
+        }
+    }
+
 	vk.CmdCopyBufferToImage(
 		cmd,
 		src_buffer.buffer,
 		dst_image.image,
 		.GENERAL,
+		u32(len(buffer_copies)),
+		raw_data(buffer_copies),
+	)
+}
+
+cmd_copy_image_to_buffer :: proc(cmd: Command_Buffer, src_image_id: Image_Id, dst_buffer: Buffer($T), buffer_copies: []vk.BufferImageCopy = {}) {
+	src_image := image_meta(src_image_id)
+    buffer_copies := buffer_copies
+
+    if len(buffer_copies) == 0 {
+        buffer_copies = {
+			vk.BufferImageCopy {
+				imageOffset = {0, 0, 0},
+                imageExtent = { **src_image.extent },
+				bufferOffset = 0,
+				bufferRowLength = src_image.extent.x,
+				bufferImageHeight = src_image.extent.y,
+				imageSubresource = {mipLevel = 0, baseArrayLayer = 0, layerCount = 1, aspectMask = {.COLOR}},
+            }
+        }
+    }
+
+	vk.CmdCopyImageToBuffer(
+		cmd,
+        src_image.image,
+        .GENERAL,
+		dst_buffer.buffer,
 		u32(len(buffer_copies)),
 		raw_data(buffer_copies),
 	)

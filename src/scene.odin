@@ -143,6 +143,7 @@ parse_gltf_into_scene :: proc(scene: ^Scene, data: ^gltf2.Data) {
 				&scene.gpu_arena,
 				priority = json_f32(object["priority"], 0),
 				edge_fade = json_f32(object["edge_fade"], 1.0),
+                engine_id = engine_id,
 			)
 
 			append(&scene.entities, vol.id)
