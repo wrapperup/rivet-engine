@@ -82,6 +82,7 @@ Queue :: struct {
 Init_Config :: struct {
 	enable_validation_layers: bool,
 	enable_logs:              bool,
+    request_raytracing:       bool,
 }
 
 Image :: struct {
@@ -404,13 +405,16 @@ REQUIRED_VK_RAY_QUERY_FEATURES := vk.PhysicalDeviceRayQueryFeaturesKHR {
 }
 
 // Set required extensions to support.
-DEVICE_EXTENSIONS := []cstring {
+REQUIRED_DEVICE_EXTENSIONS := []cstring {
 	vk.KHR_SWAPCHAIN_EXTENSION_NAME,
 	vk.KHR_DYNAMIC_RENDERING_EXTENSION_NAME, // Enabled by default in 1.3
 	vk.KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME, // Enable by default in 1.3
-	vk.KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-	vk.KHR_RAY_QUERY_EXTENSION_NAME,
-	vk.KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+}
+
+RAYTRACING_DEVICE_EXTENSIONS := []cstring {
+    vk.KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+    vk.KHR_RAY_QUERY_EXTENSION_NAME,
+    vk.KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
 }
 
 // Set validation layers to enable.
@@ -545,18 +549,20 @@ init_vulkan :: proc(config: Init_Config) -> bool {
 		defer delete(devices)
 		vk.EnumeratePhysicalDevices(r_ctx.instance, &device_count, raw_data(devices))
 		for device in devices {
-			is_suitable, is_discrete, capabilities := is_device_suitable(device)
-			if is_suitable && is_discrete {
-				r_ctx.physical_device = device
+			is_suitable, is_discrete, has_optional, capabilities := is_device_suitable(device)
+            if is_suitable && is_discrete {
+                r_ctx.physical_device = device
                 r_ctx.capabilities = capabilities
-				break
+				if has_optional {
+                    break
+                }
 			}
 		}
 
 		// Do a second pass but don't require a discrete GPU.
 		if r_ctx.physical_device == nil {
 			for device in devices {
-				is_suitable, _is_discrete, capabilities := is_device_suitable(device)
+				is_suitable, _is_discrete, _has_optional, capabilities := is_device_suitable(device)
 				if is_suitable {
 					r_ctx.physical_device = device
                     r_ctx.capabilities = capabilities
@@ -569,6 +575,11 @@ init_vulkan :: proc(config: Init_Config) -> bool {
 			panic("No GPU found that supports all required features.")
 		}
 	}
+
+    // force disable raytracing
+    if r_ctx.capabilities.ray_query && !config.request_raytracing {
+        r_ctx.capabilities.ray_query = false
+    }
 
 	{ 	// Keep device limits
 		properties: vk.PhysicalDeviceProperties
@@ -644,6 +655,14 @@ init_vulkan :: proc(config: Init_Config) -> bool {
             })
         }
 
+        device_extensions := make([dynamic]cstring, context.temp_allocator)
+
+        append(&device_extensions, ..REQUIRED_DEVICE_EXTENSIONS)
+
+        if r_ctx.capabilities.ray_query {
+            append(&device_extensions, ..RAYTRACING_DEVICE_EXTENSIONS)
+        }
+
 		device_create_info := vk.DeviceCreateInfo {
 			sType                   = .DEVICE_CREATE_INFO,
 			pNext                   = &REQUIRED_FEATURES,
@@ -651,8 +670,8 @@ init_vulkan :: proc(config: Init_Config) -> bool {
 			pQueueCreateInfos       = raw_data(queue_create_infos),
 			queueCreateInfoCount    = u32(len(queue_create_infos)),
 
-			ppEnabledExtensionNames = raw_data(DEVICE_EXTENSIONS),
-			enabledExtensionCount   = u32(len(DEVICE_EXTENSIONS)),
+			ppEnabledExtensionNames = raw_data(device_extensions),
+			enabledExtensionCount   = u32(len(device_extensions)),
 		}
 
 		vk_check(vk.CreateDevice(r_ctx.physical_device, &device_create_info, nil, &r_ctx.device))
@@ -930,7 +949,7 @@ supports_required_features :: proc(required: $T, test: T) -> bool {
 	return supports_all_flags
 }
 
-is_device_suitable :: proc(device: vk.PhysicalDevice) -> (is_suitable: bool, is_discrete: bool, capabilities: Capabilities) {
+is_device_suitable :: proc(device: vk.PhysicalDevice) -> (is_suitable: bool, is_discrete: bool, has_optional: bool, capabilities: Capabilities) {
 	properties: vk.PhysicalDeviceProperties
 	vk.GetPhysicalDeviceProperties(device, &properties)
 
@@ -974,16 +993,16 @@ is_device_suitable :: proc(device: vk.PhysicalDevice) -> (is_suitable: bool, is_
 		supports_required_features(REQUIRED_VK_12_FEATURES, vk_12_features) &&
 		supports_required_features(REQUIRED_VK_13_FEATURES, vk_13_features)
 
-	extensions_supported := check_device_extension_support(device)
+	has_required_exts, has_raytracing_exts := check_device_extension_support(device)
 
     capabilities = {
-        ray_query = cast(bool) vk_ray_query_features.rayQuery
+        ray_query = cast(bool) vk_ray_query_features.rayQuery && has_raytracing_exts
     }
 
-	return extensions_supported && supports_features, properties.deviceType == .DISCRETE_GPU, capabilities
+	return has_required_exts && supports_features, properties.deviceType == .DISCRETE_GPU, has_optional, capabilities
 }
 
-check_device_extension_support :: proc(device: vk.PhysicalDevice) -> bool {
+check_device_extension_support :: proc(device: vk.PhysicalDevice) -> (has_required: bool, has_raytracing: bool) {
 	extension_count: u32
 	vk.EnumerateDeviceExtensionProperties(device, nil, &extension_count, nil)
 
@@ -991,7 +1010,7 @@ check_device_extension_support :: proc(device: vk.PhysicalDevice) -> bool {
 	defer delete(available_extensions)
 	vk.EnumerateDeviceExtensionProperties(device, nil, &extension_count, raw_data(available_extensions))
 
-	for &expected_extension in DEVICE_EXTENSIONS {
+	for &expected_extension in REQUIRED_DEVICE_EXTENSIONS {
 		found := false
 		for &available in &available_extensions {
 			if strings.compare(string(cstring(&available.extensionName[0])), string(expected_extension)) == 0 {
@@ -1004,10 +1023,26 @@ check_device_extension_support :: proc(device: vk.PhysicalDevice) -> bool {
 			log.info("Extension not available:", expected_extension)
 		}
 
-		found or_return
+		has_required = found
 	}
 
-	return true
+	for &expected_extension in RAYTRACING_DEVICE_EXTENSIONS {
+		found := false
+		for &available in &available_extensions {
+			if strings.compare(string(cstring(&available.extensionName[0])), string(expected_extension)) == 0 {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			log.info("Raytracing extension not available:", expected_extension)
+		}
+
+        has_raytracing = found
+	}
+
+	return
 }
 
 debug_callback :: proc "system" (

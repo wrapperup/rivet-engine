@@ -83,7 +83,11 @@ main :: proc() {
 
 		game.window = window
 
-		renderer := gfx.init({enable_validation_layers = ENABLE_VALIDATION, enable_logs = true})
+		renderer := gfx.init({
+            enable_validation_layers = ENABLE_VALIDATION,
+            enable_logs = true,
+            request_raytracing = true,
+        })
 		if renderer == nil {
 			log.error("Graphics could not be initialized.")
 			return

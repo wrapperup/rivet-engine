@@ -598,7 +598,7 @@ upload_mesh_to_gpu :: proc(mesh: Mesh, loc := #caller_location) -> GPUMeshBuffer
 	buffers.index_count = u32(len(mesh.indices))
 
 	// Build the mesh's BLAS once, now that vertices/indices are on the GPU.
-    {
+    if gfx.r_ctx.capabilities.ray_query {
         cmd := gfx.begin_command_buffer(.Main)
         scratch: gfx.Buffer(u8)
         defer gfx.destroy_buffer(&scratch)
